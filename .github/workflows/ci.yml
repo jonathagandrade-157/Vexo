@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Foundation-stage CI: lint, typecheck, unit tests, build.
+# RLS / multi-tenant isolation / storefront-anon suites (architecture §20)
+# are added starting Stage 2, once there is a schema to test against.
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholder values only — no real Supabase project is required to
+      # lint, typecheck, test, or build the Foundation stage. Never put a
+      # real secret in this file (architecture §23).
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX: vexo.local
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

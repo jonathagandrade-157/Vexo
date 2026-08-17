@@ -1,13 +1,14 @@
 # VEXO — Arquitetura Técnica Oficial (PROMPT 22 + Revisão de Segurança)
 
-> Status: **proposta para aprovação — nenhuma funcionalidade foi implementada.**
-> Este documento é o entregável da etapa de planejamento. Nenhum código de produção,
-> schema SQL executável ou boilerplate de aplicação foi criado ou alterado nesta revisão.
-> Após aprovação, a implementação seguirá a ordem descrita na Seção 24, em PRs pequenos e revisáveis.
+> Status: **APROVADA — Etapa 1 (Fundação) em implementação.**
+> Este documento é o entregável da etapa de planejamento, com as correções de segurança da
+> Seção 25 aprovadas pelo dono do produto. A implementação segue a ordem da Seção 24, em PRs
+> pequenos e revisáveis, com parada obrigatória para aprovação ao final de cada etapa.
 
 > **Changelog**
 > - **v1**: arquitetura geral (multi-tenant, ERD, RLS, trial, assinaturas, pagamentos, frete, storefront, pastas, testes, deploy, roadmap).
-> - **v2 (este documento)**: revisão final de segurança e consistência pré-Etapa 1 — isolamento do storefront anônimo, Storage, auditoria do MASTER, credential vault, revisão risco-a-risco de RLS, cookie de tenant ativo, API pública, webhooks (recebidos/enviados), SSRF e upload/XSS. Ver **Seção 25** para o resumo da revisão (riscos encontrados, correções aplicadas, decisões pendentes, checklist da Etapa 1).
+> - **v2**: revisão final de segurança e consistência pré-Etapa 1 — isolamento do storefront anônimo, Storage, auditoria do MASTER, credential vault, revisão risco-a-risco de RLS, cookie de tenant ativo, API pública, webhooks (recebidos/enviados), SSRF e upload/XSS.
+> - **v3 (este documento)**: aprovação registrada. Decisões de §25.4 fechadas (ver §25.4) — papéis customizáveis fora do MVP, antivírus adiado para a etapa de Suporte, Supabase Vault confirmado, override manual de pagamento exige motivo obrigatório, retenção mínima de `audit_logs` fixada em 2 anos. Etapa 1 (Fundação) iniciada — ver histórico de implementação no repositório.
 
 ## Índice
 
@@ -556,7 +557,7 @@ Notação: `tenant_id` presente = tabela **isolada por tenant** (RLS obrigatóri
 | `support_messages` | `id`, `ticket_id`, `tenant_id`, `sender_type (lojista\|master\|system)`, `sender_id`, `body`, `attachments (jsonb)`, `created_at` | texto plano, ver matriz de §25.6 |
 | `help_articles` | `id`, `slug`, `title`, `body`, `category`, `status`, `published_at` | global, sem `tenant_id`; autoria só da equipe VEXO |
 | `notifications` | `id`, `tenant_id (nullable)`, `user_id`, `type`, `payload (jsonb)`, `read_at`, `created_at` | |
-| `audit_logs` | `id`, `tenant_id (nullable p/ ações de MASTER)`, `actor_user_id`, `actor_type`, `action`, `resource_type`, `resource_id`, `before (jsonb, redigido)`, `after (jsonb, redigido)`, `metadata (jsonb)`, `ip`, `user_agent`, `created_at` | **append-only, garantido por `REVOKE` de privilégio + trigger, não só por RLS** — detalhamento completo em §25.3 |
+| `audit_logs` | `id`, `tenant_id (nullable p/ ações de MASTER)`, `actor_user_id`, `actor_type`, `action`, `resource_type`, `resource_id`, `before (jsonb, redigido)`, `after (jsonb, redigido)`, `reason (nullable, obrigatório para overrides financeiros — §18.2)`, `metadata (jsonb)`, `request_id (nullable)`, `ip`, `user_agent`, `created_at` | **append-only, garantido por `REVOKE` de privilégio + trigger, não só por RLS** — detalhamento completo em §25.3; retenção mínima de **2 anos**, decisão oficial em §25.4 |
 | `daily_store_metrics` | `tenant_id`, `date`, `visits`, `orders_count`, `revenue`, `conversion_rate` | agregação para os dashboards de analytics/relatórios, calculada por job |
 
 **Total: ~34 tabelas de negócio + tabelas do `auth` schema do Supabase.** Todas as tabelas com
@@ -1191,7 +1192,7 @@ não o impede. A garantia real é em duas camadas:
 |---|---|---|
 | Onde vive | Sentry / agregador de log (fora do Postgres, em geral) | Tabela `audit_logs`, Postgres |
 | Conteúdo | Stack trace, latência, request id, ruído de debug | Só o essencial: quem, o quê, em qual recurso, quando |
-| Mutabilidade | Pode rotacionar/expirar (ex.: 30–90 dias) | Append-only, retenção longa (decisão pendente em §25.4) |
+| Mutabilidade | Pode rotacionar/expirar (ex.: 30–90 dias) | Append-only, retenção mínima de **2 anos** (decisão oficial, §25.4) |
 | Público-alvo | Time de engenharia debugando | Compliance, suporte, o próprio lojista revendo atividade da conta, MASTER |
 | Garante ação não-editável? | Não é o objetivo | Sim — é o objetivo central |
 
@@ -1513,21 +1514,41 @@ para facilitar a aprovação.
   `role_permissions` (§8, §25.1).
 - Matriz de HTML/XSS por campo, confirmando que nenhum campo aceita HTML livre persistido (§18.3).
 
-### 25.4 Decisões que ainda precisam de aprovação
+### 25.4 Decisões oficiais (aprovadas pelo dono do produto)
 
-1. **Papéis customizáveis por tenant**: confirmar que ficam fora do MVP (recomendação: sim, ficam
-   fora — reavaliar após Etapa 9).
-2. **Scan de antivírus/malware para `support-attachments`**: incluir um serviço de scanning (ex.:
-   ClamAV) já na Etapa 13, ou aceitar o risco residual do pipeline de validação de MIME/tamanho no
-   MVP?
-3. **Supabase Vault nativo vs. KMS externo** para o credential vault: recomendação é Supabase Vault
-   no MVP, com upgrade para KMS externo documentado como evolução — confirmar.
-4. **Override manual de `payment_status` por OWNER/ADMIN**: exigir um campo de motivo/nota
-   obrigatório no momento da alteração manual, para reforçar a trilha de auditoria (§18.2)?
-5. **Janela de tolerância de timestamp para replay protection** (§12.1): depende de cada gateway
-   suportar timestamp assinado — confirmar lista de provedores que suportam antes da Etapa 7.
-6. **Retenção de `audit_logs`**: indefinida ou política de retenção específica (ex.: X anos) —
-   pendente de requisito legal/fiscal a confirmar com jurídico/contábil.
+1. **Papéis customizáveis por tenant**: **fora do MVP**. Mantém-se apenas `OWNER`, `ADMIN`,
+   `MANAGER`, `OPERATOR`, `SUPPORT` (papéis de sistema fixos, §8). A arquitetura de dados
+   (`roles.tenant_id` nullable, `is_system`) já comporta a expansão futura sem migração
+   destrutiva, mas **nenhuma interface ou funcionalidade de papel customizado é construída
+   agora** — reavaliar após a Etapa 9.
+2. **Scan de antivírus/malware para `support-attachments`**: **não bloqueia a Etapa 1** nem etapas
+   anteriores à de Suporte. A proteção de anexos (allow-list de MIME real, limite de tamanho,
+   nome opaco — §9.3) é implementada desde já como base; o scanning de malware propriamente dito
+   é adicionado quando o módulo de Suporte for desenvolvido (Etapa 13).
+3. **Supabase Vault nativo vs. KMS externo**: **confirmado Supabase Vault** com envelope
+   encryption e AES-256-GCM (§11.1) para o MVP. A arquitetura mantém o caminho de migração para
+   um KMS externo (AWS KMS/GCP KMS) documentado como evolução, caso a VEXO cresça e isso se torne
+   necessário — sem exigir redesenho do schema do vault (`key_version` já versiona essa transição).
+4. **Override manual de `payment_status`/status financeiro pelo Painel Master**: **obrigatório
+   exigir motivo**. Regra fechada: qualquer alteração manual de status financeiro/pagamento feita
+   pelo Master **exige** um campo de motivo antes de salvar, e o `audit_logs` correspondente
+   registra, no mínimo: usuário responsável (`actor_user_id`), tenant (`tenant_id`), recurso
+   afetado (`resource_type`/`resource_id`), valor/status anterior (`before`), valor/status novo
+   (`after`), data/hora (`created_at`), motivo (`reason` — nova coluna, §5.9) e `request_id`
+   quando disponível. Sem motivo preenchido, a mutação é rejeitada pelo Server Action/Route
+   Handler antes de chegar ao banco (validação de schema Zod com o campo obrigatório) — a
+   implementação efetiva do fluxo acontece na Etapa 7 (pagamentos)/Etapa 9 (painel Master), mas o
+   campo `reason` já nasce no schema de `audit_logs`.
+5. **Janela de tolerância de timestamp para replay protection** (§12.1): mantém-se como decisão
+   técnica a confirmar por provedor antes da Etapa 7 (depende de cada gateway suportar timestamp
+   assinado) — não bloqueia a Etapa 1.
+6. **Retenção de `audit_logs`**: **fixada em mínimo de 2 anos**. A tabela permanece append-only
+   (nenhum usuário da aplicação, incluindo `OWNER` e `MASTER`, pode `UPDATE`/`DELETE`, §18.2/§25.1)
+   independentemente da política de retenção; a arquitetura permite alterar a política de
+   retenção no futuro (ex.: arquivamento frio após N anos) sem comprometer a integridade dos
+   registros ativos, porque a garantia de imutabilidade está no `REVOKE`+trigger, não em uma
+   regra de expiração — expirar/arquivar é um processo adicional e opt-in, nunca um `DELETE`
+   direto sobre a tabela viva.
 
 ### 25.5 Checklist de segurança para a Etapa 1
 
