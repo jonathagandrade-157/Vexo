@@ -17,6 +17,8 @@ export function TextField({
   rightSlot,
   defaultValue,
   disabled,
+  onChange,
+  required = true,
 }: {
   id: string;
   name: string;
@@ -29,6 +31,10 @@ export function TextField({
   rightSlot?: React.ReactNode;
   defaultValue?: string;
   disabled?: boolean;
+  /** Opcional — só quando um Client Component precisa reagir ao valor digitado (ex.: CEP disparando cotação de frete, Etapa 12). O campo continua não controlado (defaultValue), isto é só um listener adicional. */
+  onChange?: (value: string) => void;
+  /** Default `true` (mesmo comportamento de sempre) — só usado como `false` por um campo genuinamente opcional (Etapa 12: CEP de origem). */
+  required?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -51,9 +57,10 @@ export function TextField({
           autoComplete={autoComplete}
           defaultValue={defaultValue}
           disabled={disabled}
+          onChange={onChange ? (e) => onChange(e.target.value) : undefined}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
-          required
+          required={required}
         />
         {rightSlot}
       </div>

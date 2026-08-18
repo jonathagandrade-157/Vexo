@@ -27,6 +27,12 @@ export const checkoutSchema = z.object({
   neighborhood: z.string().trim().min(2, "Informe o bairro").max(100),
   city: z.string().trim().min(2, "Informe a cidade").max(100),
   state: z.enum(BRAZILIAN_STATES, { message: "Selecione um estado" }),
+  // Opcionais (Etapa 12) — só presentes quando a loja tem entrega
+  // habilitada e o cliente selecionou uma modalidade no checkout.
+  // Nunca a autoridade final do preço: apenas o que o cliente viu na
+  // tela, revalidado no servidor antes de aplicar (features/shipping).
+  shippingMethodId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  shippingPrice: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
 });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
