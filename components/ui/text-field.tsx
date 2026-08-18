@@ -15,6 +15,7 @@ export function TextField({
   autoComplete,
   error,
   rightSlot,
+  defaultValue,
 }: {
   id: string;
   name: string;
@@ -25,6 +26,7 @@ export function TextField({
   autoComplete?: string;
   error?: string;
   rightSlot?: React.ReactNode;
+  defaultValue?: string;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -45,6 +47,7 @@ export function TextField({
           placeholder={placeholder}
           type={type}
           autoComplete={autoComplete}
+          defaultValue={defaultValue}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
           required

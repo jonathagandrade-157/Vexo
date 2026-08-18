@@ -147,11 +147,9 @@ export default async function TrialSucessoPage({
             </div>
           </div>
 
-          {/* Etapa 4 (onboarding) ainda não existe — aponta para a home
-              por enquanto; passa a levar ao wizard assim que ele existir. */}
           <Link
             className="group flex w-full items-center justify-center gap-2 rounded-lg bg-[#7C3AED] px-6 py-4 font-label text-label-md text-white shadow-[0_0_20px_rgba(124,58,237,0.2)] transition-all duration-200 hover:bg-[#6D28D9] hover:shadow-[0_0_30px_rgba(124,58,237,0.4)]"
-            href="/"
+            href="/onboarding"
           >
             <span className="material-symbols-outlined">storefront</span>
             Configurar minha loja
