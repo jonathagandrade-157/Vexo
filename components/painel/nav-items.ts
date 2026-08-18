@@ -16,7 +16,7 @@ export interface NavItem {
 export const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/painel", label: "Início", icon: "dashboard", implemented: true },
   { href: "/painel/pedidos", label: "Pedidos", icon: "shopping_cart", implemented: false },
-  { href: "/painel/produtos", label: "Produtos", icon: "inventory_2", implemented: false },
+  { href: "/painel/produtos", label: "Produtos", icon: "inventory_2", implemented: true },
   { href: "/painel/clientes", label: "Clientes", icon: "group", implemented: false },
   { href: "/painel/marketing", label: "Marketing", icon: "campaign", implemented: false },
   { href: "/painel/configuracoes", label: "Configurações", icon: "settings", implemented: true },

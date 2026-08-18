@@ -5,6 +5,15 @@ import { cache } from "react";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 
 export interface PublicTenant {
+  /**
+   * Etapa 7: chave interna para consultar categories/products (que têm
+   * tenant_id, não slug). Não é dado sensível (UUID aleatório, não
+   * sequencial) — a garantia real de "não expor dado administrativo" é
+   * nunca renderizar isto em HTML/props de Client Component, não nunca
+   * buscá-lo. `created_by`/`onboarding_completed_at` continuam de fora
+   * daqui por serem, esses sim, dados administrativos.
+   */
+  id: string;
   name: string;
   slug: string;
   segment: string | null;
@@ -43,7 +52,7 @@ export const resolveStorefrontTenant = cache(
     const { data } = await supabase
       .from("tenants")
       .select(
-        "name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at",
+        "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at",
       )
       .eq("slug", slug)
       .maybeSingle();
@@ -57,6 +66,7 @@ export const resolveStorefrontTenant = cache(
     return {
       status: "ready",
       tenant: {
+        id: data.id as string,
         name: data.name as string,
         slug: data.slug as string,
         segment: data.segment as string | null,

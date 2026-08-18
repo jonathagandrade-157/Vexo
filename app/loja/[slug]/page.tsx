@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 
 import { StorefrontBrand } from "@/components/storefront/storefront-brand";
+import { StorefrontCategoryFilter } from "@/components/storefront/storefront-category-filter";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
+import { StorefrontProductCard } from "@/components/storefront/storefront-product-card";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
+import { getStorefrontCategories, getStorefrontProducts } from "@/features/storefront/catalog";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { getPublicEnv } from "@/lib/env";
 
@@ -20,6 +23,7 @@ export const revalidate = 60;
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ categoria?: string }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -56,8 +60,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function StorefrontPage({ params }: PageProps) {
+export default async function StorefrontPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const { categoria } = await searchParams;
   const resolution = await resolveStorefrontTenant(slug);
 
   if (resolution.status === "not_found") {
@@ -80,6 +85,10 @@ export default async function StorefrontPage({ params }: PageProps) {
   }
 
   const { tenant } = resolution;
+  const [categories, products] = await Promise.all([
+    getStorefrontCategories(tenant.id),
+    getStorefrontProducts(tenant.id, categoria),
+  ]);
 
   return (
     <StorefrontShell
@@ -92,11 +101,28 @@ export default async function StorefrontPage({ params }: PageProps) {
       storeName={tenant.name}
     >
       <StorefrontBrand description={tenant.description} name={tenant.name} segment={tenant.segment} />
-      <StorefrontEmptyState
-        description="Em breve, novos produtos por aqui."
-        icon="shopping_bag"
-        title="Produtos"
-      />
+
+      <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile pb-20 md:px-margin-desktop">
+        <StorefrontCategoryFilter activeCategorySlug={categoria} categories={categories} storeSlug={tenant.slug} />
+
+        {products.length === 0 ? (
+          <StorefrontEmptyState
+            description={
+              categoria
+                ? "Nenhum produto ativo nesta categoria no momento."
+                : "Em breve, novos produtos por aqui."
+            }
+            icon="shopping_bag"
+            title={categoria ? "Categoria vazia" : "Nenhum produto ainda"}
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {products.map((product) => (
+              <StorefrontProductCard key={product.id} product={product} storeSlug={tenant.slug} />
+            ))}
+          </div>
+        )}
+      </div>
     </StorefrontShell>
   );
 }
