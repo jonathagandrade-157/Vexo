@@ -342,12 +342,13 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)(
       expect(membership.rows[0]?.key).toBe("OWNER");
     });
 
-    it("[extra] anon cannot read tenants, tenant_members, or platform_admins", async () => {
-      const tenants = await asActor({ role: "anon" }, (c) =>
-        c.query("select id from public.tenants"),
-      );
-      expect(tenants.rows).toHaveLength(0);
-
+    // `tenants` deixou de fazer parte desta garantia na Etapa 6
+    // (storefront público): uma nova policy dá `anon` SELECT em tenants
+    // não suspensos/excluídos, de propósito — ver
+    // tests/integration/storefront.test.ts para a cobertura real dessa
+    // regra nova. `tenant_members`/`platform_admins` continuam sem
+    // nenhuma policy para `anon`, exatamente como na Etapa 2.
+    it("[extra] anon cannot read tenant_members or platform_admins", async () => {
       const members = await asActor({ role: "anon" }, (c) =>
         c.query("select id from public.tenant_members"),
       );

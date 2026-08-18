@@ -2,6 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 import { getPublicEnv, getServerEnv } from "@/lib/env";
 
@@ -39,6 +40,24 @@ export async function createSupabaseServerClient() {
       },
     },
   );
+}
+
+/**
+ * Etapa 6 — cliente público (anon key, sem cookies) para páginas que
+ * qualquer visitante não autenticado pode ver (storefront). Diferente de
+ * `createSupabaseServerClient()` de propósito: aquele lê `cookies()`, o
+ * que faz o Next.js tratar a rota inteira como dinâmica (nunca
+ * cacheável) mesmo quando o visitante não tem sessão nenhuma — o
+ * storefront não precisa saber quem está olhando, então usar este
+ * cliente é o que permite `export const revalidate = 60` funcionar de
+ * verdade na rota (arquitetura §17 Etapa 6).
+ *
+ * Continua sujeito a RLS como qualquer chamada com a anon key — não
+ * bypassa nada; só não carrega sessão.
+ */
+export function createSupabasePublicClient() {
+  const { NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY } = getPublicEnv();
+  return createClient(NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY);
 }
 
 /**

@@ -1,0 +1,43 @@
+-- Etapa 6 — RLS pública de tenants para o storefront (arquitetura §6;
+-- docs/architecture/etapa-6-storefront.md).
+--
+-- Primeira policy de tenants para `anon` — até aqui só existia a de
+-- "tenant members and platform admins" (0012), `to authenticated`. RLS é
+-- permissiva por padrão (policies são combinadas com OR): esta nova
+-- policy só ADICIONA visibilidade pública a linhas específicas, nunca
+-- remove nem estreita o que a policy da Etapa 2 já permitia para membros/
+-- platform admins.
+--
+-- SÓ `to anon` — decisão corrigida durante esta etapa depois de rodar a
+-- suíte de testes completa: a primeira versão desta policy também
+-- cobria `to authenticated`, com o raciocínio de "um visitante logado
+-- também precisa ver o storefront de um tenant do qual não é membro".
+-- Isso quebrou 6 testes de isolamento das Etapas 2/4/5
+-- (rls-isolation/onboarding/painel.test.ts) porque RLS não sabe
+-- distinguir "esta query é do storefront público" de qualquer outra
+-- query em `tenants` — o mesmo GRANT passou a valer para TODO uso
+-- autenticado da tabela (painel incluído), não só o storefront,
+-- afrouxando o isolamento entre tenants de verdade além do pretendido.
+-- A correção certa não precisa de `authenticated` de jeito nenhum: o
+-- storefront usa `createSupabasePublicClient()` (Etapa 6), que nunca lê
+-- cookie de sessão — toda chamada dele autentica como `anon` no
+-- Supabase, mesmo que o navegador tenha uma sessão ativa em outra aba.
+-- Então cobrir `authenticated` aqui nunca foi necessário para o
+-- storefront funcionar, só um efeito colateral não intencional.
+--
+-- `status not in ('suspended', 'deleted')`, não `status = 'active'`: hoje
+-- todo tenant fica em 'pending' (não existe fluxo de aprovação MASTER
+-- ainda) — gatear em 'active' tornaria toda loja real invisível
+-- publicamente. 'pending'/'active' ambos ficam visíveis; 'suspended'/
+-- 'deleted' ficam tão invisíveis quanto um slug que nunca existiu (a
+-- aplicação nunca revela ao visitante QUAL é o motivo — ver
+-- features/storefront/resolve-tenant.ts).
+--
+-- Isto NÃO expõe coluna nenhuma a mais do que a aplicação decide
+-- projetar na query (RLS filtra linha, não coluna) — a query pública do
+-- storefront nunca faz `select *`, só os 6 campos de identidade/contato
+-- da Etapa 4 (nunca `created_by`, nunca `onboarding_completed_at`).
+create policy "anyone can view public storefront-visible tenants"
+  on public.tenants for select
+  to anon
+  using (status not in ('suspended', 'deleted'));

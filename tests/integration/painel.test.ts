@@ -14,7 +14,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { asActor, pool, withSuperuser } from "./helpers/db";
+import { asActor, expectPgError, pool, withSuperuser } from "./helpers/db";
 import { buildFixtures, type Fixtures } from "./helpers/fixtures";
 
 const runId = randomUUID().slice(0, 8);
@@ -112,12 +112,23 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Painel do lojista (Etapa 5)
     expect(asManager.rows).toHaveLength(1);
   });
 
-  // 2 — não autenticado bloqueado (mesma garantia de onboarding.test.ts, reconfirmada aqui no contexto do painel).
-  it("anon cannot read tenant data", async () => {
-    const res = await asActor({ role: "anon" }, (c) =>
-      c.query("select id from public.tenants where id = $1", [onboardedTenantId]),
+  // 2 — não autenticado é bloqueado do que é ADMINISTRATIVO do painel.
+  // A leitura pública de `tenants` em si passou a ser esperada desde a
+  // Etapa 6 (storefront) — ver tests/integration/storefront.test.ts. O
+  // que continua (e precisa continuar) bloqueado para anon no contexto
+  // do painel é a membership/permissão em si.
+  it("anon cannot read tenant_members or call has_permission for the painel", async () => {
+    const members = await asActor({ role: "anon" }, (c) =>
+      c.query("select id from public.tenant_members where tenant_id = $1", [onboardedTenantId]),
     );
-    expect(res.rows).toHaveLength(0);
+    expect(members.rows).toHaveLength(0);
+
+    const err = await expectPgError(
+      asActor({ role: "anon" }, (c) =>
+        c.query("select public.has_permission($1, 'settings.update')", [onboardedTenantId]),
+      ),
+    );
+    expect(err.message).toMatch(/permission denied/i);
   });
 
   // 5/6 — sem tenant nenhum / sem membership não acessa nenhum tenant.

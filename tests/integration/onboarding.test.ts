@@ -85,18 +85,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Onboarding (Etapa 4)", () =
     expect(res.rows[0]?.onboarding_completed_at).toBeNull();
   });
 
-  // 2. usuário não autenticado é bloqueado
-  it("an unauthenticated (anon) request cannot read or write tenants", async () => {
-    // anon tem SELECT concedido na tabela (privilégio padrão do Supabase),
-    // mas a única policy de SELECT de tenants (0012) é `to authenticated`
-    // — sem policy aplicável a anon, RLS filtra para zero linhas em vez de
-    // lançar erro (mesmo comportamento observado e documentado na Etapa 3
-    // para trial_eligibility: "RLS sem policy filtra, não nega"). Não há
-    // exposição de dado nenhuma: o resultado é vazio de qualquer forma.
+  // 2. usuário não autenticado é bloqueado PARA ESCRITA — leitura de
+  // tenants não suspensos/excluídos passou a ser pública de propósito na
+  // Etapa 6 (storefront), via a policy "anyone can view public
+  // storefront-visible tenants" (migration 20260817220022); ver
+  // tests/integration/storefront.test.ts para a cobertura dessa regra.
+  // fx.tenantA está "pending" (default), então esta leitura hoje
+  // encontra a linha — isso é o comportamento correto, não um vazamento.
+  it("an unauthenticated (anon) request can read (public storefront data) but never write tenants", async () => {
     const read = await asActor({ role: "anon" }, (c) =>
       c.query("select id from public.tenants where id = $1", [fx.tenantA]),
     );
-    expect(read.rows).toHaveLength(0);
+    expect(read.rows).toHaveLength(1);
 
     // UPDATE já é diferente: anon nunca recebeu o GRANT de UPDATE na
     // tabela (só SELECT) — isso é negado no nível de privilégio do
