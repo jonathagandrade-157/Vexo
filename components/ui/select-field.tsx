@@ -13,14 +13,16 @@ export function SelectField({
   options,
   error,
   defaultValue,
+  disabled,
 }: {
   id: string;
   name: string;
   label: string;
   placeholder: string;
-  options: { value: string; label: string }[];
+  options: readonly { value: string; label: string }[];
   error?: string;
   defaultValue?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -29,10 +31,11 @@ export function SelectField({
       </label>
       <div className="relative">
         <select
-          className="input-focus-glow w-full appearance-none rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface transition-all focus:outline-none"
+          className="input-focus-glow w-full appearance-none rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           id={id}
           name={name}
           defaultValue={defaultValue ?? ""}
+          disabled={disabled}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
           required

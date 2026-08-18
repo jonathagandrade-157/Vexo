@@ -16,6 +16,7 @@ export function TextField({
   error,
   rightSlot,
   defaultValue,
+  disabled,
 }: {
   id: string;
   name: string;
@@ -27,6 +28,7 @@ export function TextField({
   error?: string;
   rightSlot?: React.ReactNode;
   defaultValue?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -41,13 +43,14 @@ export function TextField({
           {icon}
         </span>
         <input
-          className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest py-2.5 pl-10 pr-3 font-body text-body-sm text-on-surface transition-all placeholder:text-outline-variant focus:outline-none"
+          className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest py-2.5 pl-10 pr-3 font-body text-body-sm text-on-surface transition-all placeholder:text-outline-variant focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           id={id}
           name={name}
           placeholder={placeholder}
           type={type}
           autoComplete={autoComplete}
           defaultValue={defaultValue}
+          disabled={disabled}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
           required

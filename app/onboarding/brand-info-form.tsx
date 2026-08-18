@@ -7,14 +7,7 @@ import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
 import { initialBrandInfoState, saveBrandInfoAction } from "@/features/onboarding/actions";
-
-const SEGMENT_OPTIONS = [
-  { value: "apparel", label: "Moda & Vestuário" },
-  { value: "electronics", label: "Eletrônicos" },
-  { value: "beauty", label: "Beleza & Cosméticos" },
-  { value: "home", label: "Casa & Decoração" },
-  { value: "other", label: "Outros" },
-];
+import { SEGMENT_OPTIONS } from "@/features/settings/segments";
 
 interface DefaultValues {
   storeName: string;

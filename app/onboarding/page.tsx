@@ -22,11 +22,10 @@ export const metadata: Metadata = {
  * repetem o "inicie seu teste grátis" que /trial/sucesso (Etapa 3) já
  * cobre — o botão "Configurar minha loja" de lá já leva direto para cá.
  *
- * Gate 100% server-side (arquitetura §24 Etapa 4): decide com base em
- * tenants.onboarding_completed_at, nunca em localStorage/estado de
- * cliente. Sem sessão → /login. Sem tenant OWNER pendente → /painel
- * (que, por sua vez, decide se manda de volta para cá ou mostra o
- * placeholder).
+ * Gate 100% server-side (arquitetura §24 Etapa 4 / §6 Etapa 5): decide
+ * com base em tenants.onboarding_completed_at, nunca em localStorage/
+ * estado de cliente. Sem sessão → /login. Sem tenant OWNER pendente →
+ * /painel (que decide o resto) ou /sem-loja (nenhum tenant nenhum).
  */
 export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
@@ -45,9 +44,10 @@ export default async function OnboardingPage() {
     // real, não hipotético: Etapa 3 já documenta que uma conta Supabase
     // Auth pode ficar sem tenant se um passo do cadastro falhar depois do
     // signUp() — não é desta etapa consertar essa causa raiz, só não
-    // travar quem cair nela.
+    // travar quem cair nela. /sem-loja (Etapa 5) é o destino correto
+    // agora — mais preciso que a home de marketing.
     const completedTenant = await resolveOnboardingTenant(supabase, false);
-    redirect(completedTenant ? "/painel" : "/");
+    redirect(completedTenant ? "/painel" : "/sem-loja");
   }
 
   return (
