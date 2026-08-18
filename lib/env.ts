@@ -24,6 +24,14 @@ const serverSchema = z.object({
   // Etapa 3: HMAC key for hashing CPF/CNPJ before it ever touches the
   // database (architecture §13) — lib/security/hash-identifier.ts.
   TRIAL_HASH_SECRET: z.string().min(16),
+  // Etapa 11: Mercado Pago OAuth (arquitetura §11) — lib/payments/mercadopago.ts.
+  // Nunca NEXT_PUBLIC_* (client_id só é usado para montar a URL de
+  // autorização inteiramente no servidor, antes do redirect).
+  MERCADO_PAGO_CLIENT_ID: z.string().min(1),
+  MERCADO_PAGO_CLIENT_SECRET: z.string().min(1),
+  MERCADO_PAGO_WEBHOOK_SECRET: z.string().min(1),
+  // HMAC key para assinar o `state` do OAuth (tenant_id + nonce + expiração) — lib/security/oauth-state.ts.
+  OAUTH_STATE_SECRET: z.string().min(16),
 });
 
 export type PublicEnv = z.infer<typeof publicSchema>;

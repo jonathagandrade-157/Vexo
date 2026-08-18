@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { getCartId } from "@/features/cart/cart-cookie";
+import { initiatePaymentForOrder, isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 import { checkoutSchema, type CheckoutActionState, type CheckoutInput } from "./schema";
@@ -59,6 +60,13 @@ export async function createOrderAction(
     return { status: "error", message: "Esta loja não está disponível no momento." };
   }
 
+  // Defesa em profundidade — a página de checkout já bloqueia o
+  // formulário quando não há gateway conectado (prompt §19), mas o
+  // estado da página pode estar desatualizado.
+  if (!(await isPaymentGatewayConnected(resolution.tenant.id))) {
+    return { status: "error", message: "Esta loja ainda não possui um meio de pagamento configurado." };
+  }
+
   const cartId = await getCartId(storeSlug);
   if (!cartId) {
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
@@ -83,5 +91,15 @@ export async function createOrderAction(
 
   revalidatePath(`/loja/${storeSlug}`);
   revalidatePath(`/loja/${storeSlug}/carrinho`);
+
+  // O pedido já existe e o carrinho já foi limpo (create_order_from_cart,
+  // Etapa 10) — se o passo de pagamento falhar daqui pra frente, o
+  // cliente ainda cai na confirmação (que mostra o status real,
+  // "pendente") em vez de ficar numa tela de erro sem saber se o pedido
+  // existe.
+  const payment = await initiatePaymentForOrder(resolution.tenant.id, orderId as string, customerEmail, storeSlug);
+  if ("checkoutUrl" in payment) {
+    redirect(payment.checkoutUrl);
+  }
   redirect(`/loja/${storeSlug}/pedido/${orderId as string}`);
 }

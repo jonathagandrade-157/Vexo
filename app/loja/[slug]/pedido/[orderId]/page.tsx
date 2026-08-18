@@ -17,12 +17,40 @@ interface PageProps {
 }
 
 /**
- * Nova rota (Etapa 10). URL usa o `id` (uuid, não adivinhável) do
- * pedido, nunca o `order_number` sequencial — evita um IDOR real (ver
- * docs/architecture/etapa-10-checkout.md, seção "Segurança"). Nunca
- * expõe tenant_id/IDs internos — `get_order_confirmation` já retorna
- * uma projeção mínima.
+ * Nunca assumir pago só porque o cliente voltou para esta página
+ * (prompt Etapa 11 §9/§18) — sempre o status real, lido do banco
+ * (`get_order_confirmation`, atualizado só pelo webhook).
  */
+const PAYMENT_STATUS_COPY: Record<
+  "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "REFUNDED",
+  { icon: string; label: string; description: string }
+> = {
+  PENDING: {
+    icon: "hourglass_top",
+    label: "Pagamento pendente",
+    description: "Estamos aguardando a confirmação do seu pagamento. Isso pode levar alguns instantes.",
+  },
+  APPROVED: {
+    icon: "check_circle",
+    label: "Pagamento aprovado",
+    description: "Seu pagamento foi confirmado — o pedido já está sendo preparado.",
+  },
+  REJECTED: {
+    icon: "cancel",
+    label: "Pagamento recusado",
+    description: "O pagamento não foi aprovado. Você pode tentar novamente pelo carrinho.",
+  },
+  CANCELLED: {
+    icon: "cancel",
+    label: "Pagamento cancelado",
+    description: "O pagamento foi cancelado.",
+  },
+  REFUNDED: {
+    icon: "replay",
+    label: "Pagamento reembolsado",
+    description: "O valor deste pedido foi reembolsado.",
+  },
+};
 export default async function OrderConfirmationPage({ params }: PageProps) {
   const { slug, orderId } = await params;
   const resolution = await resolveStorefrontTenant(slug);
@@ -67,17 +95,21 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
     );
   }
 
+  const paymentCopy = PAYMENT_STATUS_COPY[order.paymentStatus];
+
   return (
     <StorefrontShell footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
       <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-margin-desktop">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-container">
-            <span className="material-symbols-outlined text-3xl text-on-primary-container">check_circle</span>
+            <span className="material-symbols-outlined text-3xl text-on-primary-container">{paymentCopy.icon}</span>
           </div>
-          <h1 className="font-headline text-headline-md text-on-surface">Pedido realizado com sucesso!</h1>
+          <h1 className="font-headline text-headline-md text-on-surface">Pedido recebido!</h1>
           <p className="font-body text-body-md text-on-surface-variant">
-            Obrigado, {order.customerName}. Seu pedido <strong>{order.orderNumber}</strong> foi recebido e está{" "}
-            <strong>pendente</strong> de confirmação.
+            Obrigado, {order.customerName}. Seu pedido é o <strong>{order.orderNumber}</strong>.
+          </p>
+          <p className="font-label text-label-md text-on-surface">
+            {paymentCopy.label} — {paymentCopy.description}
           </p>
         </div>
 

@@ -15,6 +15,8 @@ export interface OrderConfirmationItem {
 export interface OrderConfirmation {
   orderNumber: string;
   status: string;
+  /** Nunca assumir pago só porque o cliente voltou para esta página (prompt Etapa 11 §9/§18) — sempre o status real, lido do banco. */
+  paymentStatus: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "REFUNDED";
   customerName: string;
   shippingAddress: {
     zip: string;

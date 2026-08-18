@@ -7,6 +7,10 @@ const VALID_ENV = {
   NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX: "vexo.local",
   SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
   TRIAL_HASH_SECRET: "a-trial-hash-secret-thats-long-enough",
+  MERCADO_PAGO_CLIENT_ID: "test-mp-client-id",
+  MERCADO_PAGO_CLIENT_SECRET: "test-mp-client-secret",
+  MERCADO_PAGO_WEBHOOK_SECRET: "test-mp-webhook-secret",
+  OAUTH_STATE_SECRET: "a-oauth-state-secret-thats-long-enough",
 };
 
 describe("lib/env", () => {
@@ -56,6 +60,10 @@ describe("lib/env", () => {
     expect(getServerEnv()).toEqual({
       SUPABASE_SERVICE_ROLE_KEY: VALID_ENV.SUPABASE_SERVICE_ROLE_KEY,
       TRIAL_HASH_SECRET: VALID_ENV.TRIAL_HASH_SECRET,
+      MERCADO_PAGO_CLIENT_ID: VALID_ENV.MERCADO_PAGO_CLIENT_ID,
+      MERCADO_PAGO_CLIENT_SECRET: VALID_ENV.MERCADO_PAGO_CLIENT_SECRET,
+      MERCADO_PAGO_WEBHOOK_SECRET: VALID_ENV.MERCADO_PAGO_WEBHOOK_SECRET,
+      OAUTH_STATE_SECRET: VALID_ENV.OAUTH_STATE_SECRET,
     });
   });
 

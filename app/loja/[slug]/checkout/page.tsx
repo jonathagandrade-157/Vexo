@@ -7,6 +7,7 @@ import { StorefrontNotFound } from "@/components/storefront/storefront-not-found
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
 import { effectivePrice, lineSubtotal } from "@/features/cart/pricing";
+import { isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export default async function CheckoutPage({ params }: PageProps) {
   }
 
   const { tenant } = resolution;
-  const cart = await getCart(tenant.slug);
+  const [cart, gatewayConnected] = await Promise.all([getCart(tenant.slug), isPaymentGatewayConnected(tenant.id)]);
 
   const shellFooter = {
     description: tenant.description,
@@ -49,6 +50,29 @@ export default async function CheckoutPage({ params }: PageProps) {
     whatsappPhone: tenant.whatsapp_phone,
     contactEmail: tenant.contact_email,
   };
+
+  // Sem gateway conectado: bloqueia ANTES do formulário, nunca mostra um
+  // "pagar" que não funciona nem cria um pedido sem como ser pago
+  // (prompt Etapa 11 §19).
+  if (!gatewayConnected) {
+    return (
+      <StorefrontShell cartCount={cart.itemCount} footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
+        <StorefrontEmptyState
+          action={
+            <Link
+              className="rounded-lg border border-outline-variant/50 px-5 py-2.5 font-label text-label-md text-on-surface-variant transition-colors hover:border-primary/50 hover:text-on-surface"
+              href={`/loja/${tenant.slug}/carrinho`}
+            >
+              Voltar ao carrinho
+            </Link>
+          }
+          description="Esta loja ainda não possui um meio de pagamento configurado."
+          icon="credit_card_off"
+          title="Pagamento indisponível"
+        />
+      </StorefrontShell>
+    );
+  }
 
   const availableItems = cart.items.filter((item) => item.available);
 

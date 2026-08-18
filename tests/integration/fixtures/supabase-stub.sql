@@ -112,3 +112,37 @@ alter table storage.objects force row level security;
 grant usage on schema storage to anon, authenticated, service_role;
 grant select on storage.buckets to anon, authenticated, service_role;
 grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
+
+-- Réplica simplificada (Etapa 11) do schema `vault` do Supabase real
+-- (extensão pgsodium) — só o suficiente para testar a INTEGRAÇÃO
+-- ESTRUTURAL das funções de private.*_payment_credentials() contra
+-- Postgres puro: `secret` aqui fica em texto puro (sem pgsodium
+-- disponível neste sandbox), então `vault.decrypted_secrets` é só uma
+-- view direta — isto NUNCA valida a criptografia real do Vault, só que
+-- o código grava/lê/apaga a referência certa. Ver relatório da Etapa 11
+-- para o que foi e não foi validado.
+create schema if not exists vault;
+
+create table vault.secrets (
+  id uuid primary key default gen_random_uuid(),
+  name text,
+  description text,
+  secret text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create or replace function vault.create_secret(new_secret text, new_name text default null, new_description text default null)
+returns uuid
+language sql
+as $$
+  insert into vault.secrets (secret, name, description) values (new_secret, new_name, new_description) returning id;
+$$;
+
+create view vault.decrypted_secrets as
+  select id, name, description, secret as decrypted_secret, created_at, updated_at from vault.secrets;
+
+grant usage on schema vault to service_role;
+grant select, insert, update, delete on vault.secrets to service_role;
+grant select on vault.decrypted_secrets to service_role;
+grant execute on function vault.create_secret(text, text, text) to service_role;
