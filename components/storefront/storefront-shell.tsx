@@ -18,16 +18,20 @@ interface FooterData {
  */
 export function StorefrontShell({
   storeName,
+  storeSlug,
+  cartCount = 0,
   footer,
   children,
 }: {
   storeName: string;
+  storeSlug: string;
+  cartCount?: number;
   footer: FooterData;
   children: ReactNode;
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <StorefrontHeader storeName={storeName} />
+      <StorefrontHeader cartCount={cartCount} storeName={storeName} storeSlug={storeSlug} />
       <main className="flex-1 pt-16">{children}</main>
       <StorefrontFooter
         contactEmail={footer.contactEmail}

@@ -2,16 +2,19 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 
+import { AddToCartButton } from "@/components/storefront/add-to-cart-button";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
+import { getCart } from "@/features/cart/data";
 import { formatPrice } from "@/features/products/format-price";
 import { getProductImagePublicUrl } from "@/features/products/image-storage";
 import { getStorefrontProduct } from "@/features/storefront/catalog";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { getPublicEnv } from "@/lib/env";
 
-export const revalidate = 60;
+/** Etapa 9: "Adicionar ao carrinho" depende de `cookies()` (via `getCart`) — a rota deixa de ser elegível a ISR (mesma mudança feita na home do storefront). */
+export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ slug: string; productSlug: string }>;
@@ -43,9 +46,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 /**
- * Só a estrutura do card de `vexo_storefront_produto_desktop` (Stitch) —
- * sem "adicionar ao carrinho"/comprar (arquitetura §16 Etapa 7:
- * storefront não tem carrinho/checkout/compra nesta etapa).
+ * Estrutura do card de `vexo_storefront_produto_desktop` (Stitch), agora
+ * com "Adicionar ao carrinho" funcional (Etapa 9) — ainda sem
+ * checkout/compra (fora do escopo desta etapa).
  */
 export default async function StorefrontProductPage({ params }: PageProps) {
   const { slug, productSlug } = await params;
@@ -58,6 +61,7 @@ export default async function StorefrontProductPage({ params }: PageProps) {
       <StorefrontShell
         footer={{ description: null, instagramHandle: null, whatsappPhone: null, contactEmail: null }}
         storeName={resolution.name}
+        storeSlug={slug}
       >
         <StorefrontEmptyState
           description="O proprietário ainda está configurando esta loja. Volte em breve."
@@ -69,7 +73,7 @@ export default async function StorefrontProductPage({ params }: PageProps) {
   }
 
   const { tenant } = resolution;
-  const product = await getStorefrontProduct(tenant.id, productSlug);
+  const [product, cart] = await Promise.all([getStorefrontProduct(tenant.id, productSlug), getCart(tenant.slug)]);
 
   const shellFooter = {
     description: tenant.description,
@@ -80,7 +84,7 @@ export default async function StorefrontProductPage({ params }: PageProps) {
 
   if (!product) {
     return (
-      <StorefrontShell footer={shellFooter} storeName={tenant.name}>
+      <StorefrontShell cartCount={cart.itemCount} footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
         <StorefrontEmptyState
           description="Este produto não existe ou não está mais disponível."
           icon="search_off"
@@ -91,7 +95,7 @@ export default async function StorefrontProductPage({ params }: PageProps) {
   }
 
   return (
-    <StorefrontShell footer={shellFooter} storeName={tenant.name}>
+    <StorefrontShell cartCount={cart.itemCount} footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
       <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-margin-desktop">
         <Link
           className="flex w-fit items-center gap-1 font-label text-label-sm text-on-surface-variant transition-colors hover:text-primary"
@@ -146,6 +150,7 @@ export default async function StorefrontProductPage({ params }: PageProps) {
             {product.description ? (
               <p className="font-body text-body-lg text-on-surface-variant">{product.description}</p>
             ) : null}
+            <AddToCartButton productId={product.id} storeSlug={tenant.slug} />
           </div>
         </div>
       </div>

@@ -6,20 +6,20 @@ import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-s
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontProductCard } from "@/components/storefront/storefront-product-card";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
+import { getCart } from "@/features/cart/data";
 import { getStorefrontCategories, getStorefrontProducts } from "@/features/storefront/catalog";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { getPublicEnv } from "@/lib/env";
 
 /**
- * Etapa 6 — cache/revalidação (arquitetura §17): 60s de ISR. Simples de
- * propósito — sem infraestrutura de invalidação sob demanda, sem
- * webhook. Uma edição feita em /painel/configuracoes aparece aqui em até
- * 60 segundos. `createSupabasePublicClient()` (usado por
- * `resolveStorefrontTenant`) não chama `cookies()`, então esta rota fica
- * de fato elegível a essa revalidação por tempo — usar o cliente ligado
- * à sessão aqui forçaria a rota inteira a ser dinâmica sempre.
+ * Etapa 6 — cache/revalidação (arquitetura §17): era 60s de ISR. Etapa 9:
+ * o contador do carrinho no header depende de `cookies()` (via
+ * `getCart`), que o Next trata como API dinâmica sempre — a rota inteira
+ * deixa de ser elegível a ISR a partir de agora (evolução documentada no
+ * relatório da Etapa 9; a nuance anterior, sobre `searchParams`, fica
+ * subsumida por esta).
  */
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -74,6 +74,7 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
       <StorefrontShell
         footer={{ description: null, instagramHandle: null, whatsappPhone: null, contactEmail: null }}
         storeName={resolution.name}
+        storeSlug={slug}
       >
         <StorefrontEmptyState
           description="O proprietário ainda está configurando esta loja. Volte em breve."
@@ -85,13 +86,15 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
   }
 
   const { tenant } = resolution;
-  const [categories, products] = await Promise.all([
+  const [categories, products, cart] = await Promise.all([
     getStorefrontCategories(tenant.id),
     getStorefrontProducts(tenant.id, categoria),
+    getCart(tenant.slug),
   ]);
 
   return (
     <StorefrontShell
+      cartCount={cart.itemCount}
       footer={{
         description: tenant.description,
         instagramHandle: tenant.instagram_handle,
@@ -99,6 +102,7 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
         contactEmail: tenant.contact_email,
       }}
       storeName={tenant.name}
+      storeSlug={tenant.slug}
     >
       <StorefrontBrand description={tenant.description} name={tenant.name} segment={tenant.segment} />
 
