@@ -56,3 +56,12 @@ export interface ProductActionState {
 }
 
 export const initialProductState: ProductActionState = { status: "idle" };
+
+/** Estado de `uploadProductImageAction`/`removeProductImageAction` (Etapa 8) — arquivo separado do `actions.ts` só pelo mesmo motivo de sempre (bug de "use server" com export não-função, Etapa 5). */
+export interface ProductImageActionState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  imagePath?: string | null;
+}
+
+export const initialProductImageState: ProductImageActionState = { status: "idle" };

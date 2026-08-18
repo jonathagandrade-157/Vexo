@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,6 +7,7 @@ import { CatalogTabs } from "@/components/painel/catalog-tabs";
 import { PanelEmptyState } from "@/components/painel/panel-empty-state";
 import { ProductActions } from "@/components/painel/product-actions";
 import { formatPrice } from "@/features/products/format-price";
+import { getProductImagePublicUrl } from "@/features/products/image-storage";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -25,6 +27,21 @@ interface ProductQueryRow {
 function categoryName(category: ProductQueryRow["category"]): string {
   const c = Array.isArray(category) ? category[0] : category;
   return c?.name ?? "Sem categoria";
+}
+
+function ProductThumbnail({ mainImage, name, size }: { mainImage: string | null; name: string; size: number }) {
+  if (!mainImage) {
+    return <span className="material-symbols-outlined text-outline">image</span>;
+  }
+  return (
+    <Image
+      alt={name}
+      className="h-full w-full object-cover"
+      height={size}
+      src={getProductImagePublicUrl(mainImage)}
+      width={size}
+    />
+  );
 }
 
 export default async function ProdutosPage() {
@@ -118,7 +135,7 @@ export default async function ProdutosPage() {
                   <tr className="transition-colors hover:bg-[#1E1E1E]/50" key={product.id}>
                     <td className="p-4">
                       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-surface-container-highest bg-surface-container-highest">
-                        <span className="material-symbols-outlined text-outline">image</span>
+                        <ProductThumbnail mainImage={product.main_image} name={product.name} size={48} />
                       </div>
                     </td>
                     <td className="p-4">
@@ -170,7 +187,7 @@ export default async function ProdutosPage() {
                 key={product.id}
               >
                 <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-container-highest">
-                  <span className="material-symbols-outlined text-outline">image</span>
+                  <ProductThumbnail mainImage={product.main_image} name={product.name} size={64} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">

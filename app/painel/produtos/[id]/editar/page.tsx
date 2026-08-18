@@ -32,7 +32,7 @@ export default async function EditarProdutoPage({ params }: PageProps) {
   const [{ data: product }, { data: categories }] = await Promise.all([
     supabase
       .from("products")
-      .select("id, name, description, price, promotional_price, sku, category_id")
+      .select("id, name, description, price, promotional_price, sku, category_id, main_image")
       .eq("id", id)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),

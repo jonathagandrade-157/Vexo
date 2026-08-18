@@ -71,3 +71,44 @@ alter default privileges in schema public
   grant usage, select, update on sequences to authenticated, anon, service_role;
 alter default privileges in schema public
   grant execute on functions to authenticated, anon, service_role;
+
+-- Réplica simplificada (Etapa 8) do schema `storage` do Supabase real —
+-- só o suficiente para testar as policies de storage.objects da
+-- migration 20260817220028 contra Postgres puro: NÃO modela metadata
+-- completo (mimetype/size no bucket, versionamento, etc.), só as colunas
+-- de que as próprias policies e `storage.foldername()` dependem.
+-- `storage.foldername()` aqui é a mesma lógica da função real do
+-- Supabase (todos os segmentos do path exceto o nome do arquivo).
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false,
+  file_size_limit bigint,
+  allowed_mime_types text[]
+);
+
+create table if not exists storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets (id),
+  name text not null,
+  owner uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create or replace function storage.foldername(name text)
+returns text[]
+language sql
+immutable
+as $$
+  select (string_to_array(name, '/'))[1 : array_length(string_to_array(name, '/'), 1) - 1];
+$$;
+
+alter table storage.objects enable row level security;
+alter table storage.objects force row level security;
+
+grant usage on schema storage to anon, authenticated, service_role;
+grant select on storage.buckets to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;

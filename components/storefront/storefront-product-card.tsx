@@ -1,7 +1,9 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import type { PublicProductSummary } from "@/features/storefront/catalog";
 import { formatPrice } from "@/features/products/format-price";
+import { getProductImagePublicUrl } from "@/features/products/image-storage";
 
 /**
  * Adaptado de `vexo_storefront_categoria_desktop` (Stitch) — mesma
@@ -21,9 +23,19 @@ export function StorefrontProductCard({
   return (
     <Link className="group flex flex-col" href={`/loja/${storeSlug}/produto/${product.slug}`}>
       <div className="relative mb-4 aspect-[4/5] overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-low transition-colors group-hover:border-primary/30">
-        <div className="flex h-full w-full items-center justify-center">
-          <span className="material-symbols-outlined text-4xl text-outline">image</span>
-        </div>
+        {product.main_image ? (
+          <Image
+            alt={product.name}
+            className="object-cover"
+            fill
+            sizes="(min-width: 1280px) 22vw, (min-width: 640px) 45vw, 90vw"
+            src={getProductImagePublicUrl(product.main_image)}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <span className="material-symbols-outlined text-4xl text-outline">image</span>
+          </div>
+        )}
       </div>
       <div className="flex flex-grow flex-col">
         {product.category ? (

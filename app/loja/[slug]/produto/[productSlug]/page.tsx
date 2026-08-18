@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { formatPrice } from "@/features/products/format-price";
+import { getProductImagePublicUrl } from "@/features/products/image-storage";
 import { getStorefrontProduct } from "@/features/storefront/catalog";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { getPublicEnv } from "@/lib/env";
@@ -100,10 +102,20 @@ export default async function StorefrontProductPage({ params }: PageProps) {
         </Link>
 
         <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
-          <div className="aspect-square overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-low">
-            <div className="flex h-full w-full items-center justify-center">
-              <span className="material-symbols-outlined text-6xl text-outline">image</span>
-            </div>
+          <div className="relative aspect-square overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-low">
+            {product.main_image ? (
+              <Image
+                alt={product.name}
+                className="object-cover"
+                fill
+                sizes="(min-width: 768px) 45vw, 90vw"
+                src={getProductImagePublicUrl(product.main_image)}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <span className="material-symbols-outlined text-6xl text-outline">image</span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-4">

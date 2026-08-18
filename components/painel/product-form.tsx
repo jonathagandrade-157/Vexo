@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 
+import { ProductImageUploader } from "@/components/painel/product-image-uploader";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
@@ -36,6 +37,7 @@ interface ProductFormProps {
     promotional_price: number | null;
     sku: string | null;
     category_id: string | null;
+    main_image: string | null;
   };
 }
 
@@ -99,14 +101,18 @@ export function ProductForm({ categories, product }: ProductFormProps) {
             </div>
           </section>
 
-          <section className="rounded-lg border border-dashed border-outline-variant bg-[#121212]/60 p-6">
-            <h2 className="mb-2 flex items-center gap-2 font-headline text-headline-sm text-on-surface-variant">
-              <span className="material-symbols-outlined">image</span>
+          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+            <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
+              <span className="material-symbols-outlined text-primary">image</span>
               Mídia
             </h2>
-            <p className="font-body text-body-sm text-on-surface-variant">
-              Upload de imagens estará disponível quando o armazenamento de arquivos for configurado.
-            </p>
+            {product ? (
+              <ProductImageUploader initialImagePath={product.main_image} productId={product.id} />
+            ) : (
+              <p className="font-body text-body-sm text-on-surface-variant">
+                Salve o produto primeiro para adicionar uma imagem — a próxima tela já abre pronta para isso.
+              </p>
+            )}
           </section>
         </div>
 
