@@ -6,11 +6,7 @@ import { ConfirmDialog } from "@/components/painel/confirm-dialog";
 import { clearCartAction } from "@/features/cart/actions";
 import { formatPrice } from "@/features/products/format-price";
 
-/**
- * Botão de checkout num estado explícito "em breve" (prompt Etapa 9
- * §11/§19: sem checkout nesta etapa, mas nunca um botão morto/sem
- * função — desabilitado de propósito, com legenda explicando).
- */
+/** Botão de checkout real a partir da Etapa 10 (era desabilitado "em breve" na Etapa 9). */
 export function CartSummary({
   storeSlug,
   itemCount,
@@ -28,14 +24,12 @@ export function CartSummary({
       </div>
 
       <div className="flex flex-col gap-2">
-        <button
-          className="w-full cursor-not-allowed rounded-lg bg-surface-container-highest px-6 py-3 text-center font-label text-label-md text-on-surface-variant opacity-70"
-          disabled
-          title="O checkout será liberado numa próxima etapa."
-          type="button"
+        <Link
+          className="w-full rounded-lg bg-primary-container px-6 py-3 text-center font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6]"
+          href={`/loja/${storeSlug}/checkout`}
         >
-          Finalizar compra (em breve)
-        </button>
+          Finalizar compra
+        </Link>
 
         <div className="flex items-center justify-between gap-3">
           <Link
