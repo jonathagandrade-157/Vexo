@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  hashCpf,
+  hashDocument,
   hashIdentifier,
   identifierHashesMatch,
-  normalizeCpf,
+  normalizeDocument,
 } from "@/lib/security/hash-identifier";
 
-describe("normalizeCpf", () => {
+describe("normalizeDocument", () => {
   it("strips punctuation", () => {
-    expect(normalizeCpf("123.456.789-01")).toBe("12345678901");
+    expect(normalizeDocument("123.456.789-01")).toBe("12345678901");
   });
 });
 
@@ -32,21 +32,27 @@ describe("hashIdentifier", () => {
   });
 });
 
-describe("hashCpf", () => {
-  it("normalizes before hashing, so formatted and raw CPF match", () => {
-    expect(hashCpf("123.456.789-01", "secret")).toBe(
-      hashCpf("12345678901", "secret"),
+describe("hashDocument", () => {
+  it("normalizes before hashing, so formatted and raw documents match", () => {
+    expect(hashDocument("123.456.789-01", "secret")).toBe(
+      hashDocument("12345678901", "secret"),
+    );
+  });
+
+  it("works for CNPJ-length documents too", () => {
+    expect(hashDocument("11.222.333/0001-81", "secret")).toBe(
+      hashDocument("11222333000181", "secret"),
     );
   });
 });
 
 describe("identifierHashesMatch", () => {
   it("true for equal hashes, false for different ones", () => {
-    const h = hashCpf("12345678901", "secret");
+    const h = hashDocument("12345678901", "secret");
     expect(identifierHashesMatch(h, h)).toBe(true);
-    expect(identifierHashesMatch(h, hashCpf("10987654321", "secret"))).toBe(
-      false,
-    );
+    expect(
+      identifierHashesMatch(h, hashDocument("10987654321", "secret")),
+    ).toBe(false);
   });
 
   it("false for different-length inputs (never throws)", () => {

@@ -49,5 +49,15 @@ $$;
 comment on function public.create_tenant(text, text) is
   'Cria um tenant e atribui o usuário autenticado como OWNER, atomicamente. Único caminho legítimo para um usuário comum se tornar OWNER (arquitetura §25.1).';
 
-revoke all on function public.create_tenant(text, text) from public;
+-- Hardening feito na Etapa 3 (não uma mudança de comportamento — para
+-- authenticated nada muda; ver o comentário equivalente em
+-- 20260817220017_start_trial_function.sql para o porquê): "revoke ...
+-- from public" sozinho não remove os GRANTs diretos que o Supabase
+-- concede por padrão a anon/authenticated/service_role via ALTER DEFAULT
+-- PRIVILEGES. Aqui isso nunca foi explorável — a função já rejeita
+-- auth.uid() nulo — mas nomear os três papéis explicitamente remove a
+-- armadilha para qualquer função futura que, como start_trial_for_tenant,
+-- não tenha essa mesma rede de segurança interna.
+revoke execute on function public.create_tenant(text, text)
+  from public, anon, authenticated, service_role;
 grant execute on function public.create_tenant(text, text) to authenticated;

@@ -42,6 +42,24 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${hankenGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
+      <head>
+        {/*
+          Material Symbols Outlined is the icon font every Stitch screen
+          uses (e.g. criar_conta_e_elegibilidade_trial's field icons).
+          next/font/google doesn't catalog it (it's a variable, ligature-
+          based icon font, not a text typeface), so unlike the three fonts
+          above it stays a classic Google Fonts <link> rather than a
+          self-hosted one.
+        */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font --
+            that rule targets the Pages Router's pages/_document.js; the
+            App Router has no such file, and a <link> in the root layout's
+            <head> is the documented replacement. */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="bg-background font-body text-on-background antialiased">
         {children}
       </body>

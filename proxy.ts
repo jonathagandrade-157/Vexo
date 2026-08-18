@@ -1,41 +1,67 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+
+import { getPublicEnv } from "@/lib/env";
 
 /**
- * Foundation-stage Proxy (renamed from "Middleware" in Next.js 16 — see
- * https://nextjs.org/docs/app/api-reference/file-conventions/proxy):
- * passthrough only. No auth, no tenant resolution, no rate limiting yet —
- * those are business rules and this stage is explicitly scoped to not
- * invent them (architecture §24, Etapa 1). The architecture doc's own
- * references to "middleware.ts" (§3.2.1, §7, §19) map to this file.
+ * Proxy (renamed from "Middleware" in Next.js 16 — see
+ * https://nextjs.org/docs/app/api-reference/file-conventions/proxy). The
+ * architecture doc's references to "middleware.ts" (§3.2.1, §7, §19) map
+ * to this file.
  *
- * Extension points for later stages, per the approved architecture:
+ * Etapa 3 implements the session-refresh extension point Etapa 1 reserved
+ * here (architecture §7): Server Components can't write cookies, so the
+ * Supabase session's access/refresh tokens need refreshing somewhere that
+ * can — this file, on every request, following Supabase's standard SSR
+ * pattern for Next.js.
  *
- *  - Stage 3 (auth): refresh the Supabase session cookie here via
- *    `createServerClient` from `@supabase/ssr`, using a request/response
- *    cookie adapter (architecture §7).
- *  - Stage 3/6: resolve the active tenant —
- *      · dashboard/master routes: read + revalidate the signed
- *        `vexo_active_tenant` cookie against `tenant_members`
- *        (architecture §3.2.1) — the cookie is UI context only, never an
- *        authorization decision.
- *      · storefront routes: resolve `host -> tenant_id` via `domains`
- *        (architecture §3.4) and inject it into the request context; never
- *        accept a tenant id from the client.
- *  - Later stages: rate limiting on public/API routes (architecture §10,
- *    §18).
- *
- * None of that is implemented here yet.
+ * Still NOT implemented (unchanged from Etapa 1, still future work):
+ *  - Tenant resolution — reading/revalidating `vexo_active_tenant`
+ *    (dashboard/master) or resolving host -> tenant_id via `domains`
+ *    (storefront), architecture §3.2.1/§3.4. Etapa 3 has no dashboard or
+ *    storefront route yet.
+ *  - Rate limiting on public/API routes (architecture §10, §18).
  */
-export function proxy(_request: NextRequest) {
-  return NextResponse.next();
+export async function proxy(request: NextRequest) {
+  let response = NextResponse.next({ request });
+
+  const { NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY } =
+    getPublicEnv();
+
+  const supabase = createServerClient(
+    NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          for (const { name, value } of cookiesToSet) {
+            request.cookies.set(name, value);
+          }
+          response = NextResponse.next({ request });
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options);
+          }
+        },
+      },
+    },
+  );
+
+  // Refreshes the access token if it's expired, and re-sets the session
+  // cookies via setAll above when it does — required so Server
+  // Components (which cannot set cookies themselves) always see a valid
+  // session instead of intermittently expiring mid-navigation.
+  await supabase.auth.getUser();
+
+  return response;
 }
 
 export const config = {
   matcher: [
     /*
-     * Run on every route except static assets and Next's internals, so the
-     * matcher shape is already correct for when session/tenant resolution
-     * is added — without executing any logic yet.
+     * Run on every route except static assets and Next's internals.
      */
     "/((?!_next/static|_next/image|favicon.ico).*)",
   ],

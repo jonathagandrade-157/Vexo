@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { withSuperuser } from "./db";
 
 export interface Fixtures {
@@ -24,8 +25,15 @@ export interface Fixtures {
  *
  * Created via withSuperuser (bypasses RLS unconditionally), never via the
  * policies under test.
+ *
+ * Every email/slug is tagged with a random run id so that multiple test
+ * *files* (each calling buildFixtures() in its own beforeAll, against the
+ * same shared database — there's no per-file DB reset) never collide on
+ * the unique constraints of auth.users.email / tenants.slug.
  */
 export async function buildFixtures(): Promise<Fixtures> {
+  const runId = randomUUID().slice(0, 8);
+
   return withSuperuser(async (client) => {
     const roleRows = await client.query<{ key: string; id: string }>(
       "select key, id from public.roles",
@@ -34,7 +42,8 @@ export async function buildFixtures(): Promise<Fixtures> {
       roleRows.rows.map((r) => [r.key, r.id]),
     ) as Fixtures["roleIds"];
 
-    async function createUser(email: string): Promise<string> {
+    async function createUser(label: string): Promise<string> {
+      const email = `${label}-${runId}@fixtures.test`;
       const { rows } = await client.query<{ id: string }>(
         "insert into auth.users (email) values ($1) returning id",
         [email],
@@ -44,7 +53,8 @@ export async function buildFixtures(): Promise<Fixtures> {
       return id;
     }
 
-    async function createTenant(name: string, slug: string, createdBy: string): Promise<string> {
+    async function createTenant(name: string, slugBase: string, createdBy: string): Promise<string> {
+      const slug = `${slugBase}-${runId}`;
       const { rows } = await client.query<{ id: string }>(
         "insert into public.tenants (name, slug, created_by) values ($1, $2, $3) returning id",
         [name, slug, createdBy],
@@ -61,12 +71,12 @@ export async function buildFixtures(): Promise<Fixtures> {
       );
     }
 
-    const userAOwner = await createUser("owner-a@fixtures.test");
-    const userAAdmin = await createUser("admin-a@fixtures.test");
-    const userAManager = await createUser("manager-a@fixtures.test");
-    const userBOwner = await createUser("owner-b@fixtures.test");
-    const userOutsider = await createUser("outsider@fixtures.test");
-    const userMaster = await createUser("master@fixtures.test");
+    const userAOwner = await createUser("owner-a");
+    const userAAdmin = await createUser("admin-a");
+    const userAManager = await createUser("manager-a");
+    const userBOwner = await createUser("owner-b");
+    const userOutsider = await createUser("outsider");
+    const userMaster = await createUser("master");
 
     const tenantA = await createTenant("Tenant A", "tenant-a", userAOwner);
     const tenantB = await createTenant("Tenant B", "tenant-b", userBOwner);

@@ -6,6 +6,7 @@ const VALID_ENV = {
   NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
   NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX: "vexo.local",
   SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+  TRIAL_HASH_SECRET: "a-trial-hash-secret-thats-long-enough",
 };
 
 describe("lib/supabase clients", () => {

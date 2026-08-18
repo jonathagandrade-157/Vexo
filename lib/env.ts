@@ -21,6 +21,9 @@ const publicSchema = z.object({
 
 const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  // Etapa 3: HMAC key for hashing CPF/CNPJ before it ever touches the
+  // database (architecture §13) — lib/security/hash-identifier.ts.
+  TRIAL_HASH_SECRET: z.string().min(16),
 });
 
 export type PublicEnv = z.infer<typeof publicSchema>;

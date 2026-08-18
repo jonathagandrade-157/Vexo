@@ -35,6 +35,7 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
       NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX: vexo.local
       SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+      TRIAL_HASH_SECRET: placeholder-trial-hash-secret-not-real
       # postgres:postgres@localhost is the standard, non-secret default for
       # the GitHub Actions postgres service — not a real credential.
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vexo_test
