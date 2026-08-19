@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Etapa 2 adds a real Postgres service so the RLS/multi-tenant isolation
+# suite (tests/integration/rls-isolation.test.ts) runs against an actual
+# database on every PR, not just statically-reviewed SQL — the same script
+# (tests/integration/scripts/reset-test-db.sh) used for local development
+# applies the test-only Supabase auth stub and every migration in
+# supabase/migrations/ before the suite runs.
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Placeholder values only — no real Supabase project is required to
+      # lint, typecheck, test, or build. Never put a real secret in this
+      # file (architecture §23).
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX: vexo.local
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+      TRIAL_HASH_SECRET: placeholder-trial-hash-secret-not-real
+      # postgres:postgres@localhost is the standard, non-secret default for
+      # the GitHub Actions postgres service — not a real credential.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vexo_test
+      RUN_INTEGRATION_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Reset test database (apply migrations)
+        run: npm run db:test:reset
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
