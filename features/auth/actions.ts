@@ -2,14 +2,20 @@
 
 import { redirect } from "next/navigation";
 
-import { getServerEnv } from "@/lib/env";
+import { getPublicEnv, getServerEnv } from "@/lib/env";
 import { hashDocument } from "@/lib/security/hash-identifier";
 import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { slugify, slugifyWithSuffix } from "@/lib/utils/slugify";
-import { signInSchema, signUpSchema, type SignInInput, type SignUpInput } from "./schema";
+import {
+  resetPasswordRequestSchema,
+  signInSchema,
+  signUpSchema,
+  type SignInInput,
+  type SignUpInput,
+} from "./schema";
 
 export interface SignUpActionState {
   status: "idle" | "error";
@@ -197,4 +203,42 @@ export async function signInAction(
   }
 
   redirect("/");
+}
+
+export interface ResetPasswordRequestState {
+  status: "idle" | "error" | "success";
+  message?: string;
+}
+
+export const initialResetPasswordRequestState: ResetPasswordRequestState = { status: "idle" };
+
+/**
+ * Usa `supabase.auth.resetPasswordForEmail` — o fluxo de recuperação de
+ * senha JÁ existe no Supabase Auth (arquitetura §13 Etapa 3), esta ação
+ * só o expõe no frontend (prompt Etapa 15 §4). Nenhum sistema novo de
+ * autenticação, nenhuma tabela nova.
+ *
+ * Sempre retorna sucesso, exista ou não o e-mail — mesmo princípio já
+ * aplicado em `signInAction`: nunca confirmar/negar se um e-mail está
+ * cadastrado.
+ */
+export async function resetPasswordRequestAction(
+  _prevState: ResetPasswordRequestState,
+  formData: FormData,
+): Promise<ResetPasswordRequestState> {
+  const parsed = resetPasswordRequestSchema.safeParse({ email: formData.get("email") });
+  if (!parsed.success) {
+    return { status: "error", message: "Informe um e-mail válido." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { NEXT_PUBLIC_SITE_URL } = getPublicEnv();
+  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${NEXT_PUBLIC_SITE_URL}/login`,
+  });
+
+  return {
+    status: "success",
+    message: "Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.",
+  };
 }

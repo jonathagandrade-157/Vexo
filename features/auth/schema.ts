@@ -30,3 +30,9 @@ export const signInSchema = z.object({
 });
 
 export type SignInInput = z.infer<typeof signInSchema>;
+
+export const resetPasswordRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email("E-mail inválido"),
+});
+
+export type ResetPasswordRequestInput = z.infer<typeof resetPasswordRequestSchema>;

@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ categoria?: string }>;
+  searchParams: Promise<{ categoria?: string; q?: string }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -62,7 +62,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function StorefrontPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
-  const { categoria } = await searchParams;
+  const { categoria, q } = await searchParams;
   const resolution = await resolveStorefrontTenant(slug);
 
   if (resolution.status === "not_found") {
@@ -88,7 +88,7 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
   const { tenant } = resolution;
   const [categories, products, cart] = await Promise.all([
     getStorefrontCategories(tenant.id),
-    getStorefrontProducts(tenant.id, categoria),
+    getStorefrontProducts(tenant.id, categoria, q),
     getCart(tenant.slug),
   ]);
 
@@ -101,6 +101,7 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
         whatsappPhone: tenant.whatsapp_phone,
         contactEmail: tenant.contact_email,
       }}
+      searchQuery={q}
       storeName={tenant.name}
       storeSlug={tenant.slug}
     >
@@ -112,12 +113,14 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
         {products.length === 0 ? (
           <StorefrontEmptyState
             description={
-              categoria
-                ? "Nenhum produto ativo nesta categoria no momento."
-                : "Em breve, novos produtos por aqui."
+              q
+                ? `Nenhum produto encontrado para "${q}".`
+                : categoria
+                  ? "Nenhum produto ativo nesta categoria no momento."
+                  : "Em breve, novos produtos por aqui."
             }
             icon="shopping_bag"
-            title={categoria ? "Categoria vazia" : "Nenhum produto ainda"}
+            title={q ? "Nenhum resultado" : categoria ? "Categoria vazia" : "Nenhum produto ainda"}
           />
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

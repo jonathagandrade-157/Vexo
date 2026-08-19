@@ -10,9 +10,38 @@ import { initialSignUpState, signUpAction } from "@/features/auth/actions";
 export function SignUpForm() {
   const [state, formAction] = useActionState(signUpAction, initialSignUpState);
   const [showPassword, setShowPassword] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmTouched, setConfirmTouched] = useState(false);
+  const [termsError, setTermsError] = useState<string | undefined>(undefined);
+
+  const passwordsMatch = confirmPassword.length === 0 || password === confirmPassword;
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    const termsAccepted = (form.elements.namedItem("acceptTerms") as HTMLInputElement | null)?.checked ?? false;
+
+    if (password !== confirmPassword) {
+      event.preventDefault();
+      return;
+    }
+
+    if (!termsAccepted) {
+      event.preventDefault();
+      setTermsError("É necessário aceitar os termos para continuar.");
+      return;
+    }
+
+    setTermsError(undefined);
+  }
 
   return (
-    <form action={formAction} className="relative space-y-6 overflow-hidden rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6 shadow-2xl md:p-8" noValidate>
+    <form
+      action={formAction}
+      className="relative space-y-6 overflow-hidden rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6 shadow-2xl md:p-8"
+      noValidate
+      onSubmit={handleSubmit}
+    >
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary-container/50 to-transparent" />
 
       <div className="space-y-4">
@@ -73,6 +102,7 @@ export function SignUpForm() {
           placeholder="••••••••"
           autoComplete="new-password"
           error={state.fieldErrors?.password}
+          onChange={setPassword}
           rightSlot={
             <button
               aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
@@ -86,6 +116,35 @@ export function SignUpForm() {
             </button>
           }
         />
+        <TextField
+          error={confirmTouched && !passwordsMatch ? "As senhas não coincidem" : undefined}
+          icon="lock"
+          id="confirmPassword"
+          label="Confirmar senha"
+          name="confirmPassword"
+          onChange={(value) => {
+            setConfirmPassword(value);
+            setConfirmTouched(true);
+          }}
+          placeholder="••••••••"
+          type={showPassword ? "text" : "password"}
+        />
+        <label className="flex items-start gap-2.5">
+          <input
+            className="mt-0.5 h-4 w-4 rounded border-surface-container-highest bg-surface-container-lowest text-primary focus:ring-1 focus:ring-primary"
+            name="acceptTerms"
+            onChange={() => setTermsError(undefined)}
+            type="checkbox"
+          />
+          <span className="font-body text-body-sm text-on-surface-variant">
+            Li e aceito os termos de uso e a política de privacidade da VEXO.
+          </span>
+        </label>
+        {termsError ? (
+          <p className="text-label-sm text-error" role="alert">
+            {termsError}
+          </p>
+        ) : null}
       </div>
 
       {state.status === "error" && state.message ? (
