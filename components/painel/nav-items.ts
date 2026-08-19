@@ -1,10 +1,10 @@
 /**
  * Itens de navegação do painel — extraídos de `vexo_dashboard_principal_*`
  * (Stitch), mesmos ícones/rótulos/ordem. `implemented: false` marca as
- * seções que pertencem a etapas futuras (produtos, pedidos, clientes,
- * marketing, IA, suporte) — a rota existe de verdade e renderiza um
- * estado "disponível em breve" (`ComingSoon`), nunca um link morto
- * (arquitetura §8 Etapa 5: "não possuir botão sem ação").
+ * seções que pertencem a etapas futuras (clientes, marketing, IA,
+ * suporte) — a rota existe de verdade e renderiza um estado "disponível
+ * em breve" (`ComingSoon`), nunca um link morto (arquitetura §8 Etapa
+ * 5: "não possuir botão sem ação"). Pedidos passou a `true` na Etapa 13.
  */
 export interface NavItem {
   href: string;
@@ -15,7 +15,7 @@ export interface NavItem {
 
 export const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/painel", label: "Início", icon: "dashboard", implemented: true },
-  { href: "/painel/pedidos", label: "Pedidos", icon: "shopping_cart", implemented: false },
+  { href: "/painel/pedidos", label: "Pedidos", icon: "shopping_cart", implemented: true },
   { href: "/painel/produtos", label: "Produtos", icon: "inventory_2", implemented: true },
   { href: "/painel/clientes", label: "Clientes", icon: "group", implemented: false },
   { href: "/painel/marketing", label: "Marketing", icon: "campaign", implemented: false },
