@@ -4,15 +4,7 @@ import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveOnboardingTenant } from "./resolve-tenant";
-import { brandInfoSchema, type BrandInfoInput } from "./schema";
-
-export interface BrandInfoActionState {
-  status: "idle" | "error";
-  message?: string;
-  fieldErrors?: Partial<Record<keyof BrandInfoInput, string>>;
-}
-
-export const initialBrandInfoState: BrandInfoActionState = { status: "idle" };
+import { brandInfoSchema, type BrandInfoActionState, type BrandInfoInput } from "./schema";
 
 /**
  * Único passo de dados da Etapa 4 (arquitetura §24 Etapa 4;
