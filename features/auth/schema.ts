@@ -36,3 +36,33 @@ export const resetPasswordRequestSchema = z.object({
 });
 
 export type ResetPasswordRequestInput = z.infer<typeof resetPasswordRequestSchema>;
+
+/**
+ * Estados dos formulários + `initial*State` — vivem aqui, não em
+ * `actions.ts`, porque um arquivo `"use server"` só pode exportar
+ * funções async (qualquer outro export, como um objeto const, quebra o
+ * build — https://nextjs.org/docs/messages/invalid-use-server-value).
+ * Mesma separação já usada em `features/commercial/schema.ts`.
+ */
+export interface SignUpActionState {
+  status: "idle" | "error";
+  message?: string;
+  fieldErrors?: Partial<Record<keyof SignUpInput, string>>;
+}
+
+export const initialSignUpState: SignUpActionState = { status: "idle" };
+
+export interface SignInActionState {
+  status: "idle" | "error";
+  message?: string;
+  fieldErrors?: Partial<Record<keyof SignInInput, string>>;
+}
+
+export const initialSignInState: SignInActionState = { status: "idle" };
+
+export interface ResetPasswordRequestState {
+  status: "idle" | "error" | "success";
+  message?: string;
+}
+
+export const initialResetPasswordRequestState: ResetPasswordRequestState = { status: "idle" };
