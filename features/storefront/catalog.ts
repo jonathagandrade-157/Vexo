@@ -55,7 +55,7 @@ export const getStorefrontCategories = cache(
 );
 
 export const getStorefrontProducts = cache(
-  async (tenantId: string, categorySlug?: string): Promise<PublicProductSummary[]> => {
+  async (tenantId: string, categorySlug?: string, searchQuery?: string): Promise<PublicProductSummary[]> => {
     const supabase = createSupabasePublicClient();
     const { data } = await supabase
       .from("products")
@@ -65,14 +65,21 @@ export const getStorefrontProducts = cache(
       .order("created_at", { ascending: false });
 
     const rows = (data ?? []) as unknown as (PublicProductSummary & CategoryJoinRow)[];
-    const products = rows.map((row) => ({ ...row, category: firstCategory(row.category) }));
+    let products = rows.map((row) => ({ ...row, category: firstCategory(row.category) }));
 
     // Filtro por categoria em memória, não via PostgREST embedded filter
     // (`.eq("category.slug", ...)`) — esse filtro só funciona de forma
     // confiável com `!inner` no embed, e o catálogo de uma loja nesta
     // etapa é pequeno o bastante para isso não ser um problema real de
     // performance.
-    return categorySlug ? products.filter((p) => p.category?.slug === categorySlug) : products;
+    if (categorySlug) products = products.filter((p) => p.category?.slug === categorySlug);
+
+    // Busca por nome (Etapa 15 §8) — mesma justificativa do filtro de
+    // categoria acima: em memória, sem novo índice/migration.
+    const trimmedQuery = searchQuery?.trim().toLowerCase();
+    if (trimmedQuery) products = products.filter((p) => p.name.toLowerCase().includes(trimmedQuery));
+
+    return products;
   },
 );
 

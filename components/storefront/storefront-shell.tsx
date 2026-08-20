@@ -20,18 +20,20 @@ export function StorefrontShell({
   storeName,
   storeSlug,
   cartCount = 0,
+  searchQuery,
   footer,
   children,
 }: {
   storeName: string;
   storeSlug: string;
   cartCount?: number;
+  searchQuery?: string;
   footer: FooterData;
   children: ReactNode;
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <StorefrontHeader cartCount={cartCount} storeName={storeName} storeSlug={storeSlug} />
+      <StorefrontHeader cartCount={cartCount} searchQuery={searchQuery} storeName={storeName} storeSlug={storeSlug} />
       <main className="flex-1 pt-16">{children}</main>
       <StorefrontFooter
         contactEmail={footer.contactEmail}

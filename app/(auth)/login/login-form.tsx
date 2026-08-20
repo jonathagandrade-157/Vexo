@@ -35,6 +35,11 @@ export function LoginForm() {
           autoComplete="current-password"
           error={state.fieldErrors?.password}
         />
+        <div className="text-right">
+          <Link className="font-label text-label-sm text-on-surface-variant transition-colors hover:text-primary" href="/recuperar-senha">
+            Esqueci minha senha
+          </Link>
+        </div>
       </div>
 
       {state.status === "error" && state.message ? (
