@@ -5,7 +5,8 @@ import Link from "next/link";
 
 import { TextField } from "@/components/ui/text-field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { initialSignInState, signInAction } from "@/features/auth/actions";
+import { signInAction } from "@/features/auth/actions";
+import { initialSignInState } from "@/features/auth/schema";
 
 export function LoginForm() {
   const [state, formAction] = useActionState(signInAction, initialSignInState);
