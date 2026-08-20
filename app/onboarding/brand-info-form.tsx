@@ -6,7 +6,8 @@ import { useFormStatus } from "react-dom";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
-import { initialBrandInfoState, saveBrandInfoAction } from "@/features/onboarding/actions";
+import { saveBrandInfoAction } from "@/features/onboarding/actions";
+import { initialBrandInfoState } from "@/features/onboarding/schema";
 import { SEGMENT_OPTIONS } from "@/features/settings/segments";
 
 interface DefaultValues {
