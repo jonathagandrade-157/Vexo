@@ -31,3 +31,18 @@ export const brandInfoSchema = z.object({
 });
 
 export type BrandInfoInput = z.infer<typeof brandInfoSchema>;
+
+/**
+ * Estado do formulário + `initialBrandInfoState` — vivem aqui, não em
+ * `actions.ts`, porque um arquivo `"use server"` só pode exportar
+ * funções async (qualquer outro export, como um objeto const, quebra o
+ * build — https://nextjs.org/docs/messages/invalid-use-server-value).
+ * Mesma separação usada em `features/auth/schema.ts`.
+ */
+export interface BrandInfoActionState {
+  status: "idle" | "error";
+  message?: string;
+  fieldErrors?: Partial<Record<keyof BrandInfoInput, string>>;
+}
+
+export const initialBrandInfoState: BrandInfoActionState = { status: "idle" };
