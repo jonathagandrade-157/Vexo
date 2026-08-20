@@ -13,17 +13,12 @@ import {
   resetPasswordRequestSchema,
   signInSchema,
   signUpSchema,
+  type ResetPasswordRequestState,
+  type SignInActionState,
   type SignInInput,
+  type SignUpActionState,
   type SignUpInput,
 } from "./schema";
-
-export interface SignUpActionState {
-  status: "idle" | "error";
-  message?: string;
-  fieldErrors?: Partial<Record<keyof SignUpInput, string>>;
-}
-
-export const initialSignUpState: SignUpActionState = { status: "idle" };
 
 interface TenantRow {
   id: string;
@@ -168,14 +163,6 @@ export async function signUpAction(
   redirect(`/trial/sucesso?tenant=${tenant.id}`);
 }
 
-export interface SignInActionState {
-  status: "idle" | "error";
-  message?: string;
-  fieldErrors?: Partial<Record<keyof SignInInput, string>>;
-}
-
-export const initialSignInState: SignInActionState = { status: "idle" };
-
 export async function signInAction(
   _prevState: SignInActionState,
   formData: FormData,
@@ -204,13 +191,6 @@ export async function signInAction(
 
   redirect("/");
 }
-
-export interface ResetPasswordRequestState {
-  status: "idle" | "error" | "success";
-  message?: string;
-}
-
-export const initialResetPasswordRequestState: ResetPasswordRequestState = { status: "idle" };
 
 /**
  * Usa `supabase.auth.resetPasswordForEmail` — o fluxo de recuperação de

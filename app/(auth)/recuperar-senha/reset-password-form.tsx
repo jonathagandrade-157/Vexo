@@ -5,7 +5,8 @@ import Link from "next/link";
 
 import { TextField } from "@/components/ui/text-field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { initialResetPasswordRequestState, resetPasswordRequestAction } from "@/features/auth/actions";
+import { resetPasswordRequestAction } from "@/features/auth/actions";
+import { initialResetPasswordRequestState } from "@/features/auth/schema";
 
 export function ResetPasswordForm() {
   const [state, formAction] = useActionState(resetPasswordRequestAction, initialResetPasswordRequestState);
