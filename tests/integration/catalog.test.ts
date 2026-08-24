@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asActor, expectPgError, pool, withSuperuser } from "./helpers/db";
-import { buildFixtures, type Fixtures } from "./helpers/fixtures";
+import { buildFixtures, giveUnlimitedPlan, type Fixtures } from "./helpers/fixtures";
 
 const runId = randomUUID().slice(0, 8);
 
@@ -26,6 +26,12 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Catálogo — categorias e 
     fx = await buildFixtures();
 
     await withSuperuser(async (client) => {
+      // Etapa 16: os produtos/categorias criados abaixo testam catálogo,
+      // não enforcement de plano — PRO evita que o novo trigger de limite
+      // bloqueie os inserts de fixture (o enforcement em si é testado em
+      // commercial-foundation.test.ts, com tenants BASIC/INTERMEDIATE dedicados).
+      await giveUnlimitedPlan(client, [fx.tenantA, fx.tenantB]);
+
       const { rows: opRows } = await client.query<{ id: string }>(
         "insert into auth.users (email) values ($1) returning id",
         [`catalog-operator-${runId}@fixtures.test`],

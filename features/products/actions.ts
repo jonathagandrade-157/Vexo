@@ -76,6 +76,15 @@ export async function createProductAction(
   if ("error" in resolved) return { status: "error", message: resolved.error };
 
   const supabase = await createSupabaseServerClient();
+
+  // Etapa 16 §9 (passo 4 do checklist): tenant com trial expirado/loja
+  // suspensa não pode continuar cadastrando — mesma fonte oficial de
+  // sempre (tenant_access_status, Etapa 14), nunca uma checagem própria.
+  const { data: accessStatus } = await supabase.rpc("tenant_access_status", { p_tenant_id: resolved.tenantId });
+  if (accessStatus !== "ACTIVE" && accessStatus !== "TRIALING") {
+    return { status: "error", message: "Sua loja não está com acesso ativo no momento. Verifique o status da sua assinatura." };
+  }
+
   const slug = slugify(parsed.data.name);
 
   const { data: created, error } = await supabase
@@ -94,6 +103,18 @@ export async function createProductAction(
     .single();
 
   if (error) {
+    // Etapa 16 §7/§9: VX011/VX010 vêm do trigger de enforcement de limite
+    // (migration 20260817220065) — verificado no servidor, atômico sob
+    // concorrência, nunca confiado só na UI.
+    if (error.code === "VX011") {
+      return {
+        status: "error",
+        message: "Você atingiu o limite de produtos do seu plano atual. Faça upgrade para continuar cadastrando produtos.",
+      };
+    }
+    if (error.code === "VX010") {
+      return { status: "error", message: "Não foi possível verificar o limite do seu plano. Tente novamente ou contate o suporte." };
+    }
     if (error.code === "23505") {
       return {
         status: "error",

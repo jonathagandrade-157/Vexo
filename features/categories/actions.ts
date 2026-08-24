@@ -55,6 +55,13 @@ export async function createCategoryAction(
   if ("error" in resolved) return { status: "error", message: resolved.error };
 
   const supabase = await createSupabaseServerClient();
+
+  // Etapa 16 §10 — mesmo checklist de products/actions.ts.
+  const { data: accessStatus } = await supabase.rpc("tenant_access_status", { p_tenant_id: resolved.tenantId });
+  if (accessStatus !== "ACTIVE" && accessStatus !== "TRIALING") {
+    return { status: "error", message: "Sua loja não está com acesso ativo no momento. Verifique o status da sua assinatura." };
+  }
+
   const slug = slugify(parsed.data.name);
 
   const { error } = await supabase.from("categories").insert({
@@ -65,6 +72,17 @@ export async function createCategoryAction(
   });
 
   if (error) {
+    // Etapa 16 §7/§10: VX011/VX010 vêm do trigger de enforcement de
+    // limite (migration 20260817220065).
+    if (error.code === "VX011") {
+      return {
+        status: "error",
+        message: "Você atingiu o limite de categorias do seu plano atual. Faça upgrade para continuar cadastrando categorias.",
+      };
+    }
+    if (error.code === "VX010") {
+      return { status: "error", message: "Não foi possível verificar o limite do seu plano. Tente novamente ou contate o suporte." };
+    }
     if (error.code === "23505") {
       return {
         status: "error",

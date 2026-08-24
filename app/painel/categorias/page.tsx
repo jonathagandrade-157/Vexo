@@ -5,6 +5,8 @@ import { CatalogTabs } from "@/components/painel/catalog-tabs";
 import { CategoryFormDialog } from "@/components/painel/category-form-dialog";
 import { CategoryRow, type CategoryRowData } from "@/components/painel/category-row";
 import { PanelEmptyState } from "@/components/painel/panel-empty-state";
+import { PlanLimitIndicator } from "@/components/painel/plan-limit-indicator";
+import { getTenantCommercialContext } from "@/features/commercial/tenant-plan";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -26,9 +28,10 @@ export default async function CategoriasPage() {
   if (!membership) redirect("/sem-loja");
   const { tenant } = membership;
 
-  const [{ data: canView }, { data: canCreate }] = await Promise.all([
+  const [{ data: canView }, { data: canCreate }, commercialContext] = await Promise.all([
     supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "categories.view" }),
     supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "categories.create" }),
+    getTenantCommercialContext(tenant.id),
   ]);
 
   if (!canView) {
@@ -81,6 +84,8 @@ export default async function CategoriasPage() {
           />
         ) : null}
       </div>
+
+      <PlanLimitIndicator count={categories.length} limit={commercialContext.limits.categoriesLimit} resourceLabel="categorias" />
 
       {categories.length === 0 ? (
         <PanelEmptyState

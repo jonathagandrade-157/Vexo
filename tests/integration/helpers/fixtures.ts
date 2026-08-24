@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { withSuperuser } from "./db";
 
 export interface Fixtures {
@@ -93,4 +94,31 @@ export async function buildFixtures(): Promise<Fixtures> {
 
     return { tenantA, tenantB, roleIds, userAOwner, userAAdmin, userAManager, userBOwner, userOutsider, userMaster };
   });
+}
+
+/**
+ * Etapa 16 — os triggers de limite de produtos/categorias (BASIC/
+ * INTERMEDIATE têm teto numérico) passam a rodar em TODO insert, inclusive
+ * os que os testes de catálogo/carrinho/checkout/imagem já faziam antes
+ * desta etapa via `withSuperuser`. Sem uma subscription, `tenant_plan_limit`
+ * retorna NULL e os triggers bloqueiam o insert (fail-closed).
+ *
+ * Testes que só precisam de produtos/categorias existindo (não estão
+ * testando o enforcement de plano em si) chamam isto no plano PRO
+ * (`-1`/ilimitado nos dois limit_keys) logo após `buildFixtures()`, para
+ * que o comportamento anterior a esta etapa continue idêntico. Testes que
+ * testam o enforcement de verdade (BASIC/INTERMEDIATE) criam sua própria
+ * subscription com o plano específico, sem usar este helper.
+ */
+export async function giveUnlimitedPlan(client: PoolClient, tenantIds: string[]): Promise<void> {
+  const { rows } = await client.query<{ id: string }>("select id from public.plans where slug = 'pro'");
+  const proPlanId = rows[0]?.id;
+  if (!proPlanId) throw new Error("plano 'pro' não encontrado — seed de planos ausente");
+
+  for (const tenantId of tenantIds) {
+    await client.query(
+      "insert into public.subscriptions (tenant_id, plan_id, status) values ($1, $2, 'active') on conflict (tenant_id) do update set plan_id = excluded.plan_id",
+      [tenantId, proPlanId],
+    );
+  }
 }

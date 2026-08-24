@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 
 import { CatalogTabs } from "@/components/painel/catalog-tabs";
 import { PanelEmptyState } from "@/components/painel/panel-empty-state";
+import { PlanLimitIndicator } from "@/components/painel/plan-limit-indicator";
 import { ProductActions } from "@/components/painel/product-actions";
+import { getTenantCommercialContext } from "@/features/commercial/tenant-plan";
 import { formatPrice } from "@/features/products/format-price";
 import { getProductImagePublicUrl } from "@/features/products/image-storage";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
@@ -51,9 +53,10 @@ export default async function ProdutosPage() {
   if (!membership) redirect("/sem-loja");
   const { tenant } = membership;
 
-  const [{ data: canView }, { data: canCreate }] = await Promise.all([
+  const [{ data: canView }, { data: canCreate }, commercialContext] = await Promise.all([
     supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "products.view" }),
     supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "products.create" }),
+    getTenantCommercialContext(tenant.id),
   ]);
 
   if (!canView) {
@@ -98,6 +101,8 @@ export default async function ProdutosPage() {
           </Link>
         ) : null}
       </div>
+
+      <PlanLimitIndicator count={products.length} limit={commercialContext.limits.productsLimit} resourceLabel="produtos" />
 
       {products.length === 0 ? (
         <PanelEmptyState

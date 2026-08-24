@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getCurrentMembership } from "@/features/painel/current-tenant";
+import { getTenantCommercialContext, hasFeature } from "@/features/commercial/tenant-plan";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { StoreProfileForm } from "./store-profile-form";
 
@@ -28,10 +29,11 @@ export default async function ConfiguracoesPage() {
   if (!membership) redirect("/sem-loja");
   const { tenant } = membership;
 
-  const { data: canEdit } = await supabase.rpc("has_permission", {
-    p_tenant_id: tenant.id,
-    p_permission_key: "settings.update",
-  });
+  const [{ data: canEdit }, commercialContext] = await Promise.all([
+    supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "settings.update" }),
+    getTenantCommercialContext(tenant.id),
+  ]);
+  const hasShipping = hasFeature(commercialContext, "shipping");
 
   return (
     <div className="mx-auto flex max-w-[1024px] flex-col gap-8">
@@ -56,6 +58,11 @@ export default async function ConfiguracoesPage() {
         >
           <span className="material-symbols-outlined text-[20px] text-primary">local_shipping</span>
           Entrega
+          {hasShipping ? null : (
+            <span className="material-symbols-outlined text-[16px] text-on-surface-variant" title="Disponível em planos superiores">
+              lock
+            </span>
+          )}
         </Link>
       </div>
 

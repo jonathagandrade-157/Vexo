@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asActor, expectPgError, pool, withSuperuser } from "./helpers/db";
-import { buildFixtures, type Fixtures } from "./helpers/fixtures";
+import { buildFixtures, giveUnlimitedPlan, type Fixtures } from "./helpers/fixtures";
 
 const runId = randomUUID().slice(0, 8);
 
@@ -30,6 +30,10 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Storage de imagem de produt
     fx = await buildFixtures();
 
     await withSuperuser(async (client) => {
+      // Etapa 16: os produtos de fixture abaixo não são o que este arquivo
+      // testa — plano PRO evita que o novo trigger de limite bloqueie os inserts.
+      await giveUnlimitedPlan(client, [fx.tenantA, fx.tenantB]);
+
       const { rows: opRows } = await client.query<{ id: string }>(
         "insert into auth.users (email) values ($1) returning id",
         [`img-operator-${runId}@fixtures.test`],

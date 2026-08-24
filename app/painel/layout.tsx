@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Header } from "@/components/painel/header";
 import { MobileBottomNav } from "@/components/painel/mobile-bottom-nav";
 import { Sidebar } from "@/components/painel/sidebar";
+import { getTenantCommercialContext } from "@/features/commercial/tenant-plan";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -65,9 +66,15 @@ export default async function PainelLayout({ children }: { children: ReactNode }
   const userName = (profile?.full_name as string | undefined) ?? user.email ?? "Usuário";
   const userInitial = userName.trim().charAt(0).toUpperCase() || "?";
 
+  // Etapa 16 §4/§12 — uma única leitura do plano comercial por request,
+  // reaproveitada pelo Sidebar (cadeados por feature) e por qualquer
+  // page.tsx sob este layout que precise da mesma informação (cache()
+  // por request, mesmo padrão de getCurrentMembership).
+  const commercialContext = await getTenantCommercialContext(membership.tenant.id);
+
   return (
     <div className="min-h-dvh bg-background">
-      <Sidebar tenantName={membership.tenant.name} />
+      <Sidebar tenantName={membership.tenant.name} unlockedFeatures={Array.from(commercialContext.features)} />
       <Header userInitial={userInitial} userName={userName} />
       <main className="px-margin-mobile pb-24 pt-24 md:ml-[260px] md:px-margin-desktop md:pb-12">
         <div className="mx-auto max-w-[1440px]">{children}</div>

@@ -12,8 +12,17 @@ import { LogoutButton } from "./logout-button";
  * do item de menu depende de `usePathname()`, que não existe em Server
  * Component. O resto do shell do painel (header, conteúdo) é servidor.
  */
-export function Sidebar({ tenantName }: { tenantName: string }) {
+/**
+ * Etapa 16 §4 — `unlockedFeatures` vem do layout (Server Component, via
+ * `getTenantCommercialContext`), nunca decidido aqui: o Client Component
+ * só desenha o cadeado, a fonte de verdade é sempre o servidor. Item sem
+ * `featureKey` (ex.: Produtos, Configurações) nunca é bloqueado por
+ * plano — só os que têm uma feature real associada.
+ */
+export function Sidebar({ tenantName, unlockedFeatures }: { tenantName: string; unlockedFeatures: string[] }) {
   const pathname = usePathname();
+  const unlocked = new Set(unlockedFeatures);
+  const isLocked = (item: (typeof MAIN_NAV_ITEMS)[number]) => Boolean(item.featureKey) && !unlocked.has(item.featureKey!);
 
   return (
     <nav className="fixed left-0 top-0 hidden h-screen w-[260px] flex-col border-r border-outline-variant bg-surface-container-lowest py-unit md:flex">
@@ -33,6 +42,7 @@ export function Sidebar({ tenantName }: { tenantName: string }) {
         <ul className="space-y-1">
           {MAIN_NAV_ITEMS.map((item) => {
             const active = item.href === "/painel" ? pathname === "/painel" : pathname.startsWith(item.href);
+            const locked = isLocked(item);
             return (
               <li key={item.href}>
                 <Link
@@ -44,7 +54,12 @@ export function Sidebar({ tenantName }: { tenantName: string }) {
                   href={item.href}
                 >
                   <span className="material-symbols-outlined">{item.icon}</span>
-                  <span className="font-label text-label-md">{item.label}</span>
+                  <span className="flex-1 font-label text-label-md">{item.label}</span>
+                  {locked ? (
+                    <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60" title="Disponível em planos superiores">
+                      lock
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );
@@ -54,11 +69,16 @@ export function Sidebar({ tenantName }: { tenantName: string }) {
 
       <div className="mt-auto space-y-4 px-unit">
         <Link
-          className="ai-glow flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary-container to-[#3B82F6] px-4 py-2 font-label text-label-md text-white transition-opacity hover:opacity-90"
+          className={
+            isLocked(AI_SPARK_ITEM)
+              ? "flex w-full items-center justify-center gap-2 rounded-lg border border-outline-variant/50 bg-surface-container px-4 py-2 font-label text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-high"
+              : "ai-glow flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary-container to-[#3B82F6] px-4 py-2 font-label text-label-md text-white transition-opacity hover:opacity-90"
+          }
           href={AI_SPARK_ITEM.href}
         >
           <span className="material-symbols-outlined text-[18px]">{AI_SPARK_ITEM.icon}</span>
           {AI_SPARK_ITEM.label}
+          {isLocked(AI_SPARK_ITEM) ? <span className="material-symbols-outlined text-[16px]">lock</span> : null}
         </Link>
         <ul className="space-y-1">
           <li>

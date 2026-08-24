@@ -15,7 +15,19 @@ import {
 
 const SETTINGS_PATH = "/painel/configuracoes/entrega";
 
-/** Mesmo checklist de toda Action de catálogo/pagamentos (Etapa 7 §12 / Etapa 11): sessão via resolveActiveTenantForUser, permission explícita via has_permission, Zod allowlist, RLS como segunda camada. */
+/**
+ * Mesmo checklist de toda Action de catálogo/pagamentos (Etapa 7 §12 /
+ * Etapa 11): sessão via resolveActiveTenantForUser, permission explícita
+ * via has_permission, Zod allowlist, RLS como segunda camada.
+ *
+ * Etapa 16 §5/§15: frete ("shipping") é um recurso comercial real
+ * diferenciado por plano desde a Etapa 14 (seed: BASIC não inclui,
+ * INTERMEDIATE/PRO incluem) — mas nada validava isso no servidor até
+ * agora, só a UI podia esconder. `tenant_has_feature` é checado aqui, uma
+ * vez, para as 6 Server Actions deste arquivo — nunca confiando que o
+ * `FeatureGate` da página já bastou (prompt §5: "toda operação protegida
+ * deve validar no servidor", chamada direta à Action não pode burlar).
+ */
 async function resolveTenantAndPermission(permissionKey: string): Promise<{ tenantId: string } | { error: string }> {
   const supabase = await createSupabaseServerClient();
   const membership = await resolveActiveTenantForUser(supabase);
@@ -29,6 +41,14 @@ async function resolveTenantAndPermission(permissionKey: string): Promise<{ tena
   });
   if (!allowed) {
     return { error: "Você não tem permissão para esta ação." };
+  }
+
+  const { data: hasShipping } = await supabase.rpc("tenant_has_feature", {
+    p_tenant_id: membership.tenant.id,
+    p_feature_key: "shipping",
+  });
+  if (!hasShipping) {
+    return { error: "O recurso de frete e entrega não está disponível no seu plano atual." };
   }
 
   return { tenantId: membership.tenant.id };

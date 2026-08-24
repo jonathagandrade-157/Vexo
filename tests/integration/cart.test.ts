@@ -17,7 +17,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asActor, expectPgError, pool, withSuperuser } from "./helpers/db";
-import { buildFixtures, type Fixtures } from "./helpers/fixtures";
+import { buildFixtures, giveUnlimitedPlan, type Fixtures } from "./helpers/fixtures";
 
 const runId = randomUUID().slice(0, 8);
 
@@ -32,6 +32,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     fx = await buildFixtures();
 
     await withSuperuser(async (client) => {
+      // Etapa 16: os produtos abaixo são criados fora do enforcement de
+      // plano (não é isso que este arquivo testa) — plano PRO evita que o
+      // trigger de limite bloqueie os inserts de fixture.
+      await giveUnlimitedPlan(client, [fx.tenantA, fx.tenantB]);
+
       const insertProduct = async (tenantId: string, name: string, price: number, status = "active") => {
         const { rows } = await client.query<{ id: string }>(
           `insert into public.products (tenant_id, name, slug, price, status) values ($1, $2, $3, $4, $5) returning id`,

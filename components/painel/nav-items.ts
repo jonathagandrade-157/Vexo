@@ -11,13 +11,22 @@ export interface NavItem {
   label: string;
   icon: string;
   implemented: boolean;
+  /**
+   * Etapa 16 §4 — chave de `features.key` (Etapa 14) que controla este
+   * item por plano. Só preenchida quando existe uma feature real
+   * correspondente já cadastrada (prompt §16: "não inventar
+   * funcionalidades que ainda não existem") — "Marketing" não tem uma
+   * feature própria no catálogo hoje, então fica sem essa checagem, como
+   * sempre esteve.
+   */
+  featureKey?: string;
 }
 
 export const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/painel", label: "Início", icon: "dashboard", implemented: true },
   { href: "/painel/pedidos", label: "Pedidos", icon: "shopping_cart", implemented: true },
   { href: "/painel/produtos", label: "Produtos", icon: "inventory_2", implemented: true },
-  { href: "/painel/clientes", label: "Clientes", icon: "group", implemented: false },
+  { href: "/painel/clientes", label: "Clientes", icon: "group", implemented: false, featureKey: "customers" },
   { href: "/painel/marketing", label: "Marketing", icon: "campaign", implemented: false },
   { href: "/painel/configuracoes", label: "Configurações", icon: "settings", implemented: true },
 ];
@@ -35,6 +44,7 @@ export const AI_SPARK_ITEM: NavItem = {
   label: "Vexo AI Spark",
   icon: "auto_awesome",
   implemented: false,
+  featureKey: "vexo_ai",
 };
 
 export const SUPPORT_ITEM: NavItem = {
