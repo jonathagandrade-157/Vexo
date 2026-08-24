@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
-import { getPublicEnv, getServerEnv } from "@/lib/env";
+import { getMercadoPagoEnv, getPublicEnv } from "@/lib/env";
 import { getGateway } from "@/lib/payments/registry";
 import { deletePaymentCredentials } from "@/lib/payments/vault";
 import { createOAuthState } from "@/lib/security/oauth-state";
@@ -50,7 +50,7 @@ export async function connectMercadoPagoAction(
   const resolved = await resolveTenantAndPermission("payments.manage");
   if ("error" in resolved) return { status: "error", message: resolved.error };
 
-  const { OAUTH_STATE_SECRET } = getServerEnv();
+  const { OAUTH_STATE_SECRET } = getMercadoPagoEnv();
   const state = createOAuthState(resolved.tenantId, OAUTH_STATE_SECRET);
   const gateway = getGateway(PROVIDER);
 

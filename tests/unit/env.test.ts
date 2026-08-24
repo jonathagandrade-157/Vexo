@@ -54,17 +54,24 @@ describe("lib/env", () => {
     expect(() => getPublicEnv()).toThrow();
   });
 
-  it("parses valid server env vars", async () => {
+  it("parses valid server env vars — core only, no Mercado Pago fields", async () => {
     Object.assign(process.env, VALID_ENV);
     const { getServerEnv } = await import("@/lib/env");
     expect(getServerEnv()).toEqual({
       SUPABASE_SERVICE_ROLE_KEY: VALID_ENV.SUPABASE_SERVICE_ROLE_KEY,
       TRIAL_HASH_SECRET: VALID_ENV.TRIAL_HASH_SECRET,
-      MERCADO_PAGO_CLIENT_ID: VALID_ENV.MERCADO_PAGO_CLIENT_ID,
-      MERCADO_PAGO_CLIENT_SECRET: VALID_ENV.MERCADO_PAGO_CLIENT_SECRET,
-      MERCADO_PAGO_WEBHOOK_SECRET: VALID_ENV.MERCADO_PAGO_WEBHOOK_SECRET,
-      OAUTH_STATE_SECRET: VALID_ENV.OAUTH_STATE_SECRET,
     });
+  });
+
+  it("getServerEnv() succeeds even when every Mercado Pago var is missing (production incident regression — auth/signup must never depend on payment credentials)", async () => {
+    Object.assign(process.env, VALID_ENV);
+    delete process.env.MERCADO_PAGO_CLIENT_ID;
+    delete process.env.MERCADO_PAGO_CLIENT_SECRET;
+    delete process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+    delete process.env.OAUTH_STATE_SECRET;
+
+    const { getServerEnv } = await import("@/lib/env");
+    expect(() => getServerEnv()).not.toThrow();
   });
 
   it("refuses to read server env vars when called from the browser", async () => {
@@ -74,6 +81,53 @@ describe("lib/env", () => {
     vi.stubGlobal("window", {});
     try {
       expect(() => getServerEnv()).toThrow(/must never be called from the browser/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("parses valid Mercado Pago env vars", async () => {
+    Object.assign(process.env, VALID_ENV);
+    const { getMercadoPagoEnv } = await import("@/lib/env");
+    expect(getMercadoPagoEnv()).toEqual({
+      MERCADO_PAGO_CLIENT_ID: VALID_ENV.MERCADO_PAGO_CLIENT_ID,
+      MERCADO_PAGO_CLIENT_SECRET: VALID_ENV.MERCADO_PAGO_CLIENT_SECRET,
+      MERCADO_PAGO_WEBHOOK_SECRET: VALID_ENV.MERCADO_PAGO_WEBHOOK_SECRET,
+      OAUTH_STATE_SECRET: VALID_ENV.OAUTH_STATE_SECRET,
+    });
+  });
+
+  it("getMercadoPagoEnv() throws a clear, secret-free error when Mercado Pago vars are missing", async () => {
+    Object.assign(process.env, VALID_ENV);
+    delete process.env.MERCADO_PAGO_CLIENT_ID;
+    delete process.env.MERCADO_PAGO_CLIENT_SECRET;
+    delete process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+    delete process.env.OAUTH_STATE_SECRET;
+
+    const { getMercadoPagoEnv } = await import("@/lib/env");
+    let thrown: unknown;
+    try {
+      getMercadoPagoEnv();
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toMatch(/Mercado Pago/);
+    expect(message).toMatch(/não está configurada/);
+    // Never leak any configured secret value into the error message.
+    for (const value of Object.values(VALID_ENV)) {
+      expect(message).not.toContain(value);
+    }
+  });
+
+  it("refuses to read Mercado Pago env vars when called from the browser", async () => {
+    Object.assign(process.env, VALID_ENV);
+    const { getMercadoPagoEnv } = await import("@/lib/env");
+
+    vi.stubGlobal("window", {});
+    try {
+      expect(() => getMercadoPagoEnv()).toThrow(/must never be called from the browser/);
     } finally {
       vi.unstubAllGlobals();
     }

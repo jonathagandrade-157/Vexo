@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
-import { getPublicEnv, getServerEnv } from "@/lib/env";
+import { getMercadoPagoEnv, getPublicEnv } from "@/lib/env";
 import { getGateway } from "@/lib/payments/registry";
 import { storePaymentCredentials } from "@/lib/payments/vault";
 import { verifyOAuthState } from "@/lib/security/oauth-state";
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     return redirectWithError(request, "oauth_denied");
   }
 
-  const { OAUTH_STATE_SECRET } = getServerEnv();
+  const { OAUTH_STATE_SECRET } = getMercadoPagoEnv();
   const verified = verifyOAuthState(state, OAUTH_STATE_SECRET);
   if (!verified) {
     return redirectWithError(request, "invalid_state");

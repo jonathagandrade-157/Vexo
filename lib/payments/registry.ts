@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getServerEnv } from "@/lib/env";
+import { getMercadoPagoEnv } from "@/lib/env";
 import type { PaymentGateway, PaymentProvider } from "./gateway";
 import { createMercadoPagoGateway } from "./mercadopago";
 
@@ -13,7 +13,7 @@ import { createMercadoPagoGateway } from "./mercadopago";
 export function getGateway(provider: PaymentProvider): PaymentGateway {
   switch (provider) {
     case "mercadopago": {
-      const env = getServerEnv();
+      const env = getMercadoPagoEnv();
       return createMercadoPagoGateway(env.MERCADO_PAGO_CLIENT_ID, env.MERCADO_PAGO_CLIENT_SECRET, env.MERCADO_PAGO_WEBHOOK_SECRET);
     }
     default: {
