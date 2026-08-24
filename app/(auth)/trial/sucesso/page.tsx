@@ -33,29 +33,58 @@ export default async function TrialSucessoPage({
   searchParams: Promise<{ tenant?: string }>;
 }) {
   const { tenant: tenantId } = await searchParams;
+
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  console.log("TRIAL_SUCCESS_PAGE", { tenantIdPresent: Boolean(tenantId) });
+
   const supabase = await createSupabaseServerClient();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  if (!tenantId) redirect("/");
 
-  const { data: tenant } = await supabase
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  console.log("TRIAL_SUCCESS_AUTH", { userPresent: Boolean(user) });
+
+  if (!user) {
+    console.log("TRIAL_SUCCESS_REDIRECT_LOGIN");
+    redirect("/login");
+  }
+  if (!tenantId) {
+    console.log("TRIAL_SUCCESS_REDIRECT_HOME_NO_TENANT_ID");
+    redirect("/");
+  }
+
+  const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
     .select("id, name")
     .eq("id", tenantId)
     .single();
 
-  const { data: trial } = await supabase
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  console.log("TRIAL_SUCCESS_TENANT", {
+    tenantEncontrado: Boolean(tenant),
+    ...(tenantError ? { code: tenantError.code, message: tenantError.message } : {}),
+  });
+
+  const { data: trial, error: trialError } = await supabase
     .from("trial_records")
     .select("started_at, ends_at")
     .eq("tenant_id", tenantId)
     .single();
 
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  console.log("TRIAL_SUCCESS_TRIAL", {
+    trialEncontrado: Boolean(trial),
+    ...(trialError ? { code: trialError.code, message: trialError.message } : {}),
+  });
+
   // RLS já garante que só um membro do tenant chega aqui com dados — se
   // não achou (tenant de outra conta, id inválido), não há o que mostrar.
-  if (!tenant || !trial) redirect("/");
+  if (!tenant || !trial) {
+    console.log("TRIAL_SUCCESS_REDIRECT_HOME_NO_TENANT_OR_TRIAL");
+    redirect("/");
+  }
 
   const days = Math.round(
     (new Date(trial.ends_at as string).getTime() -

@@ -77,6 +77,12 @@ export async function signUpAction(
     password,
   });
 
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  console.log("SIGNUP_SUCCESS", {
+    userIdPresent: Boolean(signUpData?.user?.id),
+    sessionPresent: Boolean(signUpData?.session),
+  });
+
   if (signUpError || !signUpData.user) {
     if (signUpError?.code === "user_already_exists") {
       return {
@@ -99,6 +105,16 @@ export async function signUpAction(
     .update({ full_name: fullName, phone, cpf_hash: documentHash })
     .eq("id", signUpData.user.id);
 
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  if (profileError) {
+    console.log("PROFILE_UPDATE_ERROR", {
+      code: profileError.code,
+      message: profileError.message,
+    });
+  } else {
+    console.log("PROFILE_UPDATE_SUCCESS");
+  }
+
   if (profileError) {
     if (profileError.code === "23505") {
       redirect("/trial/ja-utilizado");
@@ -115,6 +131,16 @@ export async function signUpAction(
       p_name: storeName,
       p_slug: slugAttempt,
     });
+
+    // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+    if (error) {
+      console.log("CREATE_TENANT_ERROR", { code: error.code, message: error.message });
+    } else {
+      console.log("CREATE_TENANT_SUCCESS", {
+        tenantIdPresent: Boolean((data as unknown as TenantRow | null)?.id),
+      });
+    }
+
     if (!error) {
       tenant = data as unknown as TenantRow;
       break;
@@ -150,6 +176,13 @@ export async function signUpAction(
     },
   );
 
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  if (trialError) {
+    console.log("START_TRIAL_ERROR", { code: trialError.code, message: trialError.message });
+  } else {
+    console.log("START_TRIAL_SUCCESS");
+  }
+
   if (trialError) {
     if (trialError.code === "VX001") {
       redirect("/trial/ja-utilizado");
@@ -159,6 +192,9 @@ export async function signUpAction(
       message: "Não foi possível iniciar seu período de teste. Tente novamente.",
     };
   }
+
+  // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+  console.log("SIGNUP_REDIRECT", { tenantIdPresent: Boolean(tenant?.id) });
 
   redirect(`/trial/sucesso?tenant=${tenant.id}`);
 }
