@@ -51,12 +51,18 @@ async function activeMemberships(
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("tenant_members")
     .select(`role:roles(key), tenant:tenants(${TENANT_COLUMNS})`)
     .eq("user_id", user.id)
     .eq("status", "active")
     .order("created_at", { ascending: true });
+
+  if (error) {
+    // TEMP DIAGNOSTIC LOG — remove after investigation. No PII.
+    console.log("ACTIVE_MEMBERSHIPS_ERROR", { code: error.code, message: error.message });
+    return [];
+  }
 
   return ((data ?? []) as unknown as MembershipRow[]).map((row) => ({
     role: first(row.role),
