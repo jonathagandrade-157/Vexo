@@ -9,6 +9,7 @@ import {
   createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
 import { slugify, slugifyWithSuffix } from "@/lib/utils/slugify";
+import { resolvePostLoginDestination } from "./post-login-destination";
 import {
   resetPasswordRequestSchema,
   signInSchema,
@@ -225,7 +226,11 @@ export async function signInAction(
     return { status: "error", message: "E-mail ou senha inválidos." };
   }
 
-  redirect("/");
+  // Etapa 19 — destino automático pós-login (MASTER/SUPPORT_AGENT →
+  // /master, sem tenant → /cadastro, onboarding pendente do OWNER →
+  // /onboarding, senão /painel), em vez de sempre "/". Ver
+  // resolvePostLoginDestination para a decisão completa.
+  redirect(await resolvePostLoginDestination());
 }
 
 /**

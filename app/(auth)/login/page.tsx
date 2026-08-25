@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { BrandMark } from "@/components/ui/brand-mark";
+import { resolvePostLoginDestination } from "@/features/auth/post-login-destination";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LoginForm } from "./login-form";
 
@@ -21,7 +22,9 @@ export default async function LoginPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (user) redirect("/");
+  // Etapa 19 — mesmo destino automático do login bem-sucedido (nunca "/"
+  // hardcoded), para quem já está autenticado e revisita /login.
+  if (user) redirect(await resolvePostLoginDestination());
 
   return (
     <div className="relative flex min-h-dvh flex-col overflow-x-hidden">

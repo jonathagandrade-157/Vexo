@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { BrandMark } from "@/components/ui/brand-mark";
+import { resolvePostLoginDestination } from "@/features/auth/post-login-destination";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SignInLink, SignUpForm } from "./signup-form";
 
@@ -20,7 +21,20 @@ export default async function CadastroPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (user) redirect("/");
+  // Etapa 19 — antes, qualquer usuário autenticado era mandado para "/"
+  // incondicionalmente, o que impedia (bug real, já diagnosticado) uma
+  // conta autenticada sem tenant nenhum (ex.: cadastro interrompido) de
+  // usar o link "Criar minha loja" de /sem-loja para tentar de novo,
+  // porque essa mesma checagem sempre a jogava de volta para a Landing
+  // Page antes de chegar ao formulário. Agora só redireciona quando o
+  // destino automático for outra rota — se a pessoa autenticada não tem
+  // tenant, o destino é a própria /cadastro, então nada acontece e o
+  // formulário renderiza normalmente (idempotente: nunca redireciona
+  // para a página em que já está).
+  if (user) {
+    const destination = await resolvePostLoginDestination();
+    if (destination !== "/cadastro") redirect(destination);
+  }
 
   return (
     <div className="relative flex min-h-dvh flex-col overflow-x-hidden">
