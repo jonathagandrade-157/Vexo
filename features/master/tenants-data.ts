@@ -1,0 +1,185 @@
+import "server-only";
+
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+export const TENANT_STATUS_FILTERS = ["pending", "active", "suspended"] as const;
+export type TenantStatusFilter = (typeof TENANT_STATUS_FILTERS)[number];
+
+export interface MasterTenantRow {
+  id: string;
+  name: string;
+  slug: string;
+  segment: string | null;
+  status: string;
+  createdAt: string;
+  ownerName: string | null;
+  ownerEmail: string | null;
+  planName: string | null;
+  trialStatus: string | null;
+  trialEndsAt: string | null;
+}
+
+function first<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+interface TenantJoinRow {
+  id: string;
+  name: string;
+  slug: string;
+  segment: string | null;
+  status: string;
+  created_at: string;
+  trial_records: { status: string; ends_at: string }[] | { status: string; ends_at: string } | null;
+  subscriptions:
+    | { plans: { name: string } | { name: string }[] | null }
+    | { plans: { name: string } | { name: string }[] | null }[]
+    | null;
+}
+
+/**
+ * Listagem de lojas para o painel MASTER (Etapa 18). RLS de `tenants`
+ * (migration 20260817220012) já deixa `is_platform_admin()` (MASTER ou
+ * SUPPORT_AGENT) ver TODOS os tenants — não é uma consulta nova de
+ * autorização, só um novo consumidor do que já existe.
+ *
+ * `profiles` não tem FK direta com `tenant_members` (ambos referenciam
+ * `auth.users` separadamente) — por isso o proprietário é resolvido em
+ * duas consultas extras, nunca um embed do PostgREST através de uma
+ * relação que não existe de verdade.
+ */
+export async function listTenantsForMaster(statusFilter?: TenantStatusFilter): Promise<MasterTenantRow[]> {
+  const supabase = await createSupabaseServerClient();
+
+  let query = supabase
+    .from("tenants")
+    .select(
+      "id, name, slug, segment, status, created_at, trial_records(status, ends_at), subscriptions(plans(name))",
+    )
+    .order("created_at", { ascending: false });
+
+  if (statusFilter) {
+    query = query.eq("status", statusFilter);
+  }
+
+  const { data } = await query;
+  const tenants = (data ?? []) as unknown as TenantJoinRow[];
+  if (tenants.length === 0) return [];
+
+  const tenantIds = tenants.map((t) => t.id);
+
+  const { data: memberRows } = await supabase
+    .from("tenant_members")
+    .select("tenant_id, user_id, role:roles(key)")
+    .in("tenant_id", tenantIds);
+
+  const ownerUserIdByTenant = new Map<string, string>();
+  for (const row of (memberRows ?? []) as unknown as {
+    tenant_id: string;
+    user_id: string;
+    role: { key: string } | { key: string }[] | null;
+  }[]) {
+    if (first(row.role)?.key === "OWNER") {
+      ownerUserIdByTenant.set(row.tenant_id, row.user_id);
+    }
+  }
+
+  const ownerUserIds = [...new Set(ownerUserIdByTenant.values())];
+  const { data: profileRows } = ownerUserIds.length
+    ? await supabase.from("profiles").select("id, full_name, email").in("id", ownerUserIds)
+    : { data: [] as { id: string; full_name: string | null; email: string | null }[] };
+
+  const profileById = new Map((profileRows ?? []).map((p) => [p.id, p]));
+
+  return tenants.map((t) => {
+    const ownerUserId = ownerUserIdByTenant.get(t.id);
+    const owner = ownerUserId ? profileById.get(ownerUserId) : undefined;
+    const trial = first(t.trial_records);
+    const subscription = first(t.subscriptions);
+    const plan = subscription ? first(subscription.plans) : null;
+
+    return {
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      segment: t.segment,
+      status: t.status,
+      createdAt: t.created_at,
+      ownerName: owner?.full_name ?? null,
+      ownerEmail: owner?.email ?? null,
+      planName: plan?.name ?? null,
+      trialStatus: trial?.status ?? null,
+      trialEndsAt: trial?.ends_at ?? null,
+    };
+  });
+}
+
+export interface MasterTenantMember {
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  roleKey: string;
+}
+
+export interface MasterTenantDetail extends MasterTenantRow {
+  onboardingCompletedAt: string | null;
+  members: MasterTenantMember[];
+}
+
+/** Detalhe de uma loja para `/master/lojas/[id]` — mesma fonte de dados da listagem, só escopada a um tenant e com todos os membros (não só o OWNER). */
+export async function getTenantDetailForMaster(tenantId: string): Promise<MasterTenantDetail | null> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select(
+      "id, name, slug, segment, status, onboarding_completed_at, created_at, trial_records(status, ends_at), subscriptions(plans(name))",
+    )
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  if (!tenant) return null;
+  const t = tenant as unknown as TenantJoinRow & { onboarding_completed_at: string | null };
+
+  const { data: memberRows } = await supabase
+    .from("tenant_members")
+    .select("user_id, role:roles(key)")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active");
+
+  const members = (memberRows ?? []) as unknown as { user_id: string; role: { key: string } | { key: string }[] | null }[];
+  const userIds = members.map((m) => m.user_id);
+
+  const { data: profileRows } = userIds.length
+    ? await supabase.from("profiles").select("id, full_name, email").in("id", userIds)
+    : { data: [] as { id: string; full_name: string | null; email: string | null }[] };
+  const profileById = new Map((profileRows ?? []).map((p) => [p.id, p]));
+
+  const ownerUserId = members.find((m) => first(m.role)?.key === "OWNER")?.user_id;
+  const owner = ownerUserId ? profileById.get(ownerUserId) : undefined;
+  const trial = first(t.trial_records);
+  const subscription = first(t.subscriptions);
+  const plan = subscription ? first(subscription.plans) : null;
+
+  return {
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    segment: t.segment,
+    status: t.status,
+    createdAt: t.created_at,
+    onboardingCompletedAt: t.onboarding_completed_at,
+    ownerName: owner?.full_name ?? null,
+    ownerEmail: owner?.email ?? null,
+    planName: plan?.name ?? null,
+    trialStatus: trial?.status ?? null,
+    trialEndsAt: trial?.ends_at ?? null,
+    members: members.map((m) => ({
+      userId: m.user_id,
+      fullName: profileById.get(m.user_id)?.full_name ?? null,
+      email: profileById.get(m.user_id)?.email ?? null,
+      roleKey: first(m.role)?.key ?? "—",
+    })),
+  };
+}
