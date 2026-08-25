@@ -122,25 +122,52 @@ export interface MasterTenantMember {
   roleKey: string;
 }
 
+/** Assinatura da loja para a seção "Plano da loja" (Etapa 20.1) — inclui `id`/`planId` porque `updateTenantPlanAction` precisa deles, além dos dados só de exibição (preço, status, datas). */
+export interface TenantSubscriptionForMaster {
+  id: string;
+  planId: string;
+  planSlug: string;
+  planName: string;
+  monthlyPrice: number | null;
+  yearlyPrice: number | null;
+  status: string;
+  trialEnd: string | null;
+  currentPeriodEnd: string | null;
+}
+
 export interface MasterTenantDetail extends MasterTenantRow {
   onboardingCompletedAt: string | null;
   members: MasterTenantMember[];
+  /** `null` quando a loja não tem nenhuma assinatura ainda — a Etapa 20.1 nunca cria uma automaticamente (só troca `plan_id` de uma já existente). */
+  subscription: TenantSubscriptionForMaster | null;
 }
 
-/** Detalhe de uma loja para `/master/lojas/[id]` — mesma fonte de dados da listagem, só escopada a um tenant e com todos os membros (não só o OWNER). */
+interface TenantDetailSubscriptionRow {
+  id: string;
+  plan_id: string;
+  status: string;
+  trial_end: string | null;
+  current_period_end: string | null;
+  plans: { name: string; slug: string; monthly_price: number | null; yearly_price: number | null } | { name: string; slug: string; monthly_price: number | null; yearly_price: number | null }[] | null;
+}
+
+/** Detalhe de uma loja para `/master/lojas/[id]` — mesma fonte de dados da listagem, só escopada a um tenant e com todos os membros (não só o OWNER). Select próprio (não reaproveita `TenantJoinRow`) porque só aqui precisamos dos campos de `subscriptions` usados pela troca de plano (Etapa 20.1) — a listagem continua enxuta. */
 export async function getTenantDetailForMaster(tenantId: string): Promise<MasterTenantDetail | null> {
   const supabase = await createSupabaseServerClient();
 
   const { data: tenant } = await supabase
     .from("tenants")
     .select(
-      "id, name, slug, segment, status, onboarding_completed_at, created_at, trial_records(status, ends_at), subscriptions(plans(name))",
+      "id, name, slug, segment, status, onboarding_completed_at, created_at, trial_records(status, ends_at), subscriptions(id, plan_id, status, trial_end, current_period_end, plans(name, slug, monthly_price, yearly_price))",
     )
     .eq("id", tenantId)
     .maybeSingle();
 
   if (!tenant) return null;
-  const t = tenant as unknown as TenantJoinRow & { onboarding_completed_at: string | null };
+  const t = tenant as unknown as Omit<TenantJoinRow, "subscriptions"> & {
+    onboarding_completed_at: string | null;
+    subscriptions: TenantDetailSubscriptionRow | TenantDetailSubscriptionRow[] | null;
+  };
 
   const { data: memberRows } = await supabase
     .from("tenant_members")
@@ -181,5 +208,19 @@ export async function getTenantDetailForMaster(tenantId: string): Promise<Master
       email: profileById.get(m.user_id)?.email ?? null,
       roleKey: first(m.role)?.key ?? "—",
     })),
+    subscription:
+      subscription && plan
+        ? {
+            id: subscription.id,
+            planId: subscription.plan_id,
+            planSlug: plan.slug,
+            planName: plan.name,
+            monthlyPrice: plan.monthly_price,
+            yearlyPrice: plan.yearly_price,
+            status: subscription.status,
+            trialEnd: subscription.trial_end,
+            currentPeriodEnd: subscription.current_period_end,
+          }
+        : null,
   };
 }

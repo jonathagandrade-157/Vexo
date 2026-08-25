@@ -3,6 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ConfirmDialog } from "@/components/painel/confirm-dialog";
+import { TenantPlanDialog } from "@/components/master/tenant-plan-dialog";
+import { listPlans } from "@/features/commercial/data";
+import { formatPrice } from "@/features/products/format-price";
 import { getCurrentPlatformAdmin } from "@/features/master/current-admin";
 import { updateTenantStatusAction, type TenantNextStatus } from "@/features/master/tenants-actions";
 import { getTenantDetailForMaster } from "@/features/master/tenants-data";
@@ -15,6 +18,16 @@ const STATUS_LABELS: Record<string, string> = {
   pending: "Pendente",
   suspended: "Suspensa",
   deleted: "Excluída",
+};
+
+/** Rótulo do `subscriptions.status` (Etapa 20.1) — mesmo vocabulário do banco, só traduzido para exibição. */
+const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
+  trialing: "Em trial",
+  active: "Ativa",
+  past_due: "Pagamento pendente",
+  suspended: "Suspensa",
+  cancelled: "Cancelada",
+  expired: "Expirada",
 };
 
 function formatDate(iso: string | null): string {
@@ -37,11 +50,17 @@ function nextStatusFor(status: string): { next: TenantNextStatus; label: string 
 /** `/master/lojas/[id]` (Etapa 18) — visão completa de uma loja para o MASTER: dados, plano/trial, equipe, e a ação de mudança de status. */
 export default async function MasterLojaDetalhePage({ params }: PageProps) {
   const { id } = await params;
-  const [admin, tenant] = await Promise.all([getCurrentPlatformAdmin(), getTenantDetailForMaster(id)]);
+  const [admin, tenant, plans] = await Promise.all([getCurrentPlatformAdmin(), getTenantDetailForMaster(id), listPlans()]);
   if (!tenant) notFound();
 
   const canManage = admin?.role === "MASTER";
   const action = nextStatusFor(tenant.status);
+  const activePlans = plans.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, monthlyPrice: p.monthly_price }));
+  const subscriptionDate = tenant.subscription
+    ? tenant.subscription.status === "trialing"
+      ? { label: "Trial termina em", value: formatDate(tenant.subscription.trialEnd) }
+      : { label: "Período atual termina em", value: formatDate(tenant.subscription.currentPeriodEnd) }
+    : null;
 
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-8">
@@ -75,15 +94,54 @@ export default async function MasterLojaDetalhePage({ params }: PageProps) {
           </p>
         </div>
         <div className="rounded-xl border border-surface-container-highest bg-[#121212] p-5">
-          <p className="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Plano</p>
-          <p className="mt-2 font-body text-body-md text-on-surface">{tenant.planName ?? "Sem plano"}</p>
-        </div>
-        <div className="rounded-xl border border-surface-container-highest bg-[#121212] p-5">
-          <p className="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Trial</p>
+          <p className="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Trial (cadastro)</p>
           <p className="mt-2 font-body text-body-md text-on-surface">
             {tenant.trialStatus ? `${tenant.trialStatus} — término em ${formatDate(tenant.trialEndsAt)}` : "Sem trial"}
           </p>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-surface-container-highest bg-[#121212] p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Plano da loja</p>
+          {canManage && tenant.subscription ? (
+            <TenantPlanDialog currentPlanId={tenant.subscription.planId} plans={activePlans} tenantId={tenant.id} />
+          ) : null}
+        </div>
+        {tenant.subscription ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <p className="font-body text-body-sm text-on-surface-variant">Plano atual</p>
+              <p className="mt-1 font-body text-body-md text-on-surface">{tenant.subscription.planName}</p>
+            </div>
+            <div>
+              <p className="font-body text-body-sm text-on-surface-variant">Status da assinatura</p>
+              <p className="mt-1 font-body text-body-md text-on-surface">
+                {SUBSCRIPTION_STATUS_LABELS[tenant.subscription.status] ?? tenant.subscription.status}
+              </p>
+            </div>
+            <div>
+              <p className="font-body text-body-sm text-on-surface-variant">Preço mensal</p>
+              <p className="mt-1 font-body text-body-md text-on-surface">
+                {tenant.subscription.monthlyPrice !== null ? `${formatPrice(tenant.subscription.monthlyPrice)}/mês` : "A definir"}
+              </p>
+            </div>
+            <div>
+              <p className="font-body text-body-sm text-on-surface-variant">Preço anual</p>
+              <p className="mt-1 font-body text-body-md text-on-surface">
+                {tenant.subscription.yearlyPrice !== null ? `${formatPrice(tenant.subscription.yearlyPrice)}/ano` : "A definir"}
+              </p>
+            </div>
+            {subscriptionDate ? (
+              <div>
+                <p className="font-body text-body-sm text-on-surface-variant">{subscriptionDate.label}</p>
+                <p className="mt-1 font-body text-body-md text-on-surface">{subscriptionDate.value}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="font-body text-body-sm text-on-surface-variant">Esta loja ainda não possui uma assinatura configurada.</p>
+        )}
       </div>
 
       <div className="rounded-xl border border-surface-container-highest bg-[#121212] p-5">
