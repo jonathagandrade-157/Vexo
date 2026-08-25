@@ -48,9 +48,25 @@ const mercadoPagoServerSchema = z.object({
   OAUTH_STATE_SECRET: z.string().min(16),
 });
 
+// Etapa 20.2.5: Billing (VEXO cobrando o LOJISTA pela assinatura) —
+// schema separado de `serverSchema` e de `mercadoPagoServerSchema` pelo
+// mesmo motivo exato do Mercado Pago acima: nenhum fluxo essencial
+// (auth/cadastro/trial/onboarding/checkout da loja) pode quebrar só
+// porque o Billing da VEXO ainda não está configurado neste ambiente.
+// A credencial aqui é da CONTA DA VEXO no gateway de billing — nunca
+// reaproveita nada de `mercadoPagoServerSchema` (aquilo é do lojista) nem
+// de `payment_credentials_vault` (idem). Só lido por código que vai de
+// fato chamar o gateway de billing (`lib/billing/registry.ts` e, em
+// etapas futuras, o Route Handler do webhook do Asaas).
+const billingServerSchema = z.object({
+  ASAAS_API_KEY: z.string().min(1),
+  ASAAS_API_URL: z.string().url(),
+});
+
 export type PublicEnv = z.infer<typeof publicSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
 export type MercadoPagoServerEnv = z.infer<typeof mercadoPagoServerSchema>;
+export type BillingServerEnv = z.infer<typeof billingServerSchema>;
 
 function readSchema<T>(
   schema: z.ZodType<T>,
@@ -73,6 +89,7 @@ function readSchema<T>(
 let cachedPublicEnv: PublicEnv | undefined;
 let cachedServerEnv: ServerEnv | undefined;
 let cachedMercadoPagoEnv: MercadoPagoServerEnv | undefined;
+let cachedBillingEnv: BillingServerEnv | undefined;
 
 /** Variables safe to read from client or server code (`NEXT_PUBLIC_*` only). */
 export function getPublicEnv(): PublicEnv {
@@ -131,4 +148,30 @@ export function getMercadoPagoEnv(): MercadoPagoServerEnv {
     }
   }
   return cachedMercadoPagoEnv;
+}
+
+/**
+ * Segredos de Billing (Etapa 20.2.5) — chamar SOMENTE de código que vai
+ * de fato acionar o gateway de billing (`lib/billing/registry.ts`, e em
+ * etapas futuras a Server Action de assinatura e o Route Handler do
+ * webhook do Asaas). Nunca de auth/cadastro/trial/onboarding ou de
+ * qualquer fluxo de pagamento da loja (Mercado Pago) — mesmo cuidado de
+ * `getMercadoPagoEnv()` acima, mesma classe de incidente evitada.
+ */
+export function getBillingEnv(): BillingServerEnv {
+  if (typeof window !== "undefined") {
+    throw new Error("getBillingEnv() must never be called from the browser.");
+  }
+  if (!cachedBillingEnv) {
+    try {
+      cachedBillingEnv = readSchema(billingServerSchema, process.env, "Billing");
+    } catch (cause) {
+      throw new Error(
+        "O Billing da VEXO não está configurado neste ambiente (ASAAS_API_KEY/ASAAS_API_URL). " +
+          "Configure essas variáveis antes de acionar qualquer operação de billing.",
+        { cause },
+      );
+    }
+  }
+  return cachedBillingEnv;
 }
