@@ -3,7 +3,8 @@
 import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 
-import { initialTenantPlanState, updateTenantPlanAction } from "@/features/master/tenants-actions";
+import { initialTenantPlanState } from "@/features/master/schema";
+import { updateTenantPlanAction } from "@/features/master/tenants-actions";
 import { formatPrice } from "@/features/products/format-price";
 
 export interface ActivePlanOption {

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentPlatformAdmin } from "./current-admin";
+import type { TenantPlanActionState } from "./schema";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export interface TenantStatusActionState {
@@ -59,13 +60,6 @@ export async function updateTenantStatusAction(
   revalidatePath(`/master/lojas/${tenantId}`);
   return { status: "success", message: "Status atualizado." };
 }
-
-export interface TenantPlanActionState {
-  status: "idle" | "success" | "error";
-  message?: string;
-}
-
-export const initialTenantPlanState: TenantPlanActionState = { status: "idle" };
 
 /**
  * Etapa 20.1 — troca o plano comercial de uma loja. Diferente de
