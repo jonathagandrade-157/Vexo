@@ -61,6 +61,12 @@ const mercadoPagoServerSchema = z.object({
 const billingServerSchema = z.object({
   ASAAS_API_KEY: z.string().min(1),
   ASAAS_API_URL: z.string().url(),
+  // Etapa 20.2.8: token estático enviado pelo Asaas no header
+  // `asaas-access-token` de toda chamada de webhook (mecanismo diferente
+  // de assinatura HMAC — confirmado em docs.asaas.com/docs/webhooks-3: um
+  // token configurado na criação do webhook, comparado literalmente,
+  // nunca calculado). Só lido pelo Route Handler do webhook.
+  ASAAS_WEBHOOK_TOKEN: z.string().min(1),
 });
 
 export type PublicEnv = z.infer<typeof publicSchema>;
