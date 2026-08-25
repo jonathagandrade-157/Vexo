@@ -133,6 +133,35 @@ describe("createAsaasGateway (mocked fetch — no real network call, no real Asa
     });
   });
 
+  describe("listSubscriptionPayments", () => {
+    it("GETs /subscriptions/{id}/payments and maps every payment in the list envelope", async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            object: "list",
+            hasMore: false,
+            totalCount: 2,
+            data: [
+              { id: "pay_1", subscription: "sub_1", customer: "cus_123", status: "PENDING", value: 49.9, billingType: "PIX", dueDate: "2026-09-01", paymentDate: null },
+              { id: "pay_2", subscription: "sub_1", customer: "cus_123", status: "PENDING", value: 49.9, billingType: "PIX", dueDate: "2026-10-01", paymentDate: null },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+      const payments = await gateway.listSubscriptionPayments("sub_1");
+      expect(payments).toHaveLength(2);
+      expect(payments[0]).toMatchObject({ id: "pay_1", subscriptionId: "sub_1", dueDate: "2026-09-01" });
+      const [calledUrl] = vi.mocked(global.fetch).mock.calls[0]!;
+      expect(calledUrl).toBe(`${BASE_URL}/subscriptions/sub_1/payments`);
+    });
+
+    it("returns an empty array when the subscription has no payments yet", async () => {
+      vi.mocked(global.fetch).mockResolvedValueOnce(new Response(JSON.stringify({ object: "list", data: [] }), { status: 200 }));
+      expect(await gateway.listSubscriptionPayments("sub_1")).toEqual([]);
+    });
+  });
+
   describe("updateSubscription", () => {
     it("sends a PUT with only the provided fields, normalized", async () => {
       vi.mocked(global.fetch).mockResolvedValueOnce(

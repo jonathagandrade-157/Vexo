@@ -300,5 +300,22 @@ export function createAsaasGateway(apiKey: string, baseUrl: string, timeoutMs = 
       const data = await getOrNull<AsaasPaymentResponse>(`/payments/${encodeURIComponent(paymentId)}`);
       return data ? mapPayment(data) : null;
     },
+
+    async listSubscriptionPayments(subscriptionId: string): Promise<BillingPayment[]> {
+      // Envelope de listagem padrão do Asaas ({ object: "list", data: [...],
+      // hasMore, totalCount, limit, offset }) — mesmo formato documentado
+      // em todo endpoint de listagem do Asaas (ex.: list-subscriptions).
+      // O endpoint em si está confirmado
+      // (https://docs.asaas.com/reference/list-payments-of-a-subscription);
+      // a pesquisa desta etapa não retornou o corpo de exemplo exato desta
+      // rota específica — RECONFIRMAR contra uma resposta real de sandbox
+      // antes de depender disto em produção (mesma ressalva já registrada
+      // para a URL de produção em `docs/architecture/etapa-20-billing-asaas.md`).
+      const data = await request<{ data: AsaasPaymentResponse[] }>(
+        "GET",
+        `/subscriptions/${encodeURIComponent(subscriptionId)}/payments`,
+      );
+      return (data.data ?? []).map(mapPayment);
+    },
   };
 }

@@ -153,4 +153,12 @@ export interface BillingGateway {
   updateSubscription(subscriptionId: string, input: UpdateBillingSubscriptionInput): Promise<BillingSubscription>;
   cancelSubscription(subscriptionId: string): Promise<void>;
   getPayment(paymentId: string): Promise<BillingPayment | null>;
+  /**
+   * Etapa 20.2.6 — achado confirmado na Etapa 20.2.5: criar uma
+   * Subscription no Asaas NÃO devolve o id da 1ª cobrança junto (a
+   * cobrança nasce depois, do lado do Asaas). Este método é o segundo
+   * passo obrigatório para obter esse id — nunca inventado, nunca
+   * assumido a partir do retorno de `createSubscription`.
+   */
+  listSubscriptionPayments(subscriptionId: string): Promise<BillingPayment[]>;
 }
