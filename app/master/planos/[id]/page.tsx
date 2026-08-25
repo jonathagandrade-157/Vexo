@@ -36,7 +36,12 @@ export default async function MasterPlanoDetalhePage({ params }: PageProps) {
             </p>
           </div>
           <PlanFormDialog
-            plan={{ ...plan, feature_count: plan.featureIds.length, subscriber_count: 0 }}
+            plan={{
+              ...plan,
+              feature_count: plan.featureIds.length,
+              subscriber_count: 0,
+              storeCounts: { total: 0, trialing: 0, active: 0, suspended: 0 },
+            }}
             trigger={
               <span className="flex items-center justify-center gap-2 rounded-lg border border-tertiary/40 px-5 py-2.5 font-label text-label-md text-tertiary transition-colors hover:bg-tertiary/10">
                 <span className="material-symbols-outlined text-[20px]">edit</span>
@@ -59,7 +64,7 @@ export default async function MasterPlanoDetalhePage({ params }: PageProps) {
         <h2 className="mb-1 font-headline text-headline-sm text-on-surface">Limites</h2>
         <p className="mb-5 font-body text-body-sm text-on-surface-variant">
           Capacidade numérica do plano (ex.: quantidade máxima de produtos) — distinto de recursos. Use -1 para ilimitado.
-          Nenhuma funcionalidade existente aplica esses limites ainda.
+          Os limites são aplicados automaticamente pelo VEXO. Dados existentes não são removidos quando um limite é reduzido.
         </p>
         <PlanLimitsEditor limits={limits} planId={plan.id} />
       </section>

@@ -5,6 +5,21 @@ import { useState, useTransition } from "react";
 import { togglePlanFeatureAction } from "@/features/commercial/actions";
 import type { FeatureRow } from "@/features/commercial/data";
 
+/** Rótulo de exibição por `features.category` (Etapa 20 §4) — só apresentação, nunca renomeia a coluna/valor real gravado no banco. Categoria sem tradução conhecida cai no próprio valor bruto. */
+const CATEGORY_LABELS: Record<string, string> = {
+  catalog: "Catálogo",
+  payments: "Pagamentos",
+  customization: "Personalização",
+  analytics: "Análises",
+  marketing: "Marketing",
+  reports: "Relatórios",
+  shipping: "Frete e entrega",
+  ai: "Inteligência artificial",
+  api: "API",
+  domain: "Domínio",
+  support: "Suporte",
+};
+
 /**
  * A tela central do prompt §19 — checkbox por recurso, agrupado por
  * categoria. Cada toggle chama `togglePlanFeatureAction` diretamente
@@ -51,7 +66,9 @@ export function PlanFeatureChecklist({
     <div className="flex flex-col gap-6">
       {Array.from(byCategory.entries()).map(([category, categoryFeatures]) => (
         <div className="flex flex-col gap-2" key={category}>
-          <h3 className="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">{category}</h3>
+          <h3 className="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">
+            {CATEGORY_LABELS[category] ?? category}
+          </h3>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {categoryFeatures.map((feature) => {
               const checked = enabledIds.has(feature.id);

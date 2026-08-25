@@ -29,20 +29,10 @@ export default async function MasterPlanosPage() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-surface-container-highest bg-[#121212]">
-        <div className="grid grid-cols-12 gap-4 border-b border-surface-container-highest bg-surface-container-low/50 px-6 py-4">
-          <div className="col-span-3 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Plano</div>
-          <div className="col-span-2 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Mensal</div>
-          <div className="col-span-2 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Anual</div>
-          <div className="col-span-2 text-center font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Recursos</div>
-          <div className="col-span-1 text-center font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Status</div>
-          <div className="col-span-2 text-right font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Ações</div>
-        </div>
-        <div className="divide-y divide-surface-container-highest/50">
-          {plans.map((plan) => (
-            <PlanRow key={plan.id} plan={plan} />
-          ))}
-        </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {plans.map((plan) => (
+          <PlanRow key={plan.id} plan={plan} />
+        ))}
       </div>
     </div>
   );
