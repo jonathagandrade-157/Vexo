@@ -8,6 +8,10 @@ import type { StorefrontHomeProps } from "@/features/storefront/templates/types"
  * é a identidade do template (limpo, direto, catálogo pequeno), não uma
  * omissão: um bloco de texto centralizado substitui o hero. Categorias
  * viram abas de filtro (texto), não cards — reduz ornamentação ao máximo.
+ *
+ * Sprint 1 — Fase C2: continua sem carrossel de propósito (auditoria
+ * C1 §7/decisão confirmada) — `banners` chega em `StorefrontHomeProps`
+ * como qualquer outro template, mas este nunca o desestrutura/usa.
  */
 export function MinimalHome({ tenant, categories, products, promotions, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
   return (

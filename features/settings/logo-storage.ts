@@ -17,7 +17,8 @@ export const LOGO_MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
 export type LogoImageMime = "image/jpeg" | "image/png" | "image/webp";
 
-const EXTENSION_BY_MIME: Record<LogoImageMime, string> = {
+/** Exportado para `banner-storage.ts` reaproveitar (mesmo bucket `tenant-media`, mesmos 3 formatos) sem duplicar o mapa. */
+export const EXTENSION_BY_MIME: Record<LogoImageMime, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",

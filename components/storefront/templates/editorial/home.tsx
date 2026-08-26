@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { StorefrontHeroCarousel } from "@/components/storefront/storefront-hero-carousel";
 import { StorefrontProductCard } from "@/components/storefront/storefront-product-card";
 import type { StorefrontHomeProps } from "@/features/storefront/templates/types";
 
@@ -8,14 +9,19 @@ import type { StorefrontHomeProps } from "@/features/storefront/templates/types"
  * grande + itens menores), tipografia serifada/itálica. O grid
  * assimétrico de categorias é o que diferencia este template — não uma
  * funcionalidade nova, só disposição visual dos mesmos dados.
+ *
+ * Sprint 1 — Fase C2: o gradiente escuro já existia (decoração fixa,
+ * sempre presente) — o carrossel só entra ATRÁS dele quando há banners;
+ * sem banners, nada muda (`bg-neutral-900` sólido continua sendo o fundo).
  */
-export function EditorialHome({ tenant, categories, products, promotions, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
+export function EditorialHome({ tenant, categories, products, promotions, banners, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
   const [firstCategory, ...restCategories] = categories;
 
   return (
     <div className="bg-white text-neutral-900">
       <section className="relative flex min-h-[440px] flex-col items-center justify-center overflow-hidden bg-neutral-900 px-margin-mobile py-24 text-center text-white md:px-margin-desktop">
-        <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+        {banners.length > 0 ? <StorefrontHeroCarousel banners={banners} /> : null}
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         <div className="relative z-10 flex max-w-2xl flex-col items-center gap-4">
           <h1 className="font-display text-3xl italic md:text-5xl">{tenant.name}</h1>
           {tenant.description ? <p className="font-body text-body-lg text-white/80">{tenant.description}</p> : null}

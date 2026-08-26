@@ -21,7 +21,7 @@ import { buildLogoPath, LOGO_MAX_BYTES, sniffLogoMime, TENANT_MEDIA_BUCKET } fro
  * (`updateStoreProfileAction`) — identidade visual faz parte do mesmo
  * conjunto de configuração, não um recurso à parte.
  */
-async function resolveTenantWithSettingsPermission(): Promise<{ tenantId: string } | { error: string }> {
+export async function resolveTenantWithSettingsPermission(): Promise<{ tenantId: string } | { error: string }> {
   const supabase = await createSupabaseServerClient();
   const membership = await resolveActiveTenantForUser(supabase);
   if (!membership || membership.tenant.onboarding_completed_at === null) {

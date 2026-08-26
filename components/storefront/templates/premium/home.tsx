@@ -1,25 +1,38 @@
 import Link from "next/link";
 
+import { StorefrontHeroCarousel } from "@/components/storefront/storefront-hero-carousel";
 import { StorefrontProductCard } from "@/components/storefront/storefront-product-card";
 import type { StorefrontHomeProps } from "@/features/storefront/templates/types";
 
 /**
  * Sprint 1 — Fase B2 — VEXO Premium. Sofisticado, muito whitespace,
- * tipografia com tracking largo, sem grade densa. Sem imagem de fundo no
- * hero pelo mesmo motivo do Commerce (sem upload de banner ainda).
+ * tipografia com tracking largo, sem grade densa.
+ *
+ * Sprint 1 — Fase C2: `bg-neutral-950` continua como base (visível antes
+ * da imagem carregar e sem nenhum banner cadastrado) — o carrossel só
+ * entra como camada extra por cima quando há banners; texto já é branco
+ * de origem, então nenhuma cor muda.
  */
-export function PremiumHome({ tenant, categories, products, promotions, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
+export function PremiumHome({ tenant, categories, products, promotions, banners, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
   return (
     <div className="bg-white text-neutral-900">
-      <section className="flex min-h-[480px] flex-col items-center justify-center gap-6 bg-neutral-950 px-margin-mobile py-24 text-center text-white md:px-margin-desktop">
-        <h1 className="max-w-2xl font-display text-3xl font-light leading-tight md:text-5xl">{tenant.name}</h1>
-        {tenant.description ? <p className="max-w-lg font-body text-body-lg text-white/70">{tenant.description}</p> : null}
-        <Link
-          className="mt-2 border border-white px-8 py-3 font-label text-label-sm uppercase tracking-widest text-white transition-colors hover:bg-[var(--store-primary)] hover:border-[var(--store-primary)]"
-          href="#produtos"
-        >
-          Descobrir
-        </Link>
+      <section className="relative flex min-h-[480px] flex-col items-center justify-center overflow-hidden bg-neutral-950 px-margin-mobile py-24 text-center text-white md:px-margin-desktop">
+        {banners.length > 0 ? (
+          <>
+            <StorefrontHeroCarousel banners={banners} />
+            <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
+          </>
+        ) : null}
+        <div className="relative z-10 flex max-w-2xl flex-col items-center gap-6">
+          <h1 className="font-display text-3xl font-light leading-tight md:text-5xl">{tenant.name}</h1>
+          {tenant.description ? <p className="max-w-lg font-body text-body-lg text-white/70">{tenant.description}</p> : null}
+          <Link
+            className="mt-2 border border-white px-8 py-3 font-label text-label-sm uppercase tracking-widest text-white transition-colors hover:bg-[var(--store-primary)] hover:border-[var(--store-primary)]"
+            href="#produtos"
+          >
+            Descobrir
+          </Link>
+        </div>
       </section>
 
       <div className="mx-auto flex max-w-container-max flex-col gap-24 px-margin-mobile py-20 md:px-margin-desktop">

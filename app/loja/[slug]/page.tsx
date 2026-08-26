@@ -4,6 +4,7 @@ import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-s
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
+import { getStorefrontBanners } from "@/features/storefront/banners";
 import { getStorefrontCategories, getStorefrontProducts } from "@/features/storefront/catalog";
 import { getStorefrontPromotions } from "@/features/storefront/promotions";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
@@ -85,10 +86,11 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
   }
 
   const { tenant } = resolution;
-  const [categories, products, promotions, cart] = await Promise.all([
+  const [categories, products, promotions, banners, cart] = await Promise.all([
     getStorefrontCategories(tenant.id),
     getStorefrontProducts(tenant.id, categoria, q),
     getStorefrontPromotions(tenant.id),
+    getStorefrontBanners(tenant.id),
     getCart(tenant.slug),
   ]);
 
@@ -119,6 +121,7 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
       {/* eslint-disable-next-line react-hooks/static-components -- falso positivo: Server Component sem hooks; `StorefrontHome` é sempre uma das 5 referências já existentes no mapa estático de registry.ts, nunca uma definição nova por render. */}
       <StorefrontHome
         activeCategorySlug={categoria}
+        banners={banners}
         categories={categories}
         products={products}
         promotions={promotions}

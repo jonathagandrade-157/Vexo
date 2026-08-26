@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import type { StorefrontTemplate } from "@/features/settings/appearance-schema";
+import type { StaffBanner } from "@/features/settings/banner-schema";
+import { getStorefrontBanners } from "@/features/storefront/banners";
 import { getStorefrontCategories, getStorefrontProducts } from "@/features/storefront/catalog";
 import { getStorefrontPromotions } from "@/features/storefront/promotions";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -35,17 +37,30 @@ export default async function AparenciaPage() {
   if (!membership) redirect("/sem-loja");
   const { tenant } = membership;
 
-  const [{ data: canEdit }, { data: appearance }, categories, products, promotions] = await Promise.all([
-    supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "settings.update" }),
-    supabase
-      .from("tenants")
-      .select("logo_url, primary_color, secondary_color, storefront_template")
-      .eq("id", tenant.id)
-      .maybeSingle<AppearanceRow>(),
-    getStorefrontCategories(tenant.id),
-    getStorefrontProducts(tenant.id),
-    getStorefrontPromotions(tenant.id),
-  ]);
+  const [{ data: canEdit }, { data: appearance }, categories, products, promotions, banners, { data: staffBannersData }] =
+    await Promise.all([
+      supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "settings.update" }),
+      supabase
+        .from("tenants")
+        .select("logo_url, primary_color, secondary_color, storefront_template")
+        .eq("id", tenant.id)
+        .maybeSingle<AppearanceRow>(),
+      getStorefrontCategories(tenant.id),
+      getStorefrontProducts(tenant.id),
+      getStorefrontPromotions(tenant.id),
+      // Preview: mesma query pública que a loja real usa — só banners
+      // ativos (mesmo princípio de categorias/produtos/promoções).
+      getStorefrontBanners(tenant.id),
+      // Gerenciamento (BannerManager): TODOS os banners do tenant,
+      // qualquer status — o lojista precisa ver/reativar os inativos.
+      supabase
+        .from("storefront_banners")
+        .select("id, image_path, title, link_url, status, sort_order")
+        .eq("tenant_id", tenant.id)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+    ]);
+  const staffBanners = (staffBannersData ?? []) as StaffBanner[];
 
   return (
     <div className="mx-auto flex max-w-[1600px] flex-col gap-8">
@@ -76,6 +91,7 @@ export default async function AparenciaPage() {
       </div>
 
       <AppearanceEditor
+        banners={banners}
         canEdit={Boolean(canEdit)}
         categories={categories}
         initialLogoPath={appearance?.logo_url ?? null}
@@ -84,6 +100,7 @@ export default async function AparenciaPage() {
         initialTemplate={(appearance?.storefront_template as StorefrontTemplate | undefined) ?? "commerce"}
         products={products}
         promotions={promotions}
+        staffBanners={staffBanners}
         tenant={{
           id: tenant.id,
           slug: tenant.slug,

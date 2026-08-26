@@ -1,29 +1,48 @@
 import Link from "next/link";
 
+import { StorefrontHeroCarousel } from "@/components/storefront/storefront-hero-carousel";
 import { StorefrontProductCard } from "@/components/storefront/storefront-product-card";
-import type { StorefrontHomeProps } from "@/features/storefront/templates/types";
 import { segmentLabel } from "@/features/settings/segments";
+import type { StorefrontHomeProps } from "@/features/storefront/templates/types";
 
 /**
  * Sprint 1 — Fase B2 — VEXO Commerce (o modelo recomendado/default).
  * Denso e focado em conversão: hero com CTA, categorias em ícones,
- * produtos e promoções em grade. Sem imagem de fundo no hero (nenhum
- * upload de banner existe ainda — Sprint 21.2) — usa um gradiente com a
- * cor primária da loja, mesmo princípio já usado antes da Fase B2.
+ * produtos e promoções em grade.
+ *
+ * Sprint 1 — Fase C2: com banners cadastrados, o hero ganha o carrossel
+ * como plano de fundo + um véu escuro (texto vira branco para manter
+ * contraste sobre foto — a versão sem foto usa texto escuro de propósito,
+ * então não dá para deixar fixo). Sem nenhum banner, o hero permanece
+ * IDÊNTICO ao de antes (mesmo gradiente colorido, mesmo texto escuro) —
+ * zero regressão para lojas que não configurarem banner.
  */
-export function CommerceHome({ tenant, categories, products, promotions, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
+export function CommerceHome({ tenant, categories, products, promotions, banners, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
+  const hasBanners = banners.length > 0;
+
   return (
     <div className="bg-white text-neutral-900">
       <section className="relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden px-margin-mobile py-24 text-center md:px-margin-desktop">
-        <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-[var(--store-primary)]/15 via-white to-[var(--store-secondary)]/10" />
+        {hasBanners ? (
+          <>
+            <StorefrontHeroCarousel banners={banners} />
+            <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/60 via-black/20 to-black/10" />
+          </>
+        ) : (
+          <div aria-hidden className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-[var(--store-primary)]/15 via-white to-[var(--store-secondary)]/10" />
+        )}
         <div className="relative z-10 flex max-w-2xl flex-col items-center gap-4">
           {tenant.segment ? (
             <span className="rounded-full border border-[var(--store-primary)]/30 bg-[var(--store-primary)]/10 px-3 py-1 font-label text-label-sm uppercase tracking-wider text-[var(--store-primary)]">
               {segmentLabel(tenant.segment)}
             </span>
           ) : null}
-          <h1 className="font-display text-display-lg-mobile text-neutral-900 md:text-display-lg">{tenant.name}</h1>
-          {tenant.description ? <p className="font-body text-body-lg text-neutral-600">{tenant.description}</p> : null}
+          <h1 className={`font-display text-display-lg-mobile md:text-display-lg ${hasBanners ? "text-white" : "text-neutral-900"}`}>
+            {tenant.name}
+          </h1>
+          {tenant.description ? (
+            <p className={`font-body text-body-lg ${hasBanners ? "text-white/85" : "text-neutral-600"}`}>{tenant.description}</p>
+          ) : null}
           <Link
             className="mt-2 rounded-lg bg-[var(--store-primary)] px-6 py-3 font-label text-label-md text-white transition-opacity hover:opacity-90"
             href="#produtos"

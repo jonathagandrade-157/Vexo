@@ -3,19 +3,19 @@
 import { useMemo, useState } from "react";
 
 import { ColorInput } from "@/components/painel/color-input";
-import { TextField } from "@/components/ui/text-field";
-import { TextareaField } from "@/components/ui/textarea-field";
-import { initialStoreProfileState, updateStoreProfileAction } from "@/features/settings/actions";
 import { updateStoreAppearanceAction } from "@/features/settings/appearance-actions";
 import { initialStoreAppearanceState, type StorefrontTemplate } from "@/features/settings/appearance-schema";
+import type { StaffBanner } from "@/features/settings/banner-schema";
 import { getTenantMediaPublicUrl } from "@/features/settings/logo-storage";
+import type { PublicBanner } from "@/features/storefront/banners";
 import type { PublicCategory, PublicProductSummary } from "@/features/storefront/catalog";
 import { DEFAULT_STORE_PRIMARY_COLOR, DEFAULT_STORE_SECONDARY_COLOR } from "@/lib/color/store-theme";
+import { BannerManager } from "./banner-manager";
 import { LivePreviewFrame } from "./live-preview-frame";
 import { LogoUploader } from "./logo-uploader";
 import { TemplateSelector } from "./template-selector";
 
-interface TenantProfile {
+interface TenantIdentity {
   id: string;
   slug: string;
   name: string;
@@ -41,17 +41,17 @@ function SaveButton({ canEdit, onClick, saving }: { canEdit: boolean; onClick: (
 }
 
 /**
- * Sprint 1 — Fase B3. Editor visual em duas colunas: esquerda = controles
- * (Identidade/Aparência/Modelos/Banners), direita = `LivePreviewFrame`
- * (loja real, mesmos componentes de `components/storefront/`, dados
- * locais). Nome/descrição viram campos editáveis aqui (§9: "alterar nome
- * → preview muda"), mas continuam com uma ÚNICA fonte de verdade no banco
- * — `tenants.name`/`description` — salvos por `updateStoreProfileAction`,
- * a MESMA Action de Configurações Geral, nunca uma coluna/schema paralelo
- * (§16: "não criar campos duplicados"). Um clique em "Salvar alterações"
- * dispara as duas Actions que já existiam (perfil + aparência) — cada uma
- * já revalida sua própria permissão/RLS no servidor, exatamente como
- * antes; esta tela só chama as duas em vez de uma.
+ * Sprint 1 — Fase C2 (correção estrutural). Editor visual em duas colunas
+ * — esquerda = controles (Identidade visual/Cores/Modelos/Banners),
+ * direita = `LivePreviewFrame` (loja real). Nome/descrição NÃO são mais
+ * editados aqui (correção desta fase — antes duplicavam Configurações
+ * Geral): a seção "Identidade" virou "Identidade visual", só a logo. O
+ * preview continua mostrando nome/descrição reais — vêm de `tenant`
+ * (prop, fonte única: `tenants.name`/`description`, a mesma que
+ * Configurações edita), nunca de estado local paralelo.
+ *
+ * `handleSave` agora só chama `updateStoreAppearanceAction` (cor/modelo)
+ * — não há mais um segundo formulário de perfil aqui.
  */
 export function AppearanceEditor({
   canEdit,
@@ -59,23 +59,25 @@ export function AppearanceEditor({
   categories,
   products,
   promotions,
+  banners,
+  staffBanners,
   initialLogoPath,
   initialPrimaryColor,
   initialSecondaryColor,
   initialTemplate,
 }: {
   canEdit: boolean;
-  tenant: TenantProfile;
+  tenant: TenantIdentity;
   categories: PublicCategory[];
   products: PublicProductSummary[];
   promotions: PublicProductSummary[];
+  banners: PublicBanner[];
+  staffBanners: StaffBanner[];
   initialLogoPath: string | null;
   initialPrimaryColor: string | null;
   initialSecondaryColor: string | null;
   initialTemplate: StorefrontTemplate;
 }) {
-  const [name, setName] = useState(tenant.name);
-  const [description, setDescription] = useState(tenant.description ?? "");
   const [logoUrl, setLogoUrl] = useState<string | null>(initialLogoPath ? getTenantMediaPublicUrl(initialLogoPath) : null);
   const [primaryColor, setPrimaryColor] = useState(initialPrimaryColor ?? DEFAULT_STORE_PRIMARY_COLOR);
   const [secondaryColor, setSecondaryColor] = useState(initialSecondaryColor ?? DEFAULT_STORE_SECONDARY_COLOR);
@@ -104,24 +106,6 @@ export function AppearanceEditor({
       return;
     }
 
-    const nameChanged = name.trim() !== tenant.name;
-    const descriptionChanged = description.trim() !== (tenant.description ?? "");
-
-    if (nameChanged || descriptionChanged) {
-      const profileForm = new FormData();
-      profileForm.set("storeName", name);
-      profileForm.set("segment", tenant.segment ?? "");
-      profileForm.set("description", description);
-      profileForm.set("instagram", tenant.instagramHandle ?? "");
-      profileForm.set("whatsapp", tenant.whatsappPhone ?? "");
-      profileForm.set("email", tenant.contactEmail ?? "");
-      const profileResult = await updateStoreProfileAction(initialStoreProfileState, profileForm);
-      if (profileResult.status === "error") {
-        setSaveState({ status: "error", message: profileResult.message ?? "Não foi possível salvar o nome/descrição." });
-        return;
-      }
-    }
-
     setSaveState({ status: "success", message: "Alterações salvas." });
   }
 
@@ -129,10 +113,10 @@ export function AppearanceEditor({
     () => ({
       tenant: {
         id: tenant.id,
-        name,
+        name: tenant.name,
         slug: tenant.slug,
         segment: tenant.segment,
-        description: description.trim() ? description : null,
+        description: tenant.description,
         instagram_handle: tenant.instagramHandle,
         whatsapp_phone: tenant.whatsappPhone,
         contact_email: tenant.contactEmail,
@@ -144,42 +128,33 @@ export function AppearanceEditor({
       categories,
       products,
       promotions,
+      banners,
     }),
-    [tenant, name, description, logoUrl, primaryColor, secondaryColor, template, categories, products, promotions],
+    [tenant, logoUrl, primaryColor, secondaryColor, template, categories, products, promotions, banners],
   );
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:h-[calc(100vh-140px)] xl:grid-cols-[2fr_3fr]">
-      <div className="flex flex-col gap-6 xl:overflow-y-auto xl:pr-2">
+    // Sprint 1 — Fase C2 correção: `minmax(360px, 2fr) minmax(0, 3fr)` em
+    // vez de `2fr 3fr` puro — sem o `minmax`, um iframe de 1280px dentro
+    // da coluna direita (mesmo escalado visualmente por `transform`, que
+    // não muda o tamanho de LAYOUT) contribuía um min-content bem maior
+    // que 60% da largura disponível, e o grid "roubava" quase todo o
+    // espaço da coluna esquerda para tentar satisfazer isso — o bug
+    // relatado ("só aparece a pré-visualização"). O piso de 360px na
+    // esquerda e o teto explícito de 0 na direita eliminam essa disputa.
+    <div className="grid min-w-0 grid-cols-1 gap-6 xl:h-[calc(100vh-200px)] xl:grid-cols-[minmax(360px,2fr)_minmax(0,3fr)]">
+      <div className="flex min-w-0 flex-col gap-6 xl:overflow-y-auto xl:pr-2">
         <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
-          <h2 className="mb-4 border-b border-surface-container-highest pb-4 font-headline text-headline-sm text-on-surface">
-            Identidade
-          </h2>
-          <div className="flex flex-col gap-4">
-            <LogoUploader initialLogoPath={initialLogoPath} onDisplayUrlChange={setLogoUrl} onPaletteExtracted={setSuggestedPalette} />
-            <TextField
-              defaultValue={name}
-              disabled={!canEdit}
-              icon="storefront"
-              id="appearance-store-name"
-              label="Nome da loja"
-              name="storeName"
-              onChange={setName}
-            />
-            <TextareaField
-              defaultValue={description}
-              disabled={!canEdit}
-              id="appearance-description"
-              label="Descrição"
-              name="description"
-              onChange={setDescription}
-            />
-          </div>
+          <h2 className="mb-1 font-headline text-headline-sm text-on-surface">Identidade visual</h2>
+          <p className="mb-4 border-b border-surface-container-highest pb-4 font-body text-body-sm text-on-surface-variant">
+            Nome e descrição são editados em Configurações — aqui você cuida só da logo.
+          </p>
+          <LogoUploader initialLogoPath={initialLogoPath} onDisplayUrlChange={setLogoUrl} onPaletteExtracted={setSuggestedPalette} />
         </section>
 
         <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
           <h2 className="mb-4 border-b border-surface-container-highest pb-4 font-headline text-headline-sm text-on-surface">
-            Aparência
+            Cores
           </h2>
           <div className="flex flex-col gap-4">
             {suggestedPalette.length > 0 ? (
@@ -229,19 +204,12 @@ export function AppearanceEditor({
           <TemplateSelector disabled={!canEdit} onChange={setTemplate} value={template} />
         </section>
 
-        {/* Sprint 1 — Fase B3 §5/§17: espaço reservado, sem CRUD/tabela/bucket ainda (Fase C2). */}
-        <section className="rounded-xl border border-dashed border-surface-container-highest bg-[#121212]/50 p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-headline text-headline-sm text-on-surface">Banners</h2>
-              <p className="mt-1 font-body text-body-sm text-on-surface-variant">
-                Carrossel de imagens no topo da loja.
-              </p>
-            </div>
-            <span className="shrink-0 rounded-full bg-surface-container-high px-3 py-1 font-label text-label-sm uppercase tracking-wide text-on-surface-variant">
-              Em breve
-            </span>
-          </div>
+        <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
+          <h2 className="mb-1 font-headline text-headline-sm text-on-surface">Banners</h2>
+          <p className="mb-4 border-b border-surface-container-highest pb-4 font-body text-body-sm text-on-surface-variant">
+            Carrossel de imagens no topo da loja — até 5 banners.
+          </p>
+          <BannerManager banners={staffBanners} canEdit={canEdit} />
         </section>
 
         {saveState.status === "error" ? (
@@ -260,7 +228,7 @@ export function AppearanceEditor({
         </div>
       </div>
 
-      <div className="xl:h-full">
+      <div className="min-w-0 xl:h-full">
         <LivePreviewFrame payload={previewPayload} publicStoreHref={`/loja/${tenant.slug}`} />
       </div>
     </div>

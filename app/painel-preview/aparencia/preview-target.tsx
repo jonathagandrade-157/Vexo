@@ -78,6 +78,7 @@ export function PreviewTarget() {
       >
         {/* eslint-disable-next-line react-hooks/static-components -- mesma justificativa de app/loja/[slug]/page.tsx: lookup estático de registry num Client Component sem estado, nunca recriado por render. */}
         <Home
+          banners={state.banners}
           categories={state.categories}
           products={state.products}
           promotions={state.promotions}

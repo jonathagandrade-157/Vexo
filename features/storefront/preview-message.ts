@@ -16,6 +16,7 @@ export interface AppearancePreviewMessage {
   categories: StorefrontHomeProps["categories"];
   products: StorefrontHomeProps["products"];
   promotions: StorefrontHomeProps["promotions"];
+  banners: StorefrontHomeProps["banners"];
 }
 
 export function isAppearancePreviewMessage(data: unknown): data is AppearancePreviewMessage {

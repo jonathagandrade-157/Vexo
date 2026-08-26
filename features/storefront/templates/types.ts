@@ -1,3 +1,4 @@
+import type { PublicBanner } from "@/features/storefront/banners";
 import type { PublicCategory, PublicProductSummary } from "@/features/storefront/catalog";
 import type { PublicTenant } from "@/features/storefront/resolve-tenant";
 
@@ -14,6 +15,8 @@ export interface StorefrontHomeProps {
   products: PublicProductSummary[];
   /** Sempre a lista completa de produtos em promoção da loja — nunca afetada pelo filtro de categoria/busca acima (ver `features/storefront/promotions.ts`). */
   promotions: PublicProductSummary[];
+  /** Sprint 1 — Fase C2. Só banners ativos, já ordenados (ver `features/storefront/banners.ts`) — sempre a lista completa, nunca filtrada. */
+  banners: PublicBanner[];
   activeCategorySlug?: string;
   searchQuery?: string;
 }

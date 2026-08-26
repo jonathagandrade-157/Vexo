@@ -15,7 +15,16 @@ const VIEWPORT = {
   mobile: { width: 390, height: 844 },
 } as const;
 
-const MOBILE_LEFT_MARGIN = 20;
+/**
+ * Sprint 1 — Fase B3/C2 — ajuste final do preview Mobile. Sem teto de
+ * escala para o dispositivo mobile — o antigo `Math.min(1, ...)` deixava
+ * o quadro sempre do tamanho físico real (390×844), então em qualquer
+ * painel maior que isso (praticamente sempre) sobrava uma moldura preta
+ * enorme ao redor. Um teto alto (nunca infinito, para não borrar/pixelar
+ * num monitor gigante) ainda deixa a escala crescer para preencher a
+ * área disponível de verdade.
+ */
+const MAX_MOBILE_SCALE = 3;
 
 /**
  * Sprint 1 — Fase B3 — ajuste final. Host do `<iframe>` que mostra a loja
@@ -29,13 +38,16 @@ const MOBILE_LEFT_MARGIN = 20;
  * pública, sem nenhum hack de CSS.
  *
  * O `<iframe>` sempre usa o viewport REAL (1280/390) — nunca `width:
- * 100%` (isso quebraria as media queries reais dos templates). Quando a
- * coluna do editor é mais estreita que o viewport, um wrapper externo
- * aplica `transform: scale()` (medido via `ResizeObserver`, nunca >1) só
- * visualmente; o iframe por dentro continua pensando que tem 1280/390px.
- * Desktop fica centralizado (`margin: 0 auto`); Mobile fica alinhado à
- * esquerda com uma margem pequena — mesma decisão de produto em ambos os
- * casos, não uma diferença técnica.
+ * 100%` (isso quebraria as media queries reais dos templates). Um
+ * wrapper externo aplica `transform: scale()` (medido via
+ * `ResizeObserver`) só visualmente; o iframe por dentro continua
+ * pensando que tem 1280×900 (Desktop) ou 390×844 (Mobile). Desktop nunca
+ * amplia além do tamanho real (`Math.min(1, ...)`, inalterado — o
+ * objetivo ali é só nunca cortar). Mobile É apresentado maior que
+ * 390×844 quando há espaço (`MAX_MOBILE_SCALE`), calculado a partir da
+ * largura E da altura disponíveis (a moldura mobile é estreita e alta;
+ * escalar só pela largura sem olhar a altura poderia gerar um quadro
+ * mais alto que o próprio painel). Os dois ficam centralizados.
  */
 export function LivePreviewFrame({ payload, publicStoreHref }: { payload: Omit<AppearancePreviewMessage, "type">; publicStoreHref: string }) {
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
@@ -51,15 +63,28 @@ export function LivePreviewFrame({ payload, publicStoreHref }: { payload: Omit<A
     if (!container) return;
 
     function recomputeScale() {
-      const available = container!.clientWidth;
-      setScale(Math.min(1, available / viewport.width));
+      const availableWidth = container!.clientWidth;
+      const availableHeight = container!.clientHeight;
+
+      if (device === "desktop") {
+        // Nunca amplia além do tamanho real — só evita que o quadro fique maior que a coluna.
+        setScale(Math.min(1, availableWidth / viewport.width));
+        return;
+      }
+
+      // Mobile: preenche o espaço disponível (largura E altura, o menor
+      // dos dois manda — mesma lógica de "object-fit: contain"), sem o
+      // teto de 1 — é isso que elimina a moldura preta desproporcional.
+      const scaleToFitWidth = availableWidth / viewport.width;
+      const scaleToFitHeight = availableHeight / viewport.height;
+      setScale(Math.min(scaleToFitWidth, scaleToFitHeight, MAX_MOBILE_SCALE));
     }
 
     recomputeScale();
     const observer = new ResizeObserver(recomputeScale);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [viewport.width]);
+  }, [device, viewport.width, viewport.height]);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -81,7 +106,7 @@ export function LivePreviewFrame({ payload, publicStoreHref }: { payload: Omit<A
   const footprintHeight = viewport.height * scale;
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-headline text-headline-sm text-on-surface">Pré-visualização</h2>
         <div className="flex items-center gap-3">
@@ -124,15 +149,15 @@ export function LivePreviewFrame({ payload, publicStoreHref }: { payload: Omit<A
       </div>
 
       <div
-        className="w-full flex-1 overflow-x-hidden overflow-y-auto rounded-xl border border-surface-container-highest bg-surface-container-lowest p-4"
+        className="w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-xl border border-surface-container-highest bg-surface-container-lowest p-4"
         ref={containerRef}
       >
         <div
           style={{
             width: footprintWidth,
             height: footprintHeight,
-            marginLeft: device === "mobile" ? MOBILE_LEFT_MARGIN : "auto",
-            marginRight: device === "mobile" ? undefined : "auto",
+            marginLeft: "auto",
+            marginRight: "auto",
             overflow: "hidden",
           }}
         >

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { StorefrontHeroCarousel } from "@/components/storefront/storefront-hero-carousel";
 import { StorefrontProductCard } from "@/components/storefront/storefront-product-card";
 import type { StorefrontHomeProps } from "@/features/storefront/templates/types";
 
@@ -8,12 +9,17 @@ import type { StorefrontHomeProps } from "@/features/storefront/templates/types"
  * energia streetwear — o único template já visualmente próximo do resto
  * do VEXO (que é dark por padrão), mas com identidade própria via
  * `--store-primary` em vez dos tokens `primary`/`primary-container` do app.
+ *
+ * Sprint 1 — Fase C2: mesmo princípio do Editorial — o gradiente escuro
+ * já existia e continua sempre presente; o carrossel só entra atrás dele
+ * quando há banners.
  */
-export function FashionHome({ tenant, categories, products, promotions, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
+export function FashionHome({ tenant, categories, products, promotions, banners, activeCategorySlug, searchQuery }: StorefrontHomeProps) {
   return (
     <div className="bg-neutral-950 text-white">
       <section className="relative flex min-h-[460px] flex-col items-center justify-center overflow-hidden px-margin-mobile py-24 text-center md:px-margin-desktop">
-        <div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/60 to-neutral-900" />
+        {banners.length > 0 ? <StorefrontHeroCarousel banners={banners} /> : null}
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-neutral-950 via-neutral-950/60 to-neutral-900" />
         <div className="relative z-10 flex max-w-2xl flex-col items-center gap-4">
           <h1 className="font-display text-4xl font-black uppercase tracking-tight md:text-6xl">{tenant.name}</h1>
           {tenant.description ? <p className="max-w-md font-body text-body-lg text-white/70">{tenant.description}</p> : null}
