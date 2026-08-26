@@ -47,6 +47,13 @@ export default async function ConfiguracoesPage() {
       <div className="flex flex-wrap gap-3">
         <Link
           className="flex w-fit items-center gap-2 rounded-lg border border-outline-variant/50 px-4 py-2.5 font-label text-label-md text-on-surface transition-colors hover:border-primary/50"
+          href="/painel/configuracoes/aparencia"
+        >
+          <span className="material-symbols-outlined text-[20px] text-primary">palette</span>
+          Aparência da loja
+        </Link>
+        <Link
+          className="flex w-fit items-center gap-2 rounded-lg border border-outline-variant/50 px-4 py-2.5 font-label text-label-md text-on-surface transition-colors hover:border-primary/50"
           href="/painel/configuracoes/pagamentos"
         >
           <span className="material-symbols-outlined text-[20px] text-primary">account_balance_wallet</span>
