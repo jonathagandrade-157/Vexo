@@ -43,12 +43,12 @@ export function StorefrontMobileNav({
 
       {open ? (
         <nav
-          className={`absolute inset-x-0 top-full flex flex-col gap-1 px-margin-mobile py-3 shadow-lg md:hidden ${panelClassName}`}
+          className={`absolute inset-x-0 top-full flex flex-col gap-2 px-margin-mobile py-3 shadow-lg md:hidden ${panelClassName}`}
           id={panelId}
         >
           {navItems.map((item) => (
             <Link
-              className={`rounded-md px-2 py-2 ${navLinkClassName}`}
+              className={`block w-full rounded-md px-6 py-3 text-left ${navLinkClassName}`}
               href={`${homeHref}${item.anchor}`}
               key={item.label}
               onClick={() => setOpen(false)}

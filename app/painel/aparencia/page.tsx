@@ -49,11 +49,30 @@ export default async function AparenciaPage() {
 
   return (
     <div className="mx-auto flex max-w-[1600px] flex-col gap-8">
-      <div>
-        <h1 className="font-headline text-headline-md text-on-surface">Aparência</h1>
-        <p className="mt-2 font-body text-body-sm text-on-surface-variant">
-          Personalize como sua loja é apresentada aos clientes e veja o resultado em tempo real.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-headline text-headline-md text-on-surface">Aparência</h1>
+          <p className="mt-2 font-body text-body-sm text-on-surface-variant">
+            Personalize como sua loja é apresentada aos clientes e veja o resultado em tempo real.
+          </p>
+        </div>
+        {/*
+          Sprint 1 — Fase B3 — ajuste final §5/§6. URL construída só a
+          partir do slug do tenant autenticado (nunca de entrada do
+          usuário) — sempre a mesma storefront pública real, nunca um
+          preview. `target="_blank"` + `rel="noopener noreferrer"`: a aba
+          nova nunca ganha acesso a `window.opener` do painel.
+        */}
+        <a
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary-container px-4 py-2.5 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6]"
+          href={`/loja/${tenant.slug}`}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <span className="material-symbols-outlined text-[20px]">visibility</span>
+          Ver loja pública
+          <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+        </a>
       </div>
 
       <AppearanceEditor

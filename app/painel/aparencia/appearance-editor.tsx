@@ -149,8 +149,8 @@ export function AppearanceEditor({
   );
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-      <div className="flex flex-col gap-6">
+    <div className="grid grid-cols-1 gap-6 xl:h-[calc(100vh-140px)] xl:grid-cols-[2fr_3fr]">
+      <div className="flex flex-col gap-6 xl:overflow-y-auto xl:pr-2">
         <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
           <h2 className="mb-4 border-b border-surface-container-highest pb-4 font-headline text-headline-sm text-on-surface">
             Identidade
@@ -260,8 +260,8 @@ export function AppearanceEditor({
         </div>
       </div>
 
-      <div className="xl:sticky xl:top-24 xl:self-start">
-        <LivePreviewFrame payload={previewPayload} />
+      <div className="xl:h-full">
+        <LivePreviewFrame payload={previewPayload} publicStoreHref={`/loja/${tenant.slug}`} />
       </div>
     </div>
   );
