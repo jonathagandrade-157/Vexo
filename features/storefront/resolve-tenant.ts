@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 
+import type { StorefrontTemplate } from "@/features/settings/appearance-schema";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 
 export interface PublicTenant {
@@ -21,6 +22,18 @@ export interface PublicTenant {
   instagram_handle: string | null;
   whatsapp_phone: string | null;
   contact_email: string | null;
+  /**
+   * Sprint 1 — Fase B2: lacuna encontrada na auditoria B1 corrigida aqui.
+   * Estas 4 colunas já existem em produção desde a Fase A
+   * (migration 20260817220075) mas a storefront pública nunca as lia —
+   * a personalização ficava presa no painel, sem efeito nenhum na loja
+   * real. `logo_url` continua sendo um PATH no bucket `tenant-media`
+   * (nunca a URL completa), mesmo padrão de `products.main_image`.
+   */
+  logo_url: string | null;
+  primary_color: string | null;
+  secondary_color: string | null;
+  storefront_template: StorefrontTemplate;
 }
 
 export type StorefrontResolution =
@@ -52,7 +65,7 @@ export const resolveStorefrontTenant = cache(
     const { data } = await supabase
       .from("tenants")
       .select(
-        "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at",
+        "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, logo_url, primary_color, secondary_color, storefront_template",
       )
       .eq("slug", slug)
       .maybeSingle();
@@ -74,6 +87,10 @@ export const resolveStorefrontTenant = cache(
         instagram_handle: data.instagram_handle as string | null,
         whatsapp_phone: data.whatsapp_phone as string | null,
         contact_email: data.contact_email as string | null,
+        logo_url: data.logo_url as string | null,
+        primary_color: data.primary_color as string | null,
+        secondary_color: data.secondary_color as string | null,
+        storefront_template: data.storefront_template as StorefrontTemplate,
       },
     };
   },

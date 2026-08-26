@@ -7,21 +7,10 @@ import { ColorInput } from "@/components/painel/color-input";
 import { updateStoreAppearanceAction } from "@/features/settings/appearance-actions";
 import { initialStoreAppearanceState, type StorefrontTemplate } from "@/features/settings/appearance-schema";
 import { getTenantMediaPublicUrl } from "@/features/settings/logo-storage";
+import { DEFAULT_STORE_PRIMARY_COLOR, DEFAULT_STORE_SECONDARY_COLOR } from "@/lib/color/store-theme";
 import { LogoUploader } from "./logo-uploader";
 import { StorePreview } from "./store-preview";
 import { TemplateSelector } from "./template-selector";
-
-/**
- * Cores padrão exibidas quando o tenant ainda não personalizou nada
- * (`primary_color`/`secondary_color` NULL) — mesmo gradiente já usado em
- * `components/ui/submit-button.tsx`, então uma loja sem personalização
- * continua visualmente coerente com o resto do VEXO até o lojista mudar.
- * Salvar sem alterar grava esses valores como escolha explícita — Fase A
- * não modela um terceiro estado "nunca configurado" além de NULL antes do
- * primeiro save.
- */
-const DEFAULT_PRIMARY_COLOR = "#7C3AED";
-const DEFAULT_SECONDARY_COLOR = "#3B82F6";
 
 function SaveButton({ canEdit }: { canEdit: boolean }) {
   const { pending } = useFormStatus();
@@ -57,8 +46,8 @@ export function AppearanceForm({
   const [state, formAction] = useActionState(updateStoreAppearanceAction, initialStoreAppearanceState);
 
   const [logoUrl, setLogoUrl] = useState<string | null>(initialLogoPath ? getTenantMediaPublicUrl(initialLogoPath) : null);
-  const [primaryColor, setPrimaryColor] = useState(initialPrimaryColor ?? DEFAULT_PRIMARY_COLOR);
-  const [secondaryColor, setSecondaryColor] = useState(initialSecondaryColor ?? DEFAULT_SECONDARY_COLOR);
+  const [primaryColor, setPrimaryColor] = useState(initialPrimaryColor ?? DEFAULT_STORE_PRIMARY_COLOR);
+  const [secondaryColor, setSecondaryColor] = useState(initialSecondaryColor ?? DEFAULT_STORE_SECONDARY_COLOR);
   const [template, setTemplate] = useState<StorefrontTemplate>(initialTemplate);
   const [suggestedPalette, setSuggestedPalette] = useState<string[]>([]);
 

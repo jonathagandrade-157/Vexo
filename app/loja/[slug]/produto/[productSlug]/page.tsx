@@ -84,7 +84,16 @@ export default async function StorefrontProductPage({ params }: PageProps) {
 
   if (!product) {
     return (
-      <StorefrontShell cartCount={cart.itemCount} footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
+      <StorefrontShell
+        cartCount={cart.itemCount}
+        footer={shellFooter}
+        logoUrl={tenant.logo_url}
+        primaryColor={tenant.primary_color}
+        secondaryColor={tenant.secondary_color}
+        storefrontTemplate={tenant.storefront_template}
+        storeName={tenant.name}
+        storeSlug={tenant.slug}
+      >
         <StorefrontEmptyState
           description="Este produto não existe ou não está mais disponível."
           icon="search_off"

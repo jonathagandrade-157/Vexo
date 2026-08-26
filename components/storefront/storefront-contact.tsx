@@ -1,14 +1,21 @@
 import { emailLink, instagramLink, whatsappLink } from "@/features/storefront/contact-links";
 
-/** Cada link só aparece se o campo correspondente (Etapa 4) estiver preenchido — nenhum é obrigatório. */
+/**
+ * Cada link só aparece se o campo correspondente (Etapa 4) estiver
+ * preenchido — nenhum é obrigatório. `linkClassName` (Sprint 1 Fase B2)
+ * existe para os 5 footers de template (fundos claro/escuro variados) —
+ * default mantém a cor original de antes da Fase B2.
+ */
 export function StorefrontContact({
   instagramHandle,
   whatsappPhone,
   contactEmail,
+  linkClassName = "text-on-surface-variant hover:text-primary",
 }: {
   instagramHandle: string | null;
   whatsappPhone: string | null;
   contactEmail: string | null;
+  linkClassName?: string;
 }) {
   const links: { href: string; icon: string; label: string }[] = [];
   if (instagramHandle) {
@@ -28,7 +35,7 @@ export function StorefrontContact({
       {links.map((link) => (
         <li key={link.href}>
           <a
-            className="flex items-center gap-2 font-body text-body-sm text-on-surface-variant transition-colors hover:text-primary"
+            className={`flex items-center gap-2 font-body text-body-sm transition-colors ${linkClassName}`}
             href={link.href}
             rel="noopener noreferrer"
             target="_blank"

@@ -85,7 +85,15 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
 
   if (!order) {
     return (
-      <StorefrontShell footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
+      <StorefrontShell
+        footer={shellFooter}
+        logoUrl={tenant.logo_url}
+        primaryColor={tenant.primary_color}
+        secondaryColor={tenant.secondary_color}
+        storefrontTemplate={tenant.storefront_template}
+        storeName={tenant.name}
+        storeSlug={tenant.slug}
+      >
         <StorefrontEmptyState
           description="Não foi possível encontrar este pedido."
           icon="search_off"

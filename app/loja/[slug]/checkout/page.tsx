@@ -56,7 +56,16 @@ export default async function CheckoutPage({ params }: PageProps) {
   // (prompt Etapa 11 §19).
   if (!gatewayConnected) {
     return (
-      <StorefrontShell cartCount={cart.itemCount} footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
+      <StorefrontShell
+        cartCount={cart.itemCount}
+        footer={shellFooter}
+        logoUrl={tenant.logo_url}
+        primaryColor={tenant.primary_color}
+        secondaryColor={tenant.secondary_color}
+        storefrontTemplate={tenant.storefront_template}
+        storeName={tenant.name}
+        storeSlug={tenant.slug}
+      >
         <StorefrontEmptyState
           action={
             <Link
@@ -79,7 +88,16 @@ export default async function CheckoutPage({ params }: PageProps) {
   // Checkout vazio é bloqueado (prompt §23.1) — nenhum item disponível, nada para finalizar.
   if (availableItems.length === 0) {
     return (
-      <StorefrontShell cartCount={cart.itemCount} footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
+      <StorefrontShell
+        cartCount={cart.itemCount}
+        footer={shellFooter}
+        logoUrl={tenant.logo_url}
+        primaryColor={tenant.primary_color}
+        secondaryColor={tenant.secondary_color}
+        storefrontTemplate={tenant.storefront_template}
+        storeName={tenant.name}
+        storeSlug={tenant.slug}
+      >
         <StorefrontEmptyState
           action={
             <Link

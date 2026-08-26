@@ -434,6 +434,32 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Catálogo — categorias e 
     expect(Object.keys(publicShapeQuery.rows[0]!)).not.toContain("tenant_id");
   });
 
+  // Sprint 1 — Fase B2 §15.4 — `getStorefrontPromotions` (features/storefront/promotions.ts)
+  // é só um filtro `promotional_price is not null` sobre o mesmo produto
+  // público de sempre, nunca uma tabela/coluna nova. Confirma que o filtro
+  // separa corretamente quem tem promoção de quem não tem, sem vazar
+  // produto inativo.
+  it("promotional_price correctly identifies which active products belong in the storefront promotions section", async () => {
+    const nonPromoProduct = await asActor(
+      { role: "authenticated", userId: fx.userAOwner },
+      (c) =>
+        c.query(
+          "insert into public.products (tenant_id, name, slug, price, promotional_price) values ($1, $2, $3, $4, null) returning id",
+          [fx.tenantA, "Produto Sem Promoção", `produto-sem-promocao-${runId}`, 89.9],
+        ),
+      { commit: true },
+    );
+
+    const promotional = await asActor({ role: "anon" }, (c) =>
+      c.query("select id, promotional_price from public.products where tenant_id = $1 and promotional_price is not null", [
+        fx.tenantA,
+      ]),
+    );
+    const promotionalIds = promotional.rows.map((r) => r.id as string);
+    expect(promotionalIds).toContain(readyProductId);
+    expect(promotionalIds).not.toContain(nonPromoProduct.rows[0]?.id);
+  });
+
   // 27 (reforço) — anon não acessa tabelas administrativas relacionadas ao catálogo.
   it("anon cannot write to categories/products at all (only the public SELECT policy exists for anon)", async () => {
     const err = await expectPgError(

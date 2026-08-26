@@ -16,7 +16,7 @@ import { buildFixtures, type Fixtures } from "./helpers/fixtures";
 const runId = randomUUID().slice(0, 8);
 
 const PUBLIC_COLUMNS =
-  "name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at";
+  "name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, logo_url, primary_color, secondary_color, storefront_template";
 
 async function findBySlug(slug: string) {
   return asActor({ role: "anon" }, (c) =>
@@ -63,6 +63,50 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Storefront público (Etapa 
     expect(tenant.whatsapp_phone).toBe("11999998888");
     expect(tenant.contact_email).toBe("contato@lojaa.com.br");
     expect(tenant.onboarding_completed_at).not.toBeNull();
+  });
+
+  // Sprint 1 — Fase B2 §15.1/§15.5/§15.6: a lacuna da auditoria B1 era
+  // exatamente esta — a leitura pública nunca expunha logo/cores/template.
+  // Uma loja sem nenhuma personalização (fixture padrão) precisa continuar
+  // resolvendo com os defaults seguros, nunca quebrando.
+  it("a tenant with no appearance customization exposes the safe defaults publicly (logo/colors null, template commerce)", async () => {
+    const res = await findBySlug(readyTenantSlug);
+    const tenant = res.rows[0]!;
+    expect(tenant.logo_url).toBeNull();
+    expect(tenant.primary_color).toBeNull();
+    expect(tenant.secondary_color).toBeNull();
+    expect(tenant.storefront_template).toBe("commerce");
+  });
+
+  // Sprint 1 — Fase B2 §15.1 — uma vez personalizada (mesmo UPDATE que
+  // updateStoreAppearanceAction/uploadStoreLogoAction fazem), a leitura
+  // pública passa a expor os valores reais.
+  it("a customized tenant exposes its real logo/colors/template publicly", async () => {
+    await withSuperuser((client) =>
+      client.query(
+        `update public.tenants
+         set logo_url = $1, primary_color = $2, secondary_color = $3, storefront_template = $4
+         where id = $5`,
+        [`${fx.tenantA}/logo/logo.png`, "#111111", "#222222", "fashion", fx.tenantA],
+      ),
+    );
+
+    const res = await findBySlug(readyTenantSlug);
+    const tenant = res.rows[0]!;
+    expect(tenant.logo_url).toBe(`${fx.tenantA}/logo/logo.png`);
+    expect(tenant.primary_color).toBe("#111111");
+    expect(tenant.secondary_color).toBe("#222222");
+    expect(tenant.storefront_template).toBe("fashion");
+
+    // Restaura para não afetar os demais testes deste arquivo, que assumem os defaults.
+    await withSuperuser((client) =>
+      client.query(
+        `update public.tenants
+         set logo_url = null, primary_color = null, secondary_color = null, storefront_template = 'commerce'
+         where id = $1`,
+        [fx.tenantA],
+      ),
+    );
   });
 
   // 3/9 — slug inexistente não retorna linha nenhuma (StorefrontNotFound trata isso).
@@ -153,10 +197,14 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Storefront público (Etapa 
         "contact_email",
         "description",
         "instagram_handle",
+        "logo_url",
         "name",
         "onboarding_completed_at",
+        "primary_color",
+        "secondary_color",
         "segment",
         "slug",
+        "storefront_template",
         "whatsapp_phone",
       ].sort(),
     );

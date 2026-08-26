@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 
-import { StorefrontBrand } from "@/components/storefront/storefront-brand";
-import { StorefrontCategoryFilter } from "@/components/storefront/storefront-category-filter";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
-import { StorefrontProductCard } from "@/components/storefront/storefront-product-card";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
 import { getStorefrontCategories, getStorefrontProducts } from "@/features/storefront/catalog";
+import { getStorefrontPromotions } from "@/features/storefront/promotions";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
+import { getStorefrontHomeComponent } from "@/features/storefront/templates/registry";
 import { getPublicEnv } from "@/lib/env";
 
 /**
@@ -86,11 +85,18 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
   }
 
   const { tenant } = resolution;
-  const [categories, products, cart] = await Promise.all([
+  const [categories, products, promotions, cart] = await Promise.all([
     getStorefrontCategories(tenant.id),
     getStorefrontProducts(tenant.id, categoria, q),
+    getStorefrontPromotions(tenant.id),
     getCart(tenant.slug),
   ]);
+
+  // Sprint 1 — Fase B2 §3: a Home nunca sabe QUAL template está ativo por
+  // um `if` espalhado pela página — o registry decide, esta página só
+  // resolve os dados (uma vez, iguais para os 5) e entrega para quem foi
+  // escolhido em `tenants.storefront_template`.
+  const StorefrontHome = getStorefrontHomeComponent(tenant.storefront_template);
 
   return (
     <StorefrontShell
@@ -101,35 +107,24 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
         whatsappPhone: tenant.whatsapp_phone,
         contactEmail: tenant.contact_email,
       }}
+      logoUrl={tenant.logo_url}
+      primaryColor={tenant.primary_color}
       searchQuery={q}
+      secondaryColor={tenant.secondary_color}
+      storefrontTemplate={tenant.storefront_template}
       storeName={tenant.name}
       storeSlug={tenant.slug}
     >
-      <StorefrontBrand description={tenant.description} name={tenant.name} segment={tenant.segment} />
-
-      <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile pb-20 md:px-margin-desktop">
-        <StorefrontCategoryFilter activeCategorySlug={categoria} categories={categories} storeSlug={tenant.slug} />
-
-        {products.length === 0 ? (
-          <StorefrontEmptyState
-            description={
-              q
-                ? `Nenhum produto encontrado para "${q}".`
-                : categoria
-                  ? "Nenhum produto ativo nesta categoria no momento."
-                  : "Em breve, novos produtos por aqui."
-            }
-            icon="shopping_bag"
-            title={q ? "Nenhum resultado" : categoria ? "Categoria vazia" : "Nenhum produto ainda"}
-          />
-        ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {products.map((product) => (
-              <StorefrontProductCard key={product.id} product={product} storeSlug={tenant.slug} />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Sem produtos/categorias: cada template já mostra seu próprio estado vazio, consistente com a própria cor/tipografia — nunca o StorefrontEmptyState genérico (tokens escuros do app), que quebraria visualmente os 4 templates de fundo claro. */}
+      {/* eslint-disable-next-line react-hooks/static-components -- falso positivo: Server Component sem hooks; `StorefrontHome` é sempre uma das 5 referências já existentes no mapa estático de registry.ts, nunca uma definição nova por render. */}
+      <StorefrontHome
+        activeCategorySlug={categoria}
+        categories={categories}
+        products={products}
+        promotions={promotions}
+        searchQuery={q}
+        tenant={tenant}
+      />
     </StorefrontShell>
   );
 }
