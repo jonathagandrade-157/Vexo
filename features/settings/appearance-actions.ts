@@ -94,7 +94,7 @@ export async function updateStoreAppearanceAction(
     return { status: "error", message: "Não foi possível salvar a aparência da loja. Tente novamente." };
   }
 
-  revalidatePath("/painel/configuracoes/aparencia");
+  revalidatePath("/painel/aparencia");
   return { status: "success", message: "Aparência salva." };
 }
 
@@ -155,7 +155,7 @@ export async function uploadStoreLogoAction(
     await supabase.storage.from(TENANT_MEDIA_BUCKET).remove([previousPath]);
   }
 
-  revalidatePath("/painel/configuracoes/aparencia");
+  revalidatePath("/painel/aparencia");
   return { status: "success", logoPath: newPath };
 }
 
@@ -187,6 +187,6 @@ export async function removeStoreLogoAction(): Promise<StoreLogoActionState> {
     return { status: "error", message: "Não foi possível remover a logo. Tente novamente." };
   }
 
-  revalidatePath("/painel/configuracoes/aparencia");
+  revalidatePath("/painel/aparencia");
   return { status: "success", logoPath: null };
 }

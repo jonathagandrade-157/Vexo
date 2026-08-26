@@ -25,6 +25,25 @@ const NAV_ITEMS: { label: string; anchor: string }[] = [
   { label: "Sobre", anchor: "#sobre" },
 ];
 
+/**
+ * Sprint 1 — Fase B3. `logoUrl` normalmente é um PATH no bucket
+ * `tenant-media` (`getTenantMediaPublicUrl` resolve a URL pública). O
+ * editor de Aparência (`/painel/aparencia`) reaproveita este mesmo
+ * componente dentro do preview ao vivo, e ali precisa mostrar uma logo
+ * recém-selecionada (ainda não enviada) via `URL.createObjectURL` — uma
+ * blob: URL já resolvida, não um path. Reconhecer esse caso evita
+ * `getTenantMediaPublicUrl` produzir uma URL inválida (bucket + blob:...
+ * concatenados); a storefront pública nunca passa um path começando com
+ * esses prefixos, então o comportamento real não muda.
+ */
+function isResolvedLogoUrl(value: string): boolean {
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("blob:") || value.startsWith("data:");
+}
+
+function resolveLogoSrc(logoUrl: string): string {
+  return isResolvedLogoUrl(logoUrl) ? logoUrl : getTenantMediaPublicUrl(logoUrl);
+}
+
 interface HeaderVariantStyle {
   wrapper: string;
   bar: string;
@@ -119,7 +138,7 @@ export function StorefrontHeader({
           {/* Fallback obrigatório (Sprint 1 Fase B2 §12): sem logo, o nome da loja em texto continua sendo a identidade — nunca um espaço em branco. */}
           {logoUrl ? (
             <span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full">
-              <Image alt={storeName} className="object-contain" fill sizes="32px" src={getTenantMediaPublicUrl(logoUrl)} />
+              <Image alt={storeName} className="object-contain" fill sizes="32px" src={resolveLogoSrc(logoUrl)} unoptimized={isResolvedLogoUrl(logoUrl)} />
             </span>
           ) : (
             storeName

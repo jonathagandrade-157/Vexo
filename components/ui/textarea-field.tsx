@@ -8,6 +8,7 @@ export function TextareaField({
   defaultValue,
   rows = 3,
   disabled,
+  onChange,
 }: {
   id: string;
   name: string;
@@ -17,6 +18,8 @@ export function TextareaField({
   defaultValue?: string;
   rows?: number;
   disabled?: boolean;
+  /** Opcional — mesmo padrão de `TextField` (Etapa 12): listener adicional para um Client Component reagir ao valor digitado sem tornar o campo controlado. */
+  onChange?: (value: string) => void;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -31,6 +34,7 @@ export function TextareaField({
         defaultValue={defaultValue}
         rows={rows}
         disabled={disabled}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
       />

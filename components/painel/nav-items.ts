@@ -28,16 +28,20 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/painel/produtos", label: "Produtos", icon: "inventory_2", implemented: true },
   { href: "/painel/clientes", label: "Clientes", icon: "group", implemented: false, featureKey: "customers" },
   { href: "/painel/marketing", label: "Marketing", icon: "campaign", implemented: false },
+  { href: "/painel/aparencia", label: "Aparência", icon: "palette", implemented: true },
   { href: "/painel/configuracoes", label: "Configurações", icon: "settings", implemented: true },
 ];
 
-/** Bottom nav do mobile — só os 4 itens que o Stitch mostra nessa largura (`vexo_dashboard_principal_mobile`), não a lista inteira do sidebar. */
-export const MOBILE_NAV_ITEMS: NavItem[] = [
-  MAIN_NAV_ITEMS[0]!,
-  MAIN_NAV_ITEMS[1]!,
-  MAIN_NAV_ITEMS[2]!,
-  MAIN_NAV_ITEMS[5]!,
-];
+/**
+ * Bottom nav do mobile — só os 4 itens que o Stitch mostra nessa largura
+ * (`vexo_dashboard_principal_mobile`), não a lista inteira do sidebar.
+ * Sprint 1 — Fase B3: referenciados por `href` (não por posição em
+ * `MAIN_NAV_ITEMS`) — a inserção de "Aparência" deslocou os índices, e um
+ * lookup por posição quebraria de novo na próxima reordenação.
+ */
+export const MOBILE_NAV_ITEMS: NavItem[] = ["/painel", "/painel/pedidos", "/painel/produtos", "/painel/configuracoes"].map(
+  (href) => MAIN_NAV_ITEMS.find((item) => item.href === href)!,
+);
 
 export const AI_SPARK_ITEM: NavItem = {
   href: "/painel/vexo-ai",
