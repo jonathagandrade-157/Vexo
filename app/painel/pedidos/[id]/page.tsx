@@ -8,6 +8,7 @@ import { OrderStatusBadge } from "@/components/painel/order-status-badge";
 import { OrderStatusForm } from "@/components/painel/order-status-form";
 import { PanelEmptyState } from "@/components/painel/panel-empty-state";
 import { PaymentStatusBadge } from "@/components/painel/payment-status-badge";
+import { getStoreAddress } from "@/features/checkout/store-address";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { getCustomerWhatsappLink } from "@/features/orders/customer-whatsapp-link";
 import { getOrderDetail } from "@/features/orders/data";
@@ -95,6 +96,11 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
   const showConfirmButton = order.payment_channel === "external" && order.payment_status === "EXTERNAL" && canConfirmPayment;
 
   const whatsappLink = getCustomerWhatsappLink(order.order_number, order.customer_name, order.customer_phone);
+
+  // D3.1 §10: modalidade snapshotada no pedido decide o que mostrar —
+  // nunca reconstruído a partir da configuração atual da loja.
+  const isPickupOrder = order.shipping_provider === "pickup";
+  const storeAddress = isPickupOrder ? await getStoreAddress(tenant.id) : null;
 
   return (
     <div className="mx-auto flex max-w-[960px] flex-col gap-8">
@@ -191,19 +197,38 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
                 <dt className="text-on-surface-variant">Modalidade de frete</dt>
                 <dd className="text-on-surface">
                   {order.shipping_method
-                    ? `${order.shipping_method}${order.shipping_estimated_days ? ` — até ${order.shipping_estimated_days} dia(s)` : ""}`
+                    ? `${isPickupOrder ? "Retirada na loja" : "Entrega"}: ${order.shipping_method}${order.shipping_estimated_days ? ` — até ${order.shipping_estimated_days} dia(s)` : ""}`
                     : "Não informada"}
                 </dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="text-on-surface-variant">Endereço de entrega</dt>
+                <dt className="text-on-surface-variant">{isPickupOrder ? "Endereço de retirada" : "Endereço de entrega"}</dt>
                 <dd className="text-on-surface">
-                  {order.shipping_address.street}, {order.shipping_address.number}
-                  {order.shipping_address.complement ? ` — ${order.shipping_address.complement}` : ""}
-                  <br />
-                  {order.shipping_address.neighborhood}, {order.shipping_address.city} - {order.shipping_address.state}
-                  <br />
-                  CEP {order.shipping_address.zip}
+                  {isPickupOrder ? (
+                    storeAddress ? (
+                      <>
+                        {storeAddress.street}, {storeAddress.number}
+                        {storeAddress.complement ? ` — ${storeAddress.complement}` : ""}
+                        <br />
+                        {storeAddress.neighborhood}, {storeAddress.city} - {storeAddress.state}
+                        <br />
+                        CEP {storeAddress.zip}
+                      </>
+                    ) : (
+                      "Endereço da loja não configurado."
+                    )
+                  ) : order.shipping_address ? (
+                    <>
+                      {order.shipping_address.street}, {order.shipping_address.number}
+                      {order.shipping_address.complement ? ` — ${order.shipping_address.complement}` : ""}
+                      <br />
+                      {order.shipping_address.neighborhood}, {order.shipping_address.city} - {order.shipping_address.state}
+                      <br />
+                      CEP {order.shipping_address.zip}
+                    </>
+                  ) : (
+                    "Não informado."
+                  )}
                 </dd>
               </div>
             </dl>

@@ -3,7 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { FeatureGate } from "@/components/painel/feature-gate";
+import { OwnDeliverySettingsForm } from "@/components/painel/own-delivery-settings-form";
 import { PanelEmptyState } from "@/components/painel/panel-empty-state";
+import { PickupSettingsForm } from "@/components/painel/pickup-settings-form";
 import { ShippingMethodFormDialog } from "@/components/painel/shipping-method-form-dialog";
 import { ShippingMethodRow, type ShippingMethodRowData } from "@/components/painel/shipping-method-row";
 import { ShippingSettingsForm } from "@/components/painel/shipping-settings-form";
@@ -38,14 +40,30 @@ export default async function EntregaPage() {
     p_permission_key: "settings.update",
   });
 
-  const [{ data: settingsRow }, { data: methodsData }] = await Promise.all([
+  const [{ data: settingsRow }, { data: methodsData }, { data: pickupRow }, { data: ownDeliveryRow }] = await Promise.all([
     supabase.from("shipping_settings").select("enabled, origin_zip").eq("tenant_id", tenant.id).maybeSingle(),
+    // D3.1: esta lista continua só `flat_rate` — pickup/own_delivery são
+    // configurações únicas por tenant, mostradas em seções próprias
+    // abaixo, nunca misturadas nesta lista/CRUD genérico.
     supabase
       .from("shipping_methods")
       .select("id, name, price, estimated_days, status, sort_order")
       .eq("tenant_id", tenant.id)
+      .eq("type", "flat_rate")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true }),
+    supabase
+      .from("shipping_methods")
+      .select("name, estimated_days, status")
+      .eq("tenant_id", tenant.id)
+      .eq("type", "pickup")
+      .maybeSingle(),
+    supabase
+      .from("shipping_methods")
+      .select("name, price, estimated_days, status")
+      .eq("tenant_id", tenant.id)
+      .eq("type", "own_delivery")
+      .maybeSingle(),
   ]);
 
   const methods: ShippingMethodRowData[] = (methodsData ?? []) as ShippingMethodRowData[];
@@ -69,9 +87,25 @@ export default async function EntregaPage() {
           originZip={settingsRow?.origin_zip ?? null}
         />
 
+        <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2">
+          <OwnDeliverySettingsForm
+            canManage={Boolean(canManage)}
+            initialActive={ownDeliveryRow?.status === "active"}
+            initialEstimatedDays={ownDeliveryRow?.estimated_days ?? null}
+            initialName={ownDeliveryRow?.name ?? "Entrega própria"}
+            initialPrice={ownDeliveryRow?.price ?? 0}
+          />
+          <PickupSettingsForm
+            canManage={Boolean(canManage)}
+            initialActive={pickupRow?.status === "active"}
+            initialEstimatedDays={pickupRow?.estimated_days ?? null}
+            initialName={pickupRow?.name ?? "Retirar na loja"}
+          />
+        </div>
+
         <div className="mt-8 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="font-headline text-headline-sm text-on-surface">Modalidades de entrega</h2>
+            <h2 className="font-headline text-headline-sm text-on-surface">Outras modalidades (preço fixo)</h2>
             {canManage ? (
               <ShippingMethodFormDialog
                 trigger={

@@ -25,6 +25,7 @@ export interface OrderConfirmation {
   /** Fase D2-B — só para requestedPaymentMethod='cash'. Quanto o cliente vai pagar (nunca o troco em si, sempre recalculado como cashChangeFor - total). null = sem troco ou não aplicável. */
   cashChangeFor: number | null;
   customerName: string;
+  /** D3.1: nulo quando a modalidade é retirada na loja (shippingProvider = 'pickup') — nunca o endereço da loja usado como se fosse do cliente. */
   shippingAddress: {
     zip: string;
     street: string;
@@ -33,7 +34,12 @@ export interface OrderConfirmation {
     neighborhood: string;
     city: string;
     state: string;
-  };
+  } | null;
+  /** D3.1: nome da modalidade aplicada ao pedido (snapshot, migration 048/086) — null se nenhum frete foi aplicado (loja sem entrega configurada). */
+  shippingMethod: string | null;
+  /** D3.1: tipo da modalidade aplicada (`flat_rate` | `own_delivery` | `pickup`) — usado para decidir "Retirar na loja" vs. "Entrega". */
+  shippingProvider: "flat_rate" | "own_delivery" | "pickup" | null;
+  shippingEstimatedDays: number | null;
   subtotal: number;
   shippingTotal: number;
   discountTotal: number;

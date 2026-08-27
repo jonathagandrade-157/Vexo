@@ -9,7 +9,7 @@ import { getStorePixSettings } from "@/features/checkout/pix-settings";
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
-import { friendlyCheckoutError } from "./schema";
+import { friendlyCheckoutError, isAddressComplete } from "./schema";
 import { whatsappCheckoutSchema, type CheckoutWhatsappActionState, type WhatsappCheckoutInput } from "./whatsapp-schema";
 
 function fieldErrorsFrom(
@@ -76,21 +76,7 @@ export async function createOrderForWhatsappAction(
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
   }
 
-  const {
-    zip,
-    street,
-    number,
-    complement,
-    neighborhood,
-    city,
-    state,
-    customerName,
-    customerEmail,
-    customerPhone,
-    shippingMethodId,
-    shippingPrice,
-    paymentPreference,
-  } = parsed.data;
+  const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, paymentPreference } = parsed.data;
 
   // "Se pagamento != cash: qualquer valor de troco enviado pelo navegador
   // deve ser ignorado" — nunca só validado/descartado por erro, IGNORADO
@@ -109,19 +95,35 @@ export async function createOrderForWhatsappAction(
 
   // Mesma regra de segurança de createOrderAction (Etapa 12): frete
   // obrigatório continua obrigatório também no caminho WhatsApp — o canal
-  // de pagamento muda, a exigência de entrega não.
+  // de pagamento muda, a exigência de entrega não. D3.1: também resolve a
+  // modalidade real (nunca a que o cliente enviou) — só ela decide se o
+  // endereço de entrega é obrigatório.
+  let isPickup = false;
   if (shippingMethodId === undefined || shippingPrice === undefined) {
     if (await isShippingRequired(resolution.tenant.id)) {
       return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
     }
   } else {
     const fresh = await verifyShippingPriceFresh(resolution.tenant.id, shippingMethodId, shippingPrice);
-    if (!fresh) {
+    if (!fresh.valid) {
       return {
         status: "error",
         message: "O valor do frete mudou. Atualize a página e selecione a opção de entrega novamente.",
       };
     }
+    isPickup = fresh.type === "pickup";
+  }
+
+  // D3.1 §7/§2: mesma regra de createOrderAction — retirada na loja não
+  // tem endereço de entrega do cliente, descartado por completo; as
+  // demais modalidades continuam exigindo o endereço.
+  let shippingAddress: Record<string, string | null> | null = null;
+  if (!isPickup) {
+    if (!isAddressComplete(parsed.data)) {
+      return { status: "error", message: "Informe o endereço de entrega completo." };
+    }
+    const { zip, street, number, complement, neighborhood, city, state } = parsed.data;
+    shippingAddress = { zip, street, number, complement: complement ?? null, neighborhood, city, state };
   }
 
   // Segurança do troco (prompt §11): o total usado na validação é sempre
@@ -145,7 +147,7 @@ export async function createOrderForWhatsappAction(
     p_customer_name: customerName,
     p_customer_email: customerEmail,
     p_customer_phone: customerPhone,
-    p_shipping_address: { zip, street, number, complement: complement ?? null, neighborhood, city, state },
+    p_shipping_address: shippingAddress,
     p_order_source: "whatsapp",
     p_payment_channel: "external",
     p_requested_payment_method: paymentPreference,

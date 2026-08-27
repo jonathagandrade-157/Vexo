@@ -26,12 +26,17 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
   let fx: Fixtures;
   let userAOperator: string;
 
-  async function insertOrder(tenantId: string, subtotal: number, status = "PENDING"): Promise<string> {
+  async function insertOrder(
+    tenantId: string,
+    subtotal: number,
+    status = "PENDING",
+    shippingAddress: typeof ADDRESS | null = ADDRESS,
+  ): Promise<string> {
     return withSuperuser(async (client) => {
       const { rows } = await client.query<{ id: string }>(
         `insert into public.orders (tenant_id, order_number, status, customer_name, customer_email, customer_phone, shipping_address, subtotal, total)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $8) returning id`,
-        [tenantId, `PED${runId}${Math.floor(Math.random() * 100000)}`, status, "Cliente Teste", "cliente@example.com", "11912345678", ADDRESS, subtotal],
+        [tenantId, `PED${runId}${Math.floor(Math.random() * 100000)}`, status, "Cliente Teste", "cliente@example.com", "11912345678", shippingAddress, subtotal],
       );
       return rows[0]!.id;
     });
@@ -39,18 +44,19 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
 
   async function insertMethod(
     tenantId: string,
-    opts: { name?: string; price?: number; status?: string; estimatedDays?: number | null } = {},
+    opts: { name?: string; price?: number; status?: string; estimatedDays?: number | null; type?: "flat_rate" | "own_delivery" | "pickup" } = {},
   ): Promise<string> {
     return withSuperuser(async (client) => {
       const { rows } = await client.query<{ id: string }>(
-        `insert into public.shipping_methods (tenant_id, name, price, status, estimated_days)
-         values ($1, $2, $3, $4, $5) returning id`,
+        `insert into public.shipping_methods (tenant_id, name, price, status, estimated_days, type)
+         values ($1, $2, $3, $4, $5, $6) returning id`,
         [
           tenantId,
           opts.name ?? `Padrão ${randomUUID().slice(0, 6)}`,
           opts.price ?? 15.5,
           opts.status ?? "active",
           opts.estimatedDays ?? 5,
+          opts.type ?? "flat_rate",
         ],
       );
       return rows[0]!.id;
@@ -71,10 +77,6 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
         [fx.tenantA, userAOperator, fx.roleIds.OPERATOR],
       );
     });
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   // RLS — só settings.update escreve shipping_settings; qualquer membro lê; outro tenant não vê nada.
@@ -298,4 +300,262 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
     expect(actions).toContain("SHIPPING_METHOD_UPDATED");
     expect(actions).toContain("SHIPPING_METHOD_DELETED");
   });
+});
+
+/**
+ * D3.1 — retirada na loja + entrega própria básica (migration
+ * 20260817220086). Mesmo padrão de fixtures/helpers do describe acima —
+ * foco só no que é novo: os dois tipos de modalidade, o endereço do
+ * pedido virando opcional, e a revalidação de apply_shipping_to_order
+ * ciente de pickup.
+ */
+describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja + entrega própria", () => {
+  let fx: Fixtures;
+
+  async function insertOrder(
+    tenantId: string,
+    subtotal: number,
+    status = "PENDING",
+    shippingAddress: typeof ADDRESS | null = ADDRESS,
+  ): Promise<string> {
+    return withSuperuser(async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.orders (tenant_id, order_number, status, customer_name, customer_email, customer_phone, shipping_address, subtotal, total)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $8) returning id`,
+        [tenantId, `PEDD31${runId}${Math.floor(Math.random() * 100000)}`, status, "Cliente Teste", "cliente@example.com", "11912345678", shippingAddress, subtotal],
+      );
+      return rows[0]!.id;
+    });
+  }
+
+  async function insertMethod(
+    tenantId: string,
+    opts: { name?: string; price?: number; status?: string; estimatedDays?: number | null; type?: "flat_rate" | "own_delivery" | "pickup" } = {},
+  ): Promise<string> {
+    return withSuperuser(async (client) => {
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.shipping_methods (tenant_id, name, price, status, estimated_days, type)
+         values ($1, $2, $3, $4, $5, $6) returning id`,
+        [
+          tenantId,
+          opts.name ?? `D31-${randomUUID().slice(0, 6)}`,
+          opts.price ?? 15.5,
+          opts.status ?? "active",
+          opts.estimatedDays ?? 5,
+          opts.type ?? "flat_rate",
+        ],
+      );
+      return rows[0]!.id;
+    });
+  }
+
+  // shipping_methods_tenant_singleton_type_idx (migration 086) allows only
+  // one pickup and one own_delivery row per tenant — most tests below need
+  // their own throwaway tenant so they don't collide with each other over
+  // the same singleton slot (fx.tenantA/tenantB are shared with the whole
+  // describe block, unlike asActor's default-rollback transactions).
+  async function createExtraTenant(label: string): Promise<string> {
+    return withSuperuser(async (client) => {
+      const tag = `${label}-${runId}-${randomUUID().slice(0, 6)}`;
+      const { rows: userRows } = await client.query<{ id: string }>(
+        "insert into auth.users (email) values ($1) returning id",
+        [`${tag}@fixtures.test`],
+      );
+      const { rows } = await client.query<{ id: string }>(
+        "insert into public.tenants (name, slug, created_by) values ($1, $2, $3) returning id",
+        [tag, tag, userRows[0]!.id],
+      );
+      return rows[0]!.id;
+    });
+  }
+
+  beforeAll(async () => {
+    fx = await buildFixtures();
+  });
+
+  // shipping_methods_type_check foi estendida (migration 086) para aceitar os dois novos tipos e continuar rejeitando qualquer outro.
+  it("shipping_methods.type accepts 'pickup' and 'own_delivery', and still rejects an unknown type", async () => {
+    const tenantId = await createExtraTenant("type-check");
+    await expect(insertMethod(tenantId, { type: "pickup", price: 0, name: `Pickup-${runId}` })).resolves.toBeTruthy();
+    await expect(insertMethod(tenantId, { type: "own_delivery", price: 9, name: `OwnDelivery-${runId}` })).resolves.toBeTruthy();
+
+    const err = await expectPgError(
+      withSuperuser((c) =>
+        c.query("insert into public.shipping_methods (tenant_id, name, price, type) values ($1, $2, 10, 'melhor_envio')", [
+          tenantId,
+          `Invalida-${runId}`,
+        ]),
+      ),
+    );
+    expect(err.message).toMatch(/shipping_methods_type_check|check constraint/i);
+  });
+
+  // Retirada na loja nunca tem preço — o preço final é sempre 0, garantido pelo banco, nunca só pela UI/Zod.
+  it("shipping_methods_pickup_price_zero_check rejects a pickup row with a non-zero price", async () => {
+    const tenantId = await createExtraTenant("price-zero");
+    const err = await expectPgError(
+      withSuperuser((c) =>
+        c.query("insert into public.shipping_methods (tenant_id, name, price, type) values ($1, $2, 10, 'pickup')", [
+          tenantId,
+          `PickupCaro-${runId}`,
+        ]),
+      ),
+    );
+    expect(err.message).toMatch(/shipping_methods_pickup_price_zero_check|check constraint/i);
+
+    await expect(insertMethod(tenantId, { type: "pickup", price: 0, name: `PickupGratis-${runId}` })).resolves.toBeTruthy();
+  });
+
+  // No máximo uma linha de pickup e uma de own_delivery por tenant; flat_rate continua sem essa restrição (regressão).
+  it("enforces at most one pickup and one own_delivery row per tenant, while flat_rate stays an unrestricted list", async () => {
+    const tenantId = await createExtraTenant("singleton");
+    await insertMethod(tenantId, { type: "pickup", price: 0, name: `Pickup2a-${runId}` });
+    const dupPickup = await expectPgError(insertMethod(tenantId, { type: "pickup", price: 0, name: `Pickup2b-${runId}` }));
+    expect(dupPickup.message).toMatch(/duplicate key|unique constraint/i);
+
+    await insertMethod(tenantId, { type: "own_delivery", price: 5, name: `OwnDelivery2a-${runId}` });
+    const dupOwnDelivery = await expectPgError(
+      insertMethod(tenantId, { type: "own_delivery", price: 7, name: `OwnDelivery2b-${runId}` }),
+    );
+    expect(dupOwnDelivery.message).toMatch(/duplicate key|unique constraint/i);
+
+    // flat_rate: duas linhas para o mesmo tenant continuam permitidas (regressão do modelo de lista livre).
+    await expect(insertMethod(tenantId, { type: "flat_rate", name: `Flat2a-${runId}` })).resolves.toBeTruthy();
+    await expect(insertMethod(tenantId, { type: "flat_rate", name: `Flat2b-${runId}` })).resolves.toBeTruthy();
+  });
+
+  // orders.shipping_address agora aceita nulo (retirada na loja) sem precisar tocar na constraint de chaves.
+  it("orders.shipping_address accepts null, and the key-completeness check still applies when it isn't null (regression)", async () => {
+    await expect(insertOrder(fx.tenantA, 50, "PENDING", null)).resolves.toBeTruthy();
+
+    const err = await expectPgError(
+      withSuperuser((c) =>
+        c.query(
+          `insert into public.orders (tenant_id, order_number, status, customer_name, customer_email, customer_phone, shipping_address, subtotal, total)
+           values ($1, $2, 'PENDING', $3, $4, $5, $6, 50, 50)`,
+          [fx.tenantA, `PEDINVALID${runId}`, "Cliente", "cliente@example.com", "11900000000", { zip: "01310100" }],
+        ),
+      ),
+    );
+    expect(err.message).toMatch(/orders_shipping_address_check|check constraint/i);
+  });
+
+  // Caminho feliz de pickup: endereço do cliente é zerado, nunca substituído pelo endereço da loja; modalidade/prazo ficam no snapshot.
+  it("apply_shipping_to_order applies pickup: nulls out shipping_address (never fabricating or reusing the store's), snapshots the modality", async () => {
+    const tenantId = await createExtraTenant("pickup-happy");
+    const pickupId = await insertMethod(tenantId, { type: "pickup", price: 0, estimatedDays: 1, name: `PickupFeliz-${runId}` });
+    const orderId = await insertOrder(tenantId, 80); // criado com endereço do cliente, como no fluxo real (create_order_from_cart roda antes)
+
+    await asActor(
+      { role: "anon" },
+      (c) => c.query("select apply_shipping_to_order($1, $2, $3, 0)", [tenantId, orderId, pickupId]),
+      { commit: true },
+    );
+
+    const order = await withSuperuser((c) =>
+      c.query(
+        "select shipping_address, shipping_total, shipping_method, shipping_provider, shipping_estimated_days, total from public.orders where id = $1",
+        [orderId],
+      ),
+    );
+    expect(order.rows[0]).toMatchObject({
+      shipping_address: null,
+      shipping_total: "0.00",
+      shipping_method: `PickupFeliz-${runId}`,
+      shipping_provider: "pickup",
+      shipping_estimated_days: 1,
+      total: "80.00",
+    });
+  });
+
+  // Caminho feliz de entrega própria: reaproveita o mesmo provedor/RPC de flat_rate, endereço do cliente é preservado.
+  it("apply_shipping_to_order applies own_delivery like flat_rate, keeping the customer's shipping_address untouched", async () => {
+    const tenantId = await createExtraTenant("own-delivery-happy");
+    const ownDeliveryId = await insertMethod(tenantId, { type: "own_delivery", price: 12, estimatedDays: 2, name: `OwnDeliveryFeliz-${runId}` });
+    const orderId = await insertOrder(tenantId, 80);
+
+    await asActor(
+      { role: "anon" },
+      (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [tenantId, orderId, ownDeliveryId]),
+      { commit: true },
+    );
+
+    const order = await withSuperuser((c) =>
+      c.query("select shipping_address, shipping_total, shipping_provider, total from public.orders where id = $1", [orderId]),
+    );
+    expect(order.rows[0]!.shipping_address).toEqual(ADDRESS);
+    expect(order.rows[0]).toMatchObject({ shipping_total: "12.00", shipping_provider: "own_delivery", total: "92.00" });
+  });
+
+  // Nunca inventa um endereço do cliente: aplicar uma modalidade que não é pickup a um pedido sem endereço é rejeitado, não silenciosamente aceito.
+  it("apply_shipping_to_order rejects a non-pickup method on an order that has no shipping_address", async () => {
+    const tenantId = await createExtraTenant("no-address");
+    const ownDeliveryId = await insertMethod(tenantId, { type: "own_delivery", price: 12, name: `OwnDeliverySemEndereco-${runId}` });
+    const orderId = await insertOrder(tenantId, 50, "PENDING", null);
+
+    const err = await expectPgError(
+      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [tenantId, orderId, ownDeliveryId])),
+    );
+    expect(err.message).toMatch(/order has no shipping address for this method/i);
+  });
+
+  // Isolamento multi-tenant, especificamente para os dois novos tipos (a regra genérica já existe acima para flat_rate).
+  it("tenant A cannot apply tenant B's pickup or own_delivery method to its own order", async () => {
+    const tenantOther = await createExtraTenant("cross-tenant");
+    const pickupB = await insertMethod(tenantOther, { type: "pickup", price: 0, name: `PickupB-${runId}` });
+    const ownDeliveryB = await insertMethod(tenantOther, { type: "own_delivery", price: 12, name: `OwnDeliveryB-${runId}` });
+    const orderA = await insertOrder(fx.tenantA, 50);
+
+    for (const [methodId, price] of [[pickupB, 0], [ownDeliveryB, 12]] as const) {
+      const err = await expectPgError(
+        asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, $4)", [fx.tenantA, orderA, methodId, price])),
+      );
+      expect(err.message).toMatch(/shipping method not available/i);
+    }
+  });
+
+  // Manipulação de preço: preço divergente também é rejeitado para os dois novos tipos (regra genérica, exercitada aqui de novo por exigência explícita do prompt).
+  it("apply_shipping_to_order rejects a manipulated price for pickup and own_delivery, same as flat_rate", async () => {
+    const tenantId = await createExtraTenant("price-manipulation");
+    const pickupId = await insertMethod(tenantId, { type: "pickup", price: 0, name: `PickupManipulado-${runId}` });
+    const ownDeliveryId = await insertMethod(tenantId, { type: "own_delivery", price: 15, name: `OwnDeliveryManipulado-${runId}` });
+    const orderId = await insertOrder(tenantId, 50);
+
+    const errPickup = await expectPgError(
+      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 5)", [tenantId, orderId, pickupId])),
+    );
+    expect(errPickup.message).toMatch(/shipping price has changed/i);
+
+    const errOwnDelivery = await expectPgError(
+      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 999)", [tenantId, orderId, ownDeliveryId])),
+    );
+    expect(errOwnDelivery.message).toMatch(/shipping price has changed/i);
+  });
+
+  // get_order_confirmation expõe a modalidade/prazo aplicados e nunca inventa um endereço quando é pickup.
+  it("get_order_confirmation exposes shippingMethod/shippingProvider/shippingEstimatedDays and a null shippingAddress for a pickup order", async () => {
+    const tenantId = await createExtraTenant("confirmation");
+    const pickupId = await insertMethod(tenantId, { type: "pickup", price: 0, estimatedDays: 1, name: `PickupConfirmacao-${runId}` });
+    const orderId = await insertOrder(tenantId, 40);
+
+    await asActor(
+      { role: "anon" },
+      (c) => c.query("select apply_shipping_to_order($1, $2, $3, 0)", [tenantId, orderId, pickupId]),
+      { commit: true },
+    );
+
+    const confirmation = await asActor({ role: "anon" }, (c) =>
+      c.query("select get_order_confirmation($1, $2) as confirmation", [tenantId, orderId]),
+    );
+    const data = confirmation.rows[0]!.confirmation;
+    expect(data.shippingAddress).toBeNull();
+    expect(data.shippingMethod).toBe(`PickupConfirmacao-${runId}`);
+    expect(data.shippingProvider).toBe("pickup");
+    expect(data.shippingEstimatedDays).toBe(1);
+  });
+});
+
+// Único fechamento do pool compartilhado do módulo — precisa rodar só depois dos dois describes acima, nunca entre eles.
+afterAll(async () => {
+  await pool.end();
 });

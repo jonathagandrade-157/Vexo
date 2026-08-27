@@ -175,6 +175,7 @@ export interface OrderDetail {
   customer_name: string;
   customer_email: string;
   customer_phone: string;
+  /** D3.1: nulo quando a modalidade é retirada na loja (shipping_provider = 'pickup') — nunca o endereço da loja usado como se fosse do cliente. */
   shipping_address: {
     zip: string;
     street: string;
@@ -183,13 +184,13 @@ export interface OrderDetail {
     neighborhood: string;
     city: string;
     state: string;
-  };
+  } | null;
   subtotal: number;
   discount_total: number;
   shipping_total: number;
   total: number;
   shipping_method: string | null;
-  shipping_provider: string | null;
+  shipping_provider: "flat_rate" | "own_delivery" | "pickup" | null;
   shipping_estimated_days: number | null;
   internal_note: string | null;
   created_at: string;

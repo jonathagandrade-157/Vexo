@@ -52,3 +52,52 @@ export interface ShippingMethodActionState {
 }
 
 export const initialShippingMethodState: ShippingMethodActionState = { status: "idle" };
+
+/**
+ * D3.1 §3/§8: retirada na loja é uma configuração única por tenant (não
+ * uma lista) — só nome + prazo/instrução + ativo. Preço não entra aqui:
+ * é sempre 0, garantido pelo banco
+ * (shipping_methods_pickup_price_zero_check), nunca um campo editável.
+ * `estimatedDays` dobra como "prazo/instrução" (prompt usa os dois termos
+ * de forma intercambiável para retirada — texto livre não existe na
+ * coluna `estimated_days`, que é inteiro; a instrução textual fica para
+ * uma etapa futura se for pedida, não inventada aqui).
+ */
+export const pickupSettingsSchema = z.object({
+  name: z.string().trim().min(1, "Informe o nome da opção de retirada").max(80),
+  estimatedDays: z.preprocess(emptyToUndefined, z.coerce.number().int().positive("Prazo inválido").optional()),
+  active: z.preprocess((v) => v === "on" || v === true, z.boolean()),
+});
+
+export type PickupSettingsInput = z.infer<typeof pickupSettingsSchema>;
+
+export interface PickupSettingsActionState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  fieldErrors?: Partial<Record<keyof PickupSettingsInput, string>>;
+}
+
+export const initialPickupSettingsState: PickupSettingsActionState = { status: "idle" };
+
+/**
+ * D3.1 §3/§8: entrega própria também é uma configuração única por tenant
+ * — nome + preço fixo + prazo + ativo. Mesma arquitetura de
+ * shippingMethodSchema (preço sempre revalidado no servidor), só que sem
+ * `sortOrder` (não há lista a ordenar, é uma linha só).
+ */
+export const ownDeliverySettingsSchema = z.object({
+  name: z.string().trim().min(1, "Informe o nome da entrega própria").max(80),
+  price: z.coerce.number().min(0, "O preço não pode ser negativo").max(99999.99, "Preço inválido"),
+  estimatedDays: z.preprocess(emptyToUndefined, z.coerce.number().int().positive("Prazo inválido").optional()),
+  active: z.preprocess((v) => v === "on" || v === true, z.boolean()),
+});
+
+export type OwnDeliverySettingsInput = z.infer<typeof ownDeliverySettingsSchema>;
+
+export interface OwnDeliverySettingsActionState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  fieldErrors?: Partial<Record<keyof OwnDeliverySettingsInput, string>>;
+}
+
+export const initialOwnDeliverySettingsState: OwnDeliverySettingsActionState = { status: "idle" };

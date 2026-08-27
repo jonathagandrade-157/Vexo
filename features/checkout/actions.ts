@@ -8,7 +8,7 @@ import { initiatePaymentForOrder, isPaymentGatewayConnected } from "@/features/p
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
-import { checkoutSchema, friendlyCheckoutError, type CheckoutActionState, type CheckoutInput } from "./schema";
+import { checkoutSchema, friendlyCheckoutError, isAddressComplete, type CheckoutActionState, type CheckoutInput } from "./schema";
 
 function fieldErrorsFrom(parsed: ReturnType<typeof checkoutSchema.safeParse>): CheckoutActionState["fieldErrors"] {
   if (parsed.success) return undefined;
@@ -70,20 +70,7 @@ export async function createOrderAction(
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
   }
 
-  const {
-    zip,
-    street,
-    number,
-    complement,
-    neighborhood,
-    city,
-    state,
-    customerName,
-    customerEmail,
-    customerPhone,
-    shippingMethodId,
-    shippingPrice,
-  } = parsed.data;
+  const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice } = parsed.data;
 
   // Se a loja exige frete (shipping_settings.enabled = true), a seleção
   // de modalidade é obrigatória — nunca opcional só porque o cliente
@@ -91,6 +78,7 @@ export async function createOrderAction(
   // os campos (achado da revisão de segurança: sem este bloqueio, era
   // possível finalizar com shipping_total = 0 numa loja com entrega
   // paga configurada, só não enviando shippingMethodId/shippingPrice).
+  let isPickup = false;
   if (shippingMethodId === undefined || shippingPrice === undefined) {
     if (await isShippingRequired(resolution.tenant.id)) {
       return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
@@ -99,14 +87,31 @@ export async function createOrderAction(
     // Revalida o frete ANTES de criar o pedido (prompt Etapa 12 §23:
     // nunca aplicar silenciosamente um valor diferente do que o cliente
     // viu) — se o preço já mudou, o pedido nem chega a ser criado,
-    // evitando um pedido "órfão" sem frete aplicável.
+    // evitando um pedido "órfão" sem frete aplicável. D3.1: também
+    // resolve a modalidade real (nunca a que o cliente enviou) — só ela
+    // decide se o endereço de entrega é obrigatório.
     const fresh = await verifyShippingPriceFresh(resolution.tenant.id, shippingMethodId, shippingPrice);
-    if (!fresh) {
+    if (!fresh.valid) {
       return {
         status: "error",
         message: "O valor do frete mudou. Atualize a página e selecione a opção de entrega novamente.",
       };
     }
+    isPickup = fresh.type === "pickup";
+  }
+
+  // D3.1 §7/§2: retirada na loja não tem endereço de entrega do cliente —
+  // os campos são descartados por completo (nunca "validados e ignorados
+  // depois"), nunca o endereço da loja é usado como se fosse do cliente.
+  // Para as demais modalidades, o endereço continua obrigatório, mesmo
+  // comportamento de antes do D3.1.
+  let shippingAddress: Record<string, string | null> | null = null;
+  if (!isPickup) {
+    if (!isAddressComplete(parsed.data)) {
+      return { status: "error", message: "Informe o endereço de entrega completo." };
+    }
+    const { zip, street, number, complement, neighborhood, city, state } = parsed.data;
+    shippingAddress = { zip, street, number, complement: complement ?? null, neighborhood, city, state };
   }
 
   const supabase = createSupabasePublicClient();
@@ -116,7 +121,7 @@ export async function createOrderAction(
     p_customer_name: customerName,
     p_customer_email: customerEmail,
     p_customer_phone: customerPhone,
-    p_shipping_address: { zip, street, number, complement: complement ?? null, neighborhood, city, state },
+    p_shipping_address: shippingAddress,
   });
 
   if (error || !orderId) {

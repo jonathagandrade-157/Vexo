@@ -8,6 +8,7 @@ import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
 import { effectivePrice, lineSubtotal } from "@/features/cart/pricing";
 import { getStorePixSettings } from "@/features/checkout/pix-settings";
+import { getStoreAddress } from "@/features/checkout/store-address";
 import { isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 
@@ -43,12 +44,17 @@ export default async function CheckoutPage({ params }: PageProps) {
   }
 
   const { tenant } = resolution;
-  const [cart, gatewayConnected, pixSettings] = await Promise.all([
+  const [cart, gatewayConnected, pixSettings, storeAddress] = await Promise.all([
     getCart(tenant.slug),
     isPaymentGatewayConnected(tenant.id),
     // Só buscado quando o caminho WhatsApp existe de verdade — uma loja
     // `vexo` nunca mostra PIX direto, então nem vale ler a configuração.
     tenant.checkout_mode === "vexo" ? Promise.resolve(null) : getStorePixSettings(tenant.id),
+    // D3.1: endereço da loja para exibir quando o cliente escolher
+    // retirada — sempre buscado, mesmo em lojas sem `pickup` configurado
+    // ainda (mesmo padrão de pixSettings: quem decide o que fazer com
+    // `null` é o CheckoutForm).
+    getStoreAddress(tenant.id),
   ]);
 
   const shellFooter = {
@@ -134,6 +140,7 @@ export default async function CheckoutPage({ params }: PageProps) {
           gatewayConnected={gatewayConnected}
           hasUnavailableItems={cart.items.length !== availableItems.length}
           pixSettings={pixSettings}
+          storeAddress={storeAddress}
           items={availableItems.map((item) => ({
             name: item.product.name,
             quantity: item.quantity,

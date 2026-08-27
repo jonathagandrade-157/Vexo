@@ -5,8 +5,14 @@ import { revalidatePath } from "next/cache";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
+  ownDeliverySettingsSchema,
+  pickupSettingsSchema,
   shippingMethodSchema,
   shippingSettingsSchema,
+  type OwnDeliverySettingsActionState,
+  type OwnDeliverySettingsInput,
+  type PickupSettingsActionState,
+  type PickupSettingsInput,
   type ShippingMethodActionState,
   type ShippingMethodInput,
   type ShippingSettingsActionState,
@@ -235,6 +241,116 @@ export async function deleteShippingMethodAction(methodId: string): Promise<Ship
 
   revalidatePath(SETTINGS_PATH);
   return { status: "success" };
+}
+
+/**
+ * D3.1 §3/§8: retirada na loja e entrega própria são uma linha única por
+ * tenant em `shipping_methods` (garantido por
+ * shipping_methods_tenant_singleton_type_idx, migration 086), não uma
+ * lista — por isso "atualiza se existe, cria se não existe" em vez do
+ * fluxo de criar/editar/excluir usado para `flat_rate`. `.upsert()` não é
+ * usado aqui porque o Supabase JS não permite escolher um índice parcial
+ * como `onConflict` — por isso UPDATE primeiro e, se nenhuma linha foi
+ * afetada, INSERT; o índice único no banco continua sendo a garantia
+ * final contra duas linhas do mesmo tipo (corrida entre duas requisições
+ * cairia no 23505, tratado abaixo).
+ */
+async function upsertSingletonShippingMethod(
+  tenantId: string,
+  type: "own_delivery" | "pickup",
+  values: { name: string; price: number; estimated_days: number | null; status: "active" | "inactive" },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const supabase = await createSupabaseServerClient();
+
+  const { error: updateError, count } = await supabase
+    .from("shipping_methods")
+    .update(values, { count: "exact" })
+    .eq("tenant_id", tenantId)
+    .eq("type", type);
+
+  if (updateError) {
+    return { ok: false, message: "Não foi possível salvar. Tente novamente." };
+  }
+  if (count && count > 0) {
+    return { ok: true };
+  }
+
+  const { error: insertError } = await supabase.from("shipping_methods").insert({ tenant_id: tenantId, type, ...values });
+  if (insertError) {
+    if (insertError.code === "23505") {
+      return { ok: false, message: "Já existe uma configuração salva. Recarregue a página e tente novamente." };
+    }
+    return { ok: false, message: "Não foi possível salvar. Tente novamente." };
+  }
+
+  return { ok: true };
+}
+
+export async function updatePickupSettingsAction(
+  _prevState: PickupSettingsActionState,
+  formData: FormData,
+): Promise<PickupSettingsActionState> {
+  const parsed = pickupSettingsSchema.safeParse({
+    name: formData.get("name"),
+    estimatedDays: formData.get("estimatedDays"),
+    active: formData.get("active"),
+  });
+  if (!parsed.success) {
+    const fieldErrors: PickupSettingsActionState["fieldErrors"] = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0] as keyof PickupSettingsInput;
+      fieldErrors[key] ??= issue.message;
+    }
+    return { status: "error", fieldErrors, message: "Verifique os campos destacados." };
+  }
+
+  const resolved = await resolveTenantAndPermission("settings.update");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const result = await upsertSingletonShippingMethod(resolved.tenantId, "pickup", {
+    name: parsed.data.name,
+    price: 0,
+    estimated_days: parsed.data.estimatedDays ?? null,
+    status: parsed.data.active ? "active" : "inactive",
+  });
+  if (!result.ok) return { status: "error", message: result.message };
+
+  revalidatePath(SETTINGS_PATH);
+  return { status: "success", message: "Retirada na loja salva." };
+}
+
+export async function updateOwnDeliverySettingsAction(
+  _prevState: OwnDeliverySettingsActionState,
+  formData: FormData,
+): Promise<OwnDeliverySettingsActionState> {
+  const parsed = ownDeliverySettingsSchema.safeParse({
+    name: formData.get("name"),
+    price: formData.get("price"),
+    estimatedDays: formData.get("estimatedDays"),
+    active: formData.get("active"),
+  });
+  if (!parsed.success) {
+    const fieldErrors: OwnDeliverySettingsActionState["fieldErrors"] = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0] as keyof OwnDeliverySettingsInput;
+      fieldErrors[key] ??= issue.message;
+    }
+    return { status: "error", fieldErrors, message: "Verifique os campos destacados." };
+  }
+
+  const resolved = await resolveTenantAndPermission("settings.update");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const result = await upsertSingletonShippingMethod(resolved.tenantId, "own_delivery", {
+    name: parsed.data.name,
+    price: parsed.data.price,
+    estimated_days: parsed.data.estimatedDays ?? null,
+    status: parsed.data.active ? "active" : "inactive",
+  });
+  if (!result.ok) return { status: "error", message: result.message };
+
+  revalidatePath(SETTINGS_PATH);
+  return { status: "success", message: "Entrega própria salva." };
 }
 
 export async function toggleShippingMethodStatusAction(

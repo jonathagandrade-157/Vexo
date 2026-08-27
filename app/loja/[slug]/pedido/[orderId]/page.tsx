@@ -8,6 +8,7 @@ import { StorefrontNotFound } from "@/components/storefront/storefront-not-found
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getOrderConfirmation } from "@/features/checkout/order-confirmation";
 import { getPixPaymentDetails } from "@/features/checkout/pix-payment";
+import { getStoreAddress } from "@/features/checkout/store-address";
 import { getWhatsappOrderLink } from "@/features/checkout/whatsapp-link";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import type { RequestedPaymentMethod } from "@/lib/whatsapp/message";
@@ -155,6 +156,13 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
   const pixPayment =
     isWhatsappOrder && order.requestedPaymentMethod === "pix" ? await getPixPaymentDetails(tenant.id, orderId) : null;
 
+  // D3.1 §10: modalidade snapshotada no pedido decide o que mostrar aqui
+  // — nunca a configuração atual da loja para pedidos antigos (a
+  // modalidade/preço/prazo já vieram congelados em shippingMethod/
+  // shippingProvider/shippingEstimatedDays via apply_shipping_to_order).
+  const isPickupOrder = order.shippingProvider === "pickup";
+  const storeAddress = isPickupOrder ? await getStoreAddress(tenant.id) : null;
+
   return (
     <StorefrontShell footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
       <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-margin-desktop">
@@ -232,16 +240,37 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
           <div className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 md:p-6">
             <h2 className="mb-3 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
               <span className="material-symbols-outlined text-primary">local_shipping</span>
-              Endereço de entrega
+              {isPickupOrder ? "Retirada na loja" : "Endereço de entrega"}
             </h2>
-            <p className="font-body text-body-sm text-on-surface-variant">
-              {order.shippingAddress.street}, {order.shippingAddress.number}
-              {order.shippingAddress.complement ? ` — ${order.shippingAddress.complement}` : ""}
-              <br />
-              {order.shippingAddress.neighborhood} — {order.shippingAddress.city}/{order.shippingAddress.state}
-              <br />
-              CEP {order.shippingAddress.zip.replace(/(\d{5})(\d{3})/, "$1-$2")}
-            </p>
+            {order.shippingMethod ? (
+              <p className="mb-2 font-body text-body-sm text-on-surface">
+                Modalidade: <strong>{order.shippingMethod}</strong>
+                {order.shippingEstimatedDays ? ` — até ${order.shippingEstimatedDays} dia(s) útil(eis)` : ""}
+              </p>
+            ) : null}
+            {isPickupOrder ? (
+              storeAddress ? (
+                <p className="font-body text-body-sm text-on-surface-variant">
+                  Endereço de retirada: {storeAddress.street}, {storeAddress.number}
+                  {storeAddress.complement ? ` — ${storeAddress.complement}` : ""}
+                  <br />
+                  {storeAddress.neighborhood} — {storeAddress.city}/{storeAddress.state}
+                  <br />
+                  CEP {storeAddress.zip.replace(/(\d{5})(\d{3})/, "$1-$2")}
+                </p>
+              ) : (
+                <p className="font-body text-body-sm text-on-surface-variant">Retire seu pedido diretamente na loja.</p>
+              )
+            ) : order.shippingAddress ? (
+              <p className="font-body text-body-sm text-on-surface-variant">
+                {order.shippingAddress.street}, {order.shippingAddress.number}
+                {order.shippingAddress.complement ? ` — ${order.shippingAddress.complement}` : ""}
+                <br />
+                {order.shippingAddress.neighborhood} — {order.shippingAddress.city}/{order.shippingAddress.state}
+                <br />
+                CEP {order.shippingAddress.zip.replace(/(\d{5})(\d{3})/, "$1-$2")}
+              </p>
+            ) : null}
           </div>
 
           <Link

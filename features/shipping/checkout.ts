@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSupabasePublicClient } from "@/lib/supabase/server";
+import type { ShippingMethodType } from "@/lib/shipping/provider";
 
 /**
  * Loja exige seleção de frete no checkout? (achado da revisão de
@@ -25,6 +26,8 @@ export async function isShippingRequired(tenantId: string): Promise<boolean> {
   return Boolean(data);
 }
 
+export type ShippingPriceCheck = { valid: true; type: ShippingMethodType } | { valid: false };
+
 /**
  * Pré-validação ANTES de criar o pedido (prompt §23: "se o valor tiver
  * mudado, não criar silenciosamente um pedido com valor diferente" —
@@ -34,23 +37,28 @@ export async function isShippingRequired(tenantId: string): Promise<boolean> {
  * `apply_shipping_to_order` (migration 048) — é uma segunda checagem,
  * antes, para evitar criar um pedido "órfão" (sem frete aplicável) quando
  * o preço já mudou.
+ *
+ * D3.1: também devolve o `type` real da modalidade (nunca o que o cliente
+ * enviou) — o Server Action usa isso para decidir se o endereço de entrega
+ * é obrigatório (retirada na loja não pede endereço do cliente).
  */
 export async function verifyShippingPriceFresh(
   tenantId: string,
   shippingMethodId: string,
   expectedPrice: number,
-): Promise<boolean> {
+): Promise<ShippingPriceCheck> {
   const supabase = createSupabasePublicClient();
   const { data } = await supabase
     .from("shipping_methods")
-    .select("price")
+    .select("price, type")
     .eq("id", shippingMethodId)
     .eq("tenant_id", tenantId)
     .eq("status", "active")
     .maybeSingle();
 
-  if (!data) return false;
-  return Math.abs(data.price - expectedPrice) <= 0.01;
+  if (!data) return { valid: false };
+  if (Math.abs(data.price - expectedPrice) > 0.01) return { valid: false };
+  return { valid: true, type: data.type as ShippingMethodType };
 }
 
 /**
@@ -81,6 +89,9 @@ export async function applyShippingToOrder(
     }
     if (error.message.includes("shipping method not available")) {
       return { ok: false, error: "Esta opção de entrega não está mais disponível. Selecione outra." };
+    }
+    if (error.message.includes("order has no shipping address for this method")) {
+      return { ok: false, error: "Esta opção de entrega exige um endereço. Volte e informe o endereço de entrega." };
     }
     return { ok: false, error: "Não foi possível aplicar o frete a este pedido. Tente novamente." };
   }

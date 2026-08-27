@@ -8,6 +8,7 @@ import { OrderSummary, type OrderSummaryLine } from "@/components/storefront/ord
 import { createOrderAction } from "@/features/checkout/actions";
 import { BRAZILIAN_STATES, initialCheckoutState } from "@/features/checkout/schema";
 import type { StorePixSettings } from "@/features/checkout/pix-settings";
+import type { StoreAddress } from "@/features/checkout/store-address";
 import { createOrderForWhatsappAction } from "@/features/checkout/whatsapp-actions";
 import { initialCheckoutWhatsappState } from "@/features/checkout/whatsapp-schema";
 import type { CheckoutMode } from "@/features/settings/checkout-schema";
@@ -23,6 +24,8 @@ interface ShippingOption {
   name: string;
   price: number;
   estimatedDays: number | null;
+  /** D3.1: `pickup` não representa uma entrega no endereço do cliente — decide o ícone e se o formulário de endereço é exigido. */
+  type: "flat_rate" | "own_delivery" | "pickup";
 }
 
 /** Espelha ShippingQuoteResult (lib/shipping/provider.ts) — o Route Handler devolve o mesmo shape em JSON. */
@@ -126,8 +129,12 @@ function ShippingSection({
               type="radio"
             />
             <span className="flex flex-col">
-              <span className="font-body text-body-sm text-on-surface">{option.name}</span>
-              {option.estimatedDays ? (
+              <span className="font-body text-body-sm text-on-surface">
+                {SHIPPING_TYPE_ICON[option.type]} {option.name}
+              </span>
+              {option.type === "pickup" ? (
+                <span className="font-body text-body-sm text-on-surface-variant">Retirada em: endereço da loja</span>
+              ) : option.estimatedDays ? (
                 <span className="font-body text-body-sm text-on-surface-variant">Até {option.estimatedDays} dia(s) útil(eis)</span>
               ) : null}
             </span>
@@ -138,6 +145,13 @@ function ShippingSection({
     </div>
   );
 }
+
+/** D3.1 §9: ícone por modalidade — 🚚 entrega (flat_rate/own_delivery, mesma aparência), 🏪 retirada na loja. */
+const SHIPPING_TYPE_ICON: Record<ShippingOption["type"], string> = {
+  flat_rate: "🚚",
+  own_delivery: "🚚",
+  pickup: "🏪",
+};
 
 function formatShippingPrice(price: number): string {
   return price === 0 ? "Grátis" : formatBRL(price);
@@ -381,6 +395,7 @@ export function CheckoutForm({
   checkoutMode,
   gatewayConnected,
   pixSettings,
+  storeAddress,
 }: {
   storeSlug: string;
   items: OrderSummaryLine[];
@@ -389,6 +404,7 @@ export function CheckoutForm({
   checkoutMode: CheckoutMode;
   gatewayConnected: boolean;
   pixSettings: StorePixSettings | null;
+  storeAddress: StoreAddress | null;
 }) {
   // Fase D2-B — o que a loja realmente oferece AGORA (nunca só
   // checkout_mode isolado: `both` sem Mercado Pago conectado só oferece
@@ -449,6 +465,7 @@ export function CheckoutForm({
       });
   }
 
+  const isPickupSelected = selectedOption?.type === "pickup";
   const shippingBlocksSubmit =
     quote.kind === "loading" ||
     (quote.kind === "loaded" &&
@@ -503,7 +520,7 @@ export function CheckoutForm({
         <section className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 md:p-6">
           <h2 className="mb-4 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
             <span className="material-symbols-outlined text-primary">local_shipping</span>
-            Endereço de entrega
+            {isPickupSelected ? "Endereço de retirada" : "Endereço de entrega"}
           </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField
@@ -515,64 +532,96 @@ export function CheckoutForm({
               name="zip"
               onChange={handleZipChange}
               placeholder="00000-000"
-            />
-            <TextField
-              autoComplete="address-line2"
-              error={activeState.fieldErrors?.number}
-              icon="tag"
-              id="number"
-              label="Número"
-              name="number"
-              placeholder="123"
-            />
-            <div className="sm:col-span-2">
-              <TextField
-                autoComplete="address-line1"
-                error={activeState.fieldErrors?.street}
-                icon="signpost"
-                id="street"
-                label="Endereço"
-                name="street"
-                placeholder="Rua, avenida…"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <TextField
-                error={activeState.fieldErrors?.complement}
-                icon="apartment"
-                id="complement"
-                label="Complemento (opcional)"
-                name="complement"
-                placeholder="Apto, bloco…"
-              />
-            </div>
-            <TextField
-              error={activeState.fieldErrors?.neighborhood}
-              icon="location_city"
-              id="neighborhood"
-              label="Bairro"
-              name="neighborhood"
-              placeholder="Bairro"
-            />
-            <TextField
-              autoComplete="address-level2"
-              error={activeState.fieldErrors?.city}
-              icon="location_city"
-              id="city"
-              label="Cidade"
-              name="city"
-              placeholder="Cidade"
-            />
-            <SelectField
-              defaultValue=""
-              error={activeState.fieldErrors?.state}
-              id="state"
-              label="Estado"
-              name="state"
-              options={STATE_OPTIONS}
-              placeholder="UF"
+              required={!isPickupSelected}
             />
           </div>
+
+          {/*
+            D3.1 §2/§7: retirada na loja não pede endereço do cliente — os
+            5 campos abaixo somem do DOM (não só ficam desabilitados),
+            então nada é enviado por engano; o endereço mostrado é sempre
+            o da loja (tenants.address_*), nunca digitado aqui. O CEP
+            continua visível: é só o gatilho da cotação de frete, nunca é
+            enviado como endereço do cliente quando a modalidade é pickup
+            (o Server Action descarta esse campo por completo nesse caso).
+          */}
+          {isPickupSelected ? (
+            <div className="mt-4 rounded-lg border border-outline-variant/40 bg-surface-container-lowest p-4">
+              {storeAddress ? (
+                <p className="font-body text-body-sm text-on-surface">
+                  {storeAddress.street}, {storeAddress.number}
+                  {storeAddress.complement ? ` — ${storeAddress.complement}` : ""}
+                  <br />
+                  {storeAddress.neighborhood} — {storeAddress.city}/{storeAddress.state}
+                  <br />
+                  CEP {storeAddress.zip.replace(/^(\d{5})(\d{3})$/, "$1-$2")}
+                </p>
+              ) : (
+                <p className="font-body text-body-sm text-error">
+                  Esta loja ainda não configurou o endereço de retirada. Escolha outra opção de entrega.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <TextField
+                autoComplete="address-line2"
+                error={activeState.fieldErrors?.number}
+                icon="tag"
+                id="number"
+                label="Número"
+                name="number"
+                placeholder="123"
+              />
+              <div className="sm:col-span-2">
+                <TextField
+                  autoComplete="address-line1"
+                  error={activeState.fieldErrors?.street}
+                  icon="signpost"
+                  id="street"
+                  label="Endereço"
+                  name="street"
+                  placeholder="Rua, avenida…"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <TextField
+                  error={activeState.fieldErrors?.complement}
+                  icon="apartment"
+                  id="complement"
+                  label="Complemento (opcional)"
+                  name="complement"
+                  placeholder="Apto, bloco…"
+                />
+              </div>
+              <TextField
+                error={activeState.fieldErrors?.neighborhood}
+                icon="location_city"
+                id="neighborhood"
+                label="Bairro"
+                name="neighborhood"
+                placeholder="Bairro"
+              />
+              <TextField
+                autoComplete="address-level2"
+                error={activeState.fieldErrors?.city}
+                icon="location_city"
+                id="city"
+                label="Cidade"
+                name="city"
+                placeholder="Cidade"
+              />
+              <SelectField
+                defaultValue=""
+                error={activeState.fieldErrors?.state}
+                id="state"
+                label="Estado"
+                name="state"
+                options={STATE_OPTIONS}
+                placeholder="UF"
+              />
+            </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 md:p-6">
