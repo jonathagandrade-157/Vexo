@@ -2,11 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { ConfirmExternalPaymentDialog } from "@/components/painel/confirm-external-payment-dialog";
+import { OrderOriginBadge } from "@/components/painel/order-origin-badge";
 import { OrderStatusBadge } from "@/components/painel/order-status-badge";
 import { OrderStatusForm } from "@/components/painel/order-status-form";
 import { PanelEmptyState } from "@/components/painel/panel-empty-state";
+import { PaymentStatusBadge } from "@/components/painel/payment-status-badge";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
+import { getCustomerWhatsappLink } from "@/features/orders/customer-whatsapp-link";
 import { getOrderDetail } from "@/features/orders/data";
+import {
+  getPaymentMethodLabel,
+  ORDER_SOURCE_LABELS,
+  REQUESTED_PAYMENT_METHOD_LABELS,
+  type PaymentStatus,
+} from "@/features/orders/schema";
 import { formatPrice } from "@/features/products/format-price";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -19,9 +29,24 @@ interface PageProps {
 const AUDIT_ACTION_LABELS: Record<string, string> = {
   ORDER_CREATED: "Pedido criado",
   ORDER_STATUS_CHANGED: "Status alterado",
+  ORDER_PAYMENT_CONFIRMED: "Pagamento confirmado",
 };
 
-/** `/painel/pedidos/[id]` (Etapa 13) — detalhe real, itens/frete/pagamento sempre a partir do snapshot já persistido (order_items, orders.shipping_*), nunca reconstruído a partir do catálogo atual. */
+/**
+ * Fase D2-B.3 — texto do bloco de pagamento, condicional ao método/canal.
+ * Nunca afirma "aprovado/confirmado" para um pagamento externo que ainda
+ * não foi confirmado manualmente pelo lojista — o pedido continua
+ * `payment_status='EXTERNAL'` até essa confirmação existir.
+ */
+function externalPaymentCopy(method: "pix" | "cash" | "card" | null, status: string): string | null {
+  if (status === "APPROVED") return "Pagamento confirmado.";
+  if (method === "pix") return "Pagamento externo — aguardando confirmação.";
+  if (method === "card") return "Pagamento informado pelo cliente — confirmação manual necessária.";
+  if (method === "cash") return "Pagamento em dinheiro — aguardando confirmação.";
+  return "Pagamento externo — aguardando confirmação.";
+}
+
+/** `/painel/pedidos/[id]` (Etapa 13, estendido na Fase D2-B.3) — detalhe real, itens/frete/pagamento sempre a partir do snapshot já persistido (order_items, orders.shipping_*), nunca reconstruído a partir do catálogo atual. */
 export default async function PedidoDetalhePage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
@@ -52,7 +77,7 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
   if (!order) notFound();
 
   let payment: { provider: string; status: string; method: string | null; paid_at: string | null } | null = null;
-  if (canViewPayment) {
+  if (canViewPayment && order.payment_channel === "gateway") {
     const { data } = await supabase
       .from("payments")
       .select("provider, status, method, paid_at")
@@ -61,6 +86,15 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
       .maybeSingle();
     payment = data;
   }
+
+  // Fase D2-B.3 §1 — decisão de produto: interseção orders.update E
+  // payments.view, nunca uma OU outra sozinha. O botão só aparece quando
+  // a confirmação ainda faz sentido (external + EXTERNAL) — a função no
+  // servidor (confirm_external_payment) reexige tudo isso de novo.
+  const canConfirmPayment = Boolean(canUpdate) && Boolean(canViewPayment);
+  const showConfirmButton = order.payment_channel === "external" && order.payment_status === "EXTERNAL" && canConfirmPayment;
+
+  const whatsappLink = getCustomerWhatsappLink(order.order_number, order.customer_name, order.customer_phone);
 
   return (
     <div className="mx-auto flex max-w-[960px] flex-col gap-8">
@@ -75,7 +109,10 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
               {new Date(order.created_at).toLocaleString("pt-BR")}
             </p>
           </div>
-          <OrderStatusBadge status={order.status} />
+          <div className="flex items-center gap-2">
+            <OrderOriginBadge source={order.order_source} />
+            <OrderStatusBadge status={order.status} />
+          </div>
         </div>
       </div>
 
@@ -122,6 +159,10 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
             <h2 className="mb-4 font-headline text-headline-sm text-on-surface">Cliente e entrega</h2>
             <dl className="grid grid-cols-1 gap-3 font-body text-body-sm sm:grid-cols-2">
               <div>
+                <dt className="text-on-surface-variant">Origem</dt>
+                <dd className="text-on-surface">{ORDER_SOURCE_LABELS[order.order_source]}</dd>
+              </div>
+              <div>
                 <dt className="text-on-surface-variant">Nome</dt>
                 <dd className="text-on-surface">{order.customer_name}</dd>
               </div>
@@ -131,7 +172,20 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
               </div>
               <div>
                 <dt className="text-on-surface-variant">Telefone</dt>
-                <dd className="text-on-surface">{order.customer_phone}</dd>
+                <dd className="flex flex-wrap items-center gap-2 text-on-surface">
+                  {order.customer_phone}
+                  {whatsappLink ? (
+                    <a
+                      className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/50 px-2.5 py-1 font-label text-label-sm text-on-surface transition-colors hover:border-primary/50"
+                      href={whatsappLink}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">chat</span>
+                      Conversar no WhatsApp
+                    </a>
+                  ) : null}
+                </dd>
               </div>
               <div>
                 <dt className="text-on-surface-variant">Modalidade de frete</dt>
@@ -173,6 +227,9 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
                     {entry.after && typeof entry.after.note === "string" ? (
                       <span className="font-body text-body-sm text-on-surface-variant">Nota: {entry.after.note}</span>
                     ) : null}
+                    {entry.reason ? (
+                      <span className="font-body text-body-sm text-on-surface-variant">Motivo: {entry.reason}</span>
+                    ) : null}
                   </li>
                 ))}
               </ol>
@@ -185,18 +242,64 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
             <h2 className="mb-4 font-headline text-headline-sm text-on-surface">Pagamento</h2>
             <dl className="flex flex-col gap-2 font-body text-body-sm">
               <div className="flex items-center justify-between">
-                <dt className="text-on-surface-variant">Status</dt>
-                <dd className="text-on-surface">{order.payment_status}</dd>
+                <dt className="text-on-surface-variant">Método</dt>
+                <dd className="text-on-surface">{getPaymentMethodLabel(order)}</dd>
               </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-on-surface-variant">Canal</dt>
+                <dd className="text-on-surface">{order.payment_channel === "gateway" ? "Gateway" : "Externo"}</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-on-surface-variant">Status</dt>
+                <dd>
+                  <PaymentStatusBadge status={order.payment_status as PaymentStatus} />
+                </dd>
+              </div>
+
+              {order.payment_channel === "external" ? (
+                <p className="mt-1 font-body text-body-sm text-on-surface-variant">
+                  {externalPaymentCopy(order.requested_payment_method, order.payment_status)}
+                </p>
+              ) : null}
+
+              {order.requested_payment_method === "cash" ? (
+                <div className="mt-2 flex flex-col gap-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-on-surface-variant">Total</span>
+                    <span className="text-on-surface">{formatPrice(order.total)}</span>
+                  </div>
+                  {order.cash_change_for !== null ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-on-surface-variant">Cliente paga</span>
+                        <span className="text-on-surface">{formatPrice(order.cash_change_for)}</span>
+                      </div>
+                      <div className="flex items-center justify-between font-label">
+                        <span className="text-on-surface-variant">Troco</span>
+                        <span className="text-on-surface">{formatPrice(order.cash_change_for - order.total)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-on-surface-variant">Sem troco — cliente paga o valor exato.</p>
+                  )}
+                </div>
+              ) : null}
+
+              {order.requested_payment_method === "card" && order.payment_channel === "external" ? (
+                <p className="mt-1 font-body text-body-sm text-on-surface-variant">
+                  Preferência informada: {REQUESTED_PAYMENT_METHOD_LABELS.card}. A VEXO não processa cartão neste fluxo.
+                </p>
+              ) : null}
+
               {payment ? (
                 <>
-                  <div className="flex items-center justify-between">
+                  <div className="mt-2 flex items-center justify-between border-t border-outline-variant/20 pt-2">
                     <dt className="text-on-surface-variant">Provedor</dt>
                     <dd className="text-on-surface">{payment.provider}</dd>
                   </div>
                   {payment.method ? (
                     <div className="flex items-center justify-between">
-                      <dt className="text-on-surface-variant">Método</dt>
+                      <dt className="text-on-surface-variant">Método (gateway)</dt>
                       <dd className="text-on-surface">{payment.method}</dd>
                     </div>
                   ) : null}
@@ -209,6 +312,12 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
                 </>
               ) : null}
             </dl>
+
+            {showConfirmButton ? (
+              <div className="mt-4">
+                <ConfirmExternalPaymentDialog orderId={order.id} />
+              </div>
+            ) : null}
           </section>
 
           {order.internal_note ? (

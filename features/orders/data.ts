@@ -1,7 +1,13 @@
 import "server-only";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { ORDER_STATUSES, type OrderStatus } from "./schema";
+import {
+  ORDER_STATUSES,
+  type OrderSource,
+  type OrderStatus,
+  type PaymentChannel,
+  type RequestedPaymentMethod,
+} from "./schema";
 
 const PAGE_SIZE = 20;
 
@@ -15,6 +21,10 @@ export interface OrderListRow {
   status: OrderStatus;
   payment_status: string;
   shipping_method: string | null;
+  order_source: OrderSource;
+  payment_channel: PaymentChannel;
+  requested_payment_method: RequestedPaymentMethod | null;
+  cash_change_for: number | null;
 }
 
 export interface OrderListResult {
@@ -42,10 +52,42 @@ function sanitizeSearchTerm(raw: string): string {
     .slice(0, 100);
 }
 
+/** Fase D2-B.3 — mesmo raciocínio: número/nome/e-mail já buscavam; telefone (auditoria §10: "Busca: ... Telefone") passa a entrar no mesmo `.or()`, mesma sanitização. */
 export interface ListOrdersOptions {
   search?: string;
   status?: string;
+  origin?: string;
+  payment?: string;
+  period?: string;
   page?: number;
+}
+
+const PERIOD_TO_DAYS: Record<string, number> = { today: 0, "7d": 7, "30d": 30 };
+
+/**
+ * Traduz o filtro de "Pagamento" (um único menu, do jeito que o lojista
+ * pensa) para os dois eixos reais já existentes no banco — nunca um
+ * valor novo é gravado, isto só molda a query de leitura.
+ */
+function applyPaymentFilter(
+  query: ReturnType<typeof buildBaseOrdersQuery>,
+  payment: string | undefined,
+): ReturnType<typeof buildBaseOrdersQuery> {
+  if (payment === "mercadopago") return query.eq("payment_channel", "gateway");
+  if (payment === "pix" || payment === "cash" || payment === "card") {
+    return query.eq("payment_channel", "external").eq("requested_payment_method", payment);
+  }
+  return query;
+}
+
+function buildBaseOrdersQuery(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, tenantId: string) {
+  return supabase
+    .from("orders")
+    .select(
+      "id, order_number, customer_name, customer_email, customer_phone, created_at, total, status, payment_status, shipping_method, order_source, payment_channel, requested_payment_method, cash_change_for",
+      { count: "exact" },
+    )
+    .eq("tenant_id", tenantId);
 }
 
 /** Sempre escopada ao tenant do chamador (defesa em profundidade — RLS de `orders.view`, Etapa 10, já escopa por si só). */
@@ -55,24 +97,40 @@ export async function listOrders(tenantId: string, opts: ListOrdersOptions): Pro
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let query = supabase
-    .from("orders")
-    .select("id, order_number, customer_name, customer_email, created_at, total, status, payment_status, shipping_method", {
-      count: "exact",
-    })
-    .eq("tenant_id", tenantId)
-    .order("created_at", { ascending: false })
-    .range(from, to);
+  let query = buildBaseOrdersQuery(supabase, tenantId).order("created_at", { ascending: false }).range(from, to);
 
-  if (opts.status && (ORDER_STATUSES as readonly string[]).includes(opts.status)) {
-    query = query.eq("status", opts.status);
+  // Aceita uma lista separada por vírgula (ex.: "PENDING,PAID") além de um
+  // único valor — usado pelas abas da lista (Fase D2-B.3 §11: "Novos"
+  // agrupa PENDING+PAID sem criar um status novo no banco). Continua
+  // 100% compatível com o filtro de status anterior (um único valor é só
+  // uma lista de tamanho 1).
+  if (opts.status) {
+    const statuses = opts.status.split(",").filter((s) => (ORDER_STATUSES as readonly string[]).includes(s));
+    if (statuses.length === 1) query = query.eq("status", statuses[0]);
+    else if (statuses.length > 1) query = query.in("status", statuses);
+  }
+
+  if (opts.origin === "vexo_checkout" || opts.origin === "whatsapp") {
+    query = query.eq("order_source", opts.origin);
+  }
+
+  query = applyPaymentFilter(query, opts.payment);
+
+  const periodDays = opts.period ? PERIOD_TO_DAYS[opts.period] : undefined;
+  if (periodDays !== undefined) {
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - periodDays);
+    query = query.gte("created_at", since.toISOString());
   }
 
   const search = opts.search?.trim();
   if (search) {
     const term = sanitizeSearchTerm(search);
     if (term.length > 0) {
-      query = query.or(`order_number.ilike.%${term}%,customer_name.ilike.%${term}%,customer_email.ilike.%${term}%`);
+      query = query.or(
+        `order_number.ilike.%${term}%,customer_name.ilike.%${term}%,customer_email.ilike.%${term}%,customer_phone.ilike.%${term}%`,
+      );
     }
   }
 
@@ -101,6 +159,7 @@ export interface OrderStatusHistoryEntry {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   actor_type: string;
+  reason: string | null;
   created_at: string;
 }
 
@@ -109,6 +168,10 @@ export interface OrderDetail {
   order_number: string;
   status: OrderStatus;
   payment_status: string;
+  order_source: OrderSource;
+  payment_channel: PaymentChannel;
+  requested_payment_method: RequestedPaymentMethod | null;
+  cash_change_for: number | null;
   customer_name: string;
   customer_email: string;
   customer_phone: string;
@@ -142,7 +205,7 @@ export async function getOrderDetail(tenantId: string, orderId: string): Promise
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, order_number, status, payment_status, customer_name, customer_email, customer_phone, shipping_address, subtotal, discount_total, shipping_total, total, shipping_method, shipping_provider, shipping_estimated_days, internal_note, created_at, updated_at",
+      "id, order_number, status, payment_status, order_source, payment_channel, requested_payment_method, cash_change_for, customer_name, customer_email, customer_phone, shipping_address, subtotal, discount_total, shipping_total, total, shipping_method, shipping_provider, shipping_estimated_days, internal_note, created_at, updated_at",
     )
     .eq("id", orderId)
     .eq("tenant_id", tenantId)
@@ -159,11 +222,11 @@ export async function getOrderDetail(tenantId: string, orderId: string): Promise
       .order("created_at", { ascending: true }),
     supabase
       .from("audit_logs")
-      .select("id, action, before, after, actor_type, created_at")
+      .select("id, action, before, after, actor_type, reason, created_at")
       .eq("tenant_id", tenantId)
       .eq("resource_type", "order")
       .eq("resource_id", orderId)
-      .in("action", ["ORDER_CREATED", "ORDER_STATUS_CHANGED"])
+      .in("action", ["ORDER_CREATED", "ORDER_STATUS_CHANGED", "ORDER_PAYMENT_CONFIRMED"])
       .order("created_at", { ascending: true }),
   ]);
 
