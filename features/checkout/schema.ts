@@ -1,10 +1,9 @@
 import { z } from "zod";
 
-/** Mesmos 27 estados reais do Brasil — dado de referência estático, não fictício (prompt §18: "sem dados fictícios"). */
-export const BRAZILIAN_STATES = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
-  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
-] as const;
+import { BRAZILIAN_STATES } from "@/lib/br/states";
+
+/** Fase D2-B.2 — movido para `lib/br/states.ts` (reaproveitado também pelo endereço da loja). Re-exportado aqui para não quebrar quem já importava daqui (components/storefront/checkout-form.tsx). */
+export { BRAZILIAN_STATES };
 
 const emptyToUndefined = (v: unknown) => (v === "" || v === null || v === undefined ? undefined : v);
 

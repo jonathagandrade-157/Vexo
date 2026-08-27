@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { StoreAddressForm } from "@/components/painel/store-address-form";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { getTenantCommercialContext, hasFeature } from "@/features/commercial/tenant-plan";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -29,9 +30,14 @@ export default async function ConfiguracoesPage() {
   if (!membership) redirect("/sem-loja");
   const { tenant } = membership;
 
-  const [{ data: canEdit }, commercialContext] = await Promise.all([
+  const [{ data: canEdit }, commercialContext, { data: addressRow }] = await Promise.all([
     supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "settings.update" }),
     getTenantCommercialContext(tenant.id),
+    supabase
+      .from("tenants")
+      .select("address_zip, address_street, address_number, address_complement, address_neighborhood, address_city, address_state")
+      .eq("id", tenant.id)
+      .maybeSingle(),
   ]);
   const hasShipping = hasFeature(commercialContext, "shipping");
 
@@ -81,6 +87,19 @@ export default async function ConfiguracoesPage() {
           description: tenant.description ?? "",
           instagram: tenant.instagram_handle ?? "",
           email: tenant.contact_email ?? "",
+        }}
+      />
+
+      <StoreAddressForm
+        canEdit={Boolean(canEdit)}
+        defaultValues={{
+          zip: addressRow?.address_zip ?? "",
+          street: addressRow?.address_street ?? "",
+          number: addressRow?.address_number ?? "",
+          complement: addressRow?.address_complement ?? "",
+          neighborhood: addressRow?.address_neighborhood ?? "",
+          city: addressRow?.address_city ?? "",
+          state: addressRow?.address_state ?? "",
         }}
       />
     </div>

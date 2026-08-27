@@ -28,15 +28,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("PIX direto em tenants (Fase
   });
 
   it("OWNER com settings.update consegue configurar e habilitar o PIX direto", async () => {
+    // Fase D2-B.2 — pix_enabled=true agora também exige address_city
+    // preenchida (tenants_pix_enabled_requires_key_check estendida na
+    // migration 084, ver tests/integration/tenant-store-address.test.ts).
     const result = await asActor(
       { role: "authenticated", userId: fx.userAOwner },
       (c) =>
         c.query(
           `update public.tenants
-           set pix_enabled = true, pix_key = $1, pix_key_type = $2, pix_recipient_name = $3
-           where id = $4
+           set pix_enabled = true, pix_key = $1, pix_key_type = $2, pix_recipient_name = $3, address_city = $4
+           where id = $5
            returning pix_enabled, pix_key, pix_key_type, pix_recipient_name`,
-          ["11999999999", "phone", "Loja Exemplo", fx.tenantA],
+          ["11999999999", "phone", "Loja Exemplo", "São Paulo", fx.tenantA],
         ),
       { commit: false },
     );
@@ -69,7 +72,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("PIX direto em tenants (Fase
   it("anon consegue ler pix_key/pix_recipient_name (necessário para exibir no checkout)", async () => {
     await withSuperuser((c) =>
       c.query(
-        "update public.tenants set pix_enabled = true, pix_key = '11999999999', pix_key_type = 'phone', pix_recipient_name = 'Loja Exemplo' where id = $1",
+        "update public.tenants set pix_enabled = true, pix_key = '11999999999', pix_key_type = 'phone', pix_recipient_name = 'Loja Exemplo', address_city = 'São Paulo' where id = $1",
         [fx.tenantA],
       ),
     );
@@ -77,7 +80,12 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("PIX direto em tenants (Fase
       c.query("select pix_key, pix_recipient_name from public.tenants where id = $1", [fx.tenantA]),
     );
     expect(result.rows[0]).toMatchObject({ pix_key: "11999999999", pix_recipient_name: "Loja Exemplo" });
-    await withSuperuser((c) => c.query("update public.tenants set pix_enabled = false, pix_key = null, pix_key_type = null, pix_recipient_name = null where id = $1", [fx.tenantA]));
+    await withSuperuser((c) =>
+      c.query(
+        "update public.tenants set pix_enabled = false, pix_key = null, pix_key_type = null, pix_recipient_name = null, address_city = null where id = $1",
+        [fx.tenantA],
+      ),
+    );
   });
 
   it("CHECK rejeita pix_key_type fora de cpf_cnpj/email/phone/random", async () => {

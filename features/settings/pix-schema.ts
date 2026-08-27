@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { PIX_KEY_TYPE_LABELS, PIX_KEY_TYPES, type PixKeyType } from "@/lib/pix/key-types";
 import { normalizeBrazilianPhone } from "@/lib/whatsapp/phone";
 
 /**
@@ -11,16 +12,12 @@ import { normalizeBrazilianPhone } from "@/lib/whatsapp/phone";
  * nem valida a chave junto de nenhum provedor — só guarda o que o
  * lojista digitou, com uma checagem de FORMATO (não de existência real)
  * por tipo, e sempre mostra o aviso de conferência antes de salvar.
+ *
+ * Fase D2-B.2 — `PIX_KEY_TYPES`/`PixKeyType`/`PIX_KEY_TYPE_LABELS` movidos
+ * para `lib/pix/key-types.ts` (reaproveitados também pelo gerador de BR
+ * Code); re-exportados aqui para não quebrar quem já importava daqui.
  */
-export const PIX_KEY_TYPES = ["cpf_cnpj", "email", "phone", "random"] as const;
-export type PixKeyType = (typeof PIX_KEY_TYPES)[number];
-
-export const PIX_KEY_TYPE_LABELS: Record<PixKeyType, string> = {
-  cpf_cnpj: "CPF/CNPJ",
-  email: "E-mail",
-  phone: "Telefone",
-  random: "Chave aleatória",
-};
+export { PIX_KEY_TYPE_LABELS, PIX_KEY_TYPES, type PixKeyType };
 
 const emptyToUndefined = (v: unknown) => (v === "" || v === null || v === undefined ? undefined : v);
 const RANDOM_KEY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

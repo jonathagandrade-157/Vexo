@@ -58,6 +58,27 @@ export async function updatePixSettingsAction(
   const { enabled, pixKeyType, pixKey, recipientName } = parsed.data;
 
   const supabase = await createSupabaseServerClient();
+
+  // Fase D2-B.2 — a cidade da loja (tenants.address_city) é obrigatória
+  // para o gerador de BR Code (fase futura) montar o campo Merchant City
+  // do payload PIX. Checado aqui só para devolver uma mensagem amigável
+  // em vez do erro bruto do Postgres — a constraint do banco
+  // (tenants_pix_enabled_requires_key_check, migration 084) continua
+  // sendo a autoridade final (defesa em profundidade).
+  if (enabled) {
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("address_city")
+      .eq("id", resolved.tenantId)
+      .maybeSingle();
+    if (!tenant?.address_city) {
+      return {
+        status: "error",
+        message: "Configure a cidade da loja em Configurações → Minha Loja antes de habilitar o PIX.",
+      };
+    }
+  }
+
   const { error } = await supabase
     .from("tenants")
     .update({

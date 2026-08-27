@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { OrderSummary } from "@/components/storefront/order-summary";
+import { PixPaymentPanel } from "@/components/storefront/pix-payment-panel";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getOrderConfirmation } from "@/features/checkout/order-confirmation";
+import { getPixPaymentDetails } from "@/features/checkout/pix-payment";
 import { getWhatsappOrderLink } from "@/features/checkout/whatsapp-link";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import type { RequestedPaymentMethod } from "@/lib/whatsapp/message";
@@ -147,6 +149,12 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
   const whatsappLink = isWhatsappOrder ? await getWhatsappOrderLink(tenant.id, orderId) : null;
   const paymentCopy = PAYMENT_STATUS_COPY[order.paymentStatus];
 
+  // Fase D2-B.2 — QR Code/Copia-e-Cola só fazem sentido para o caminho
+  // PIX externo; para outros métodos (dinheiro/cartão) ou o checkout
+  // pago (Mercado Pago), `getPixPaymentDetails` nem é chamada.
+  const pixPayment =
+    isWhatsappOrder && order.requestedPaymentMethod === "pix" ? await getPixPaymentDetails(tenant.id, orderId) : null;
+
   return (
     <StorefrontShell footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
       <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-margin-desktop">
@@ -197,6 +205,17 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         </div>
 
         <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-6">
+          {pixPayment ? (
+            <PixPaymentPanel
+              amount={pixPayment.amount}
+              copyPasteCode={pixPayment.copyPasteCode}
+              pixKey={pixPayment.pixKey}
+              pixKeyType={pixPayment.pixKeyType}
+              qrCodeSvg={pixPayment.qrCodeSvg}
+              recipientName={pixPayment.recipientName}
+            />
+          ) : null}
+
           <OrderSummary
             discountTotal={order.discountTotal}
             items={order.items.map((item) => ({
