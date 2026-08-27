@@ -43,6 +43,20 @@ export interface WhatsappOrderAddress {
   state: string;
 }
 
+/**
+ * D3.1 (correção) — `orders.shipping_address` pode ser `NULL` quando a
+ * modalidade é retirada na loja. Uma união discriminada (em vez de
+ * `shippingAddress: WhatsappOrderAddress | null` solto) obriga quem monta
+ * este objeto a decidir explicitamente qual dos dois casos está montando
+ * — nunca um "endereço nulo" ambíguo que só se sabe tratar por
+ * convenção. `storeAddress` pode ser `null` mesmo em pickup (loja ainda
+ * não configurou o próprio endereço em Configurações) — a mensagem nunca
+ * inventa um endereço, só omite a linha quando não há dado.
+ */
+export type WhatsappOrderDelivery =
+  | { kind: "address"; address: WhatsappOrderAddress }
+  | { kind: "pickup"; storeAddress: WhatsappOrderAddress | null };
+
 export interface WhatsappOrderData {
   orderNumber: string;
   customerName: string;
@@ -51,7 +65,7 @@ export interface WhatsappOrderData {
   subtotal: number;
   shippingTotal: number;
   total: number;
-  shippingAddress: WhatsappOrderAddress;
+  delivery: WhatsappOrderDelivery;
   requestedPaymentMethod: RequestedPaymentMethod;
   /**
    * Só relevante quando requestedPaymentMethod='cash'. `null` = cliente
@@ -88,6 +102,27 @@ function buildPaymentSection(order: WhatsappOrderData): string {
   return lines.join("\n");
 }
 
+function formatAddressLines(address: WhatsappOrderAddress): string {
+  return [
+    `${address.street}, ${address.number}${address.complement ? ` — ${address.complement}` : ""}`,
+    address.neighborhood,
+    `${address.city} - ${address.state}`,
+    `CEP ${address.zip.replace(/(\d{5})(\d{3})/, "$1-$2")}`,
+  ].join("\n");
+}
+
+/**
+ * D3.1 (correção) — retirada na loja nunca tem endereço do cliente; o
+ * bloco "🚚 ENTREGA" mostra "Retirada na loja" e, quando disponível, o
+ * endereço da loja (nunca inventado quando ausente).
+ */
+function formatDeliveryLines(delivery: WhatsappOrderDelivery): string {
+  if (delivery.kind === "pickup") {
+    return delivery.storeAddress ? `Retirada na loja\n${formatAddressLines(delivery.storeAddress)}` : "Retirada na loja";
+  }
+  return formatAddressLines(delivery.address);
+}
+
 /**
  * Função pura — recebe só dados já resolvidos no servidor
  * (`features/checkout/whatsapp-link.ts`, a partir de `orders`/
@@ -100,14 +135,7 @@ export function buildOrderWhatsappMessage(order: WhatsappOrderData): string {
     .map((item) => `${item.quantity}x ${item.productName} — ${formatBRL(item.subtotal)}`)
     .join("\n");
 
-  const addressLines = [
-    `${order.shippingAddress.street}, ${order.shippingAddress.number}${
-      order.shippingAddress.complement ? ` — ${order.shippingAddress.complement}` : ""
-    }`,
-    order.shippingAddress.neighborhood,
-    `${order.shippingAddress.city} - ${order.shippingAddress.state}`,
-    `CEP ${order.shippingAddress.zip.replace(/(\d{5})(\d{3})/, "$1-$2")}`,
-  ].join("\n");
+  const addressLines = formatDeliveryLines(order.delivery);
 
   return [
     "🛍️ NOVO PEDIDO — VEXO",

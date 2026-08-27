@@ -22,6 +22,18 @@ describe("normalizeBrazilianPhone", () => {
     expect(normalizeBrazilianPhone("(11) 99999-9999")).toBe("5511999999999");
   });
 
+  it("aceita o '+' do formato internacional (+55DDDNNNNNNNNN)", () => {
+    expect(normalizeBrazilianPhone("+5511912345678")).toBe("5511912345678");
+  });
+
+  it("normaliza todos os 4 formatos do checklist de auditoria para o mesmo resultado", () => {
+    const expected = "5511912345678";
+    expect(normalizeBrazilianPhone("(11) 91234-5678")).toBe(expected);
+    expect(normalizeBrazilianPhone("11912345678")).toBe(expected);
+    expect(normalizeBrazilianPhone("+5511912345678")).toBe(expected);
+    expect(normalizeBrazilianPhone("5511912345678")).toBe(expected);
+  });
+
   it("rejeita DDD inexistente", () => {
     expect(normalizeBrazilianPhone("00999999999")).toBeNull();
     expect(normalizeBrazilianPhone("10999999999")).toBeNull();
