@@ -13,6 +13,8 @@ export function SelectField({
   options,
   error,
   defaultValue,
+  value,
+  onChange,
   disabled,
 }: {
   id: string;
@@ -22,6 +24,9 @@ export function SelectField({
   options: readonly { value: string; label: string }[];
   error?: string;
   defaultValue?: string;
+  /** D3.2-A — mesmo raciocínio de TextField.value: opcional, só para autofill programático (UF do endereço pelo CEP no checkout). Exige `onChange` quando presente. */
+  value?: string;
+  onChange?: (value: string) => void;
   disabled?: boolean;
 }) {
   return (
@@ -34,7 +39,8 @@ export function SelectField({
           className="input-focus-glow w-full appearance-none rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface transition-all focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           id={id}
           name={name}
-          defaultValue={defaultValue ?? ""}
+          {...(value !== undefined ? { value } : { defaultValue: defaultValue ?? "" })}
+          onChange={onChange ? (e) => onChange(e.target.value) : undefined}
           disabled={disabled}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}

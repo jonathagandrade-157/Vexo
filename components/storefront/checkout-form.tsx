@@ -41,6 +41,19 @@ type ShippingQuoteState =
   | { kind: "error" }
   | { kind: "loaded"; result: ShippingQuoteResponse };
 
+/** D3.2-A — espelha a resposta de `/api/address/cep` (que só repassa `CepLookupResult` de lib/address/cep-lookup.ts). */
+type CepAutofillResponse =
+  | { status: "invalid_cep" }
+  | { status: "not_found" }
+  | { status: "ok"; street: string; neighborhood: string; city: string; state: string };
+
+/**
+ * D3.2-A — nunca bloqueia o checkout nem apaga o que o cliente já digitou:
+ * "error" só liga um aviso amigável, os campos continuam exatamente como
+ * estavam (edição manual sempre possível, em qualquer estado).
+ */
+type CepAutofillState = "idle" | "loading" | "error" | "done";
+
 function SubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
   const { pending } = useFormStatus();
   return (
@@ -431,9 +444,19 @@ export function CheckoutForm({
   const [selectedOption, setSelectedOption] = useState<ShippingOption | null>(null);
   const requestZipRef = useRef<string | null>(null);
 
+  // D3.2-A — autofill de endereço pelo CEP. Estado controlado só para
+  // estes 4 campos (os únicos preenchíveis automaticamente); o resto do
+  // formulário continua não controlado, como sempre. Nunca são limpos em
+  // caso de falha — só atualizados quando a consulta realmente encontra
+  // um endereço, preservando o que o cliente já tiver digitado.
+  const [addressAutofill, setAddressAutofill] = useState({ street: "", neighborhood: "", city: "", state: "" });
+  const [cepAutofillStatus, setCepAutofillStatus] = useState<CepAutofillState>("idle");
+  const autofillZipRef = useRef<string | null>(null);
+
   useEffect(() => {
     return () => {
       requestZipRef.current = null;
+      autofillZipRef.current = null;
     };
   }, []);
 
@@ -443,7 +466,9 @@ export function CheckoutForm({
 
     if (digits.length !== 8) {
       requestZipRef.current = null;
+      autofillZipRef.current = null;
       setQuote({ kind: "idle" });
+      setCepAutofillStatus("idle");
       return;
     }
 
@@ -462,6 +487,28 @@ export function CheckoutForm({
       .catch(() => {
         if (requestZipRef.current !== digits) return;
         setQuote({ kind: "error" });
+      });
+
+    // Independente da cotação de frete acima — uma falha aqui nunca deve
+    // afetar a seleção de modalidade, e vice-versa (D3.2-A: "sem
+    // regressão no sistema de frete atual").
+    autofillZipRef.current = digits;
+    setCepAutofillStatus("loading");
+
+    fetch(`/api/address/cep?cep=${digits}`)
+      .then((res) => res.json() as Promise<CepAutofillResponse>)
+      .then((result) => {
+        if (autofillZipRef.current !== digits) return;
+        if (result.status !== "ok") {
+          setCepAutofillStatus("error");
+          return;
+        }
+        setAddressAutofill({ street: result.street, neighborhood: result.neighborhood, city: result.city, state: result.state });
+        setCepAutofillStatus("done");
+      })
+      .catch(() => {
+        if (autofillZipRef.current !== digits) return;
+        setCepAutofillStatus("error");
       });
   }
 
@@ -537,6 +584,19 @@ export function CheckoutForm({
           </div>
 
           {/*
+            D3.2-A: nunca bloqueia o checkout — só um aviso amigável, sem
+            apagar nada que o cliente já tenha digitado. "loading" não tem
+            texto próprio (não vale a pena um "Buscando endereço…" para
+            uma consulta tipicamente instantânea, mesmo padrão de
+            silêncio já usado no autofill do CEP da loja em Configurações).
+          */}
+          {!isPickupSelected && cepAutofillStatus === "error" ? (
+            <p className="mt-2 font-body text-body-sm text-on-surface-variant">
+              Não conseguimos preencher o endereço automaticamente. Preencha os campos abaixo manualmente.
+            </p>
+          ) : null}
+
+          {/*
             D3.1 §2/§7: retirada na loja não pede endereço do cliente — os
             5 campos abaixo somem do DOM (não só ficam desabilitados),
             então nada é enviado por engano; o endereço mostrado é sempre
@@ -581,7 +641,9 @@ export function CheckoutForm({
                   id="street"
                   label="Endereço"
                   name="street"
+                  onChange={(v) => setAddressAutofill((prev) => ({ ...prev, street: v }))}
                   placeholder="Rua, avenida…"
+                  value={addressAutofill.street}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -600,7 +662,9 @@ export function CheckoutForm({
                 id="neighborhood"
                 label="Bairro"
                 name="neighborhood"
+                onChange={(v) => setAddressAutofill((prev) => ({ ...prev, neighborhood: v }))}
                 placeholder="Bairro"
+                value={addressAutofill.neighborhood}
               />
               <TextField
                 autoComplete="address-level2"
@@ -609,16 +673,19 @@ export function CheckoutForm({
                 id="city"
                 label="Cidade"
                 name="city"
+                onChange={(v) => setAddressAutofill((prev) => ({ ...prev, city: v }))}
                 placeholder="Cidade"
+                value={addressAutofill.city}
               />
               <SelectField
-                defaultValue=""
                 error={activeState.fieldErrors?.state}
                 id="state"
                 label="Estado"
                 name="state"
+                onChange={(v) => setAddressAutofill((prev) => ({ ...prev, state: v }))}
                 options={STATE_OPTIONS}
                 placeholder="UF"
+                value={addressAutofill.state}
               />
             </div>
           )}

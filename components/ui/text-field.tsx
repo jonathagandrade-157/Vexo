@@ -16,6 +16,7 @@ export function TextField({
   error,
   rightSlot,
   defaultValue,
+  value,
   disabled,
   onChange,
   required = true,
@@ -30,6 +31,15 @@ export function TextField({
   error?: string;
   rightSlot?: React.ReactNode;
   defaultValue?: string;
+  /**
+   * D3.2-A — opcional, só para o caso raro de um campo precisar ser
+   * preenchido programaticamente depois da montagem (autofill de
+   * endereço pelo CEP no checkout). Quando presente, o campo vira
+   * controlado (exige `onChange`); quando ausente (todo o resto do
+   * app), o campo continua exatamente como sempre foi — não controlado,
+   * via `defaultValue`.
+   */
+  value?: string;
   disabled?: boolean;
   /** Opcional — só quando um Client Component precisa reagir ao valor digitado (ex.: CEP disparando cotação de frete, Etapa 12). O campo continua não controlado (defaultValue), isto é só um listener adicional. */
   onChange?: (value: string) => void;
@@ -55,7 +65,7 @@ export function TextField({
           placeholder={placeholder}
           type={type}
           autoComplete={autoComplete}
-          defaultValue={defaultValue}
+          {...(value !== undefined ? { value } : { defaultValue })}
           disabled={disabled}
           onChange={onChange ? (e) => onChange(e.target.value) : undefined}
           aria-invalid={error ? true : undefined}
