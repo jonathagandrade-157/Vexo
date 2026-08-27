@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { CheckoutModeForm } from "@/components/painel/checkout-mode-form";
 import { PixSettingsForm } from "@/components/painel/pix-settings-form";
+import { WhatsappSettingsForm } from "@/components/painel/whatsapp-settings-form";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { isCheckoutMode, type CheckoutMode } from "@/features/settings/checkout-schema";
 import type { PixKeyType } from "@/features/settings/pix-schema";
@@ -21,6 +22,13 @@ export const metadata: Metadata = { title: "Pedidos — VEXO" };
  * resolve-tenant.ts`) — mesmo padrão já usado para os campos de Aparência
  * (`/painel/aparencia/page.tsx`), que também não entraram no conjunto de
  * colunas compartilhado usado por todo o painel.
+ *
+ * Fase D2-B.1 — `whatsapp_phone` já está em `TENANT_COLUMNS`
+ * (`OnboardingTenant`), então `tenant.whatsapp_phone` vem de
+ * `getCurrentMembership()` sem query extra. Esta é agora a ÚNICA tela
+ * onde a coluna é editada — saiu de "Minha Loja"
+ * (`store-profile-form.tsx`) para nunca haver dois formulários gravando
+ * a mesma coluna.
  */
 export default async function PedidosSettingsPage() {
   const supabase = await createSupabaseServerClient();
@@ -51,6 +59,8 @@ export default async function PedidosSettingsPage() {
       </div>
 
       <CheckoutModeForm canEdit={Boolean(canEdit)} currentMode={currentMode} />
+
+      <WhatsappSettingsForm canEdit={Boolean(canEdit)} initialWhatsappPhone={tenant.whatsapp_phone ?? ""} />
 
       <PixSettingsForm
         canEdit={Boolean(canEdit)}

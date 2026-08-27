@@ -80,7 +80,6 @@ export default async function ConfiguracoesPage() {
           segment: tenant.segment ?? "",
           description: tenant.description ?? "",
           instagram: tenant.instagram_handle ?? "",
-          whatsapp: tenant.whatsapp_phone ?? "",
           email: tenant.contact_email ?? "",
         }}
       />

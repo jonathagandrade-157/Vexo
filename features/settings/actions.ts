@@ -29,8 +29,9 @@ export const initialStoreProfileState: StoreProfileActionState = { status: "idle
  * o UPDATE de quem não tem `settings.update`.
  *
  * Não toca `onboarding_completed_at` — isso é exclusivo do fluxo de
- * conclusão do onboarding (Etapa 4); esta Action só atualiza os 6 campos
- * de perfil da loja.
+ * conclusão do onboarding (Etapa 4); esta Action só atualiza os campos
+ * de perfil da loja (Fase D2-B.1: `whatsapp_phone` saiu daqui, ver
+ * `features/settings/whatsapp-actions.ts`).
  */
 export async function updateStoreProfileAction(
   _prevState: StoreProfileActionState,
@@ -41,7 +42,6 @@ export async function updateStoreProfileAction(
     segment: formData.get("segment"),
     description: formData.get("description"),
     instagram: formData.get("instagram"),
-    whatsapp: formData.get("whatsapp"),
     email: formData.get("email"),
   });
 
@@ -76,7 +76,7 @@ export async function updateStoreProfileAction(
     };
   }
 
-  const { storeName, segment, description, instagram, whatsapp, email } = parsed.data;
+  const { storeName, segment, description, instagram, email } = parsed.data;
 
   const { error } = await supabase
     .from("tenants")
@@ -85,7 +85,6 @@ export async function updateStoreProfileAction(
       segment,
       description: description ?? null,
       instagram_handle: instagram,
-      whatsapp_phone: whatsapp,
       contact_email: email,
     })
     .eq("id", membership.tenant.id);

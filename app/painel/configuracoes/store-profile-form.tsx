@@ -15,7 +15,6 @@ interface DefaultValues {
   segment: string;
   description: string;
   instagram: string;
-  whatsapp: string;
   email: string;
 }
 
@@ -82,27 +81,15 @@ export function StoreProfileForm({
             label="Descrição da marca (opcional)"
             name="description"
           />
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <TextField
-              defaultValue={defaultValues.instagram}
-              disabled={!canEdit}
-              error={state.fieldErrors?.instagram}
-              icon="alternate_email"
-              id="instagram"
-              label="Instagram"
-              name="instagram"
-            />
-            <TextField
-              defaultValue={defaultValues.whatsapp}
-              disabled={!canEdit}
-              error={state.fieldErrors?.whatsapp}
-              icon="call"
-              id="whatsapp"
-              label="WhatsApp"
-              name="whatsapp"
-              type="tel"
-            />
-          </div>
+          <TextField
+            defaultValue={defaultValues.instagram}
+            disabled={!canEdit}
+            error={state.fieldErrors?.instagram}
+            icon="alternate_email"
+            id="instagram"
+            label="Instagram"
+            name="instagram"
+          />
           <TextField
             defaultValue={defaultValues.email}
             disabled={!canEdit}
