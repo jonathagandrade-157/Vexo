@@ -8,7 +8,7 @@ import { initiatePaymentForOrder, isPaymentGatewayConnected } from "@/features/p
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
-import { checkoutSchema, type CheckoutActionState, type CheckoutInput } from "./schema";
+import { checkoutSchema, friendlyCheckoutError, type CheckoutActionState, type CheckoutInput } from "./schema";
 
 function fieldErrorsFrom(parsed: ReturnType<typeof checkoutSchema.safeParse>): CheckoutActionState["fieldErrors"] {
   if (parsed.success) return undefined;
@@ -18,21 +18,6 @@ function fieldErrorsFrom(parsed: ReturnType<typeof checkoutSchema.safeParse>): C
     fieldErrors[key] ??= issue.message;
   }
   return fieldErrors;
-}
-
-/** Mensagens amigáveis para os erros conhecidos que a RPC pode levantar — nunca expõe o texto bruto do erro Postgres ao visitante. */
-function friendlyCheckoutError(message: string): string {
-  if (message.includes("cart not found") || message.includes("cart is empty")) {
-    return "Seu carrinho está vazio ou não foi encontrado. Volte para a loja e adicione produtos novamente.";
-  }
-  if (message.includes("store is not available")) {
-    return "Esta loja não está disponível no momento.";
-  }
-  const inactiveProduct = /^product (.+) is no longer available$/.exec(message);
-  if (inactiveProduct) {
-    return `O produto "${inactiveProduct[1]}" não está mais disponível. Volte ao carrinho para removê-lo e tente novamente.`;
-  }
-  return "Não foi possível finalizar o pedido. Tente novamente.";
 }
 
 export async function createOrderAction(
@@ -61,6 +46,16 @@ export async function createOrderAction(
   const resolution = await resolveStorefrontTenant(storeSlug);
   if (resolution.status !== "ready") {
     return { status: "error", message: "Esta loja não está disponível no momento." };
+  }
+
+  // Fase D2-B — defesa em profundidade independente da checagem de
+  // gateway abaixo: uma loja `checkout_mode = 'whatsapp'` nunca deve
+  // aceitar o caminho de pagamento online por esta Action, mesmo que o
+  // Mercado Pago esteja conectado (ex.: loja que conectou antes de trocar
+  // para "só WhatsApp") — a decisão é sempre do servidor, nunca da UI que
+  // o cliente carregou.
+  if (resolution.tenant.checkout_mode === "whatsapp") {
+    return { status: "error", message: "Esta loja recebe pedidos apenas pelo WhatsApp." };
   }
 
   // Defesa em profundidade — a página de checkout já bloqueia o

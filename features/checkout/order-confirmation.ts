@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 
+import type { RequestedPaymentMethod } from "@/lib/whatsapp/message";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 
 export interface OrderConfirmationItem {
@@ -15,8 +16,14 @@ export interface OrderConfirmationItem {
 export interface OrderConfirmation {
   orderNumber: string;
   status: string;
-  /** Nunca assumir pago só porque o cliente voltou para esta página (prompt Etapa 11 §9/§18) — sempre o status real, lido do banco. */
-  paymentStatus: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "REFUNDED";
+  /** Nunca assumir pago só porque o cliente voltou para esta página (prompt Etapa 11 §9/§18) — sempre o status real, lido do banco. EXTERNAL (Fase D2-B) é terminal, exclusivo de pedidos orderSource='whatsapp'. */
+  paymentStatus: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "REFUNDED" | "EXTERNAL";
+  /** Fase D2-B — por qual fluxo este pedido foi criado. Nunca 'both': isso é uma configuração da loja (tenants.checkout_mode), não um fato do pedido. */
+  orderSource: "vexo_checkout" | "whatsapp";
+  /** Fase D2-B — preferência informativa do fluxo WhatsApp, nunca processada pela VEXO. null para pedidos orderSource='vexo_checkout'. */
+  requestedPaymentMethod: RequestedPaymentMethod | null;
+  /** Fase D2-B — só para requestedPaymentMethod='cash'. Quanto o cliente vai pagar (nunca o troco em si, sempre recalculado como cashChangeFor - total). null = sem troco ou não aplicável. */
+  cashChangeFor: number | null;
   customerName: string;
   shippingAddress: {
     zip: string;

@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 
 import type { StorefrontTemplate } from "@/features/settings/appearance-schema";
+import { isCheckoutMode, type CheckoutMode } from "@/features/settings/checkout-schema";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 
 export interface PublicTenant {
@@ -34,6 +35,8 @@ export interface PublicTenant {
   primary_color: string | null;
   secondary_color: string | null;
   storefront_template: StorefrontTemplate;
+  /** Fase D2-B — como a loja recebe pedidos (tenants.checkout_mode, Fase D1). Nunca lido do formulário/cliente, sempre desta resolução. */
+  checkout_mode: CheckoutMode;
 }
 
 export type StorefrontResolution =
@@ -65,7 +68,7 @@ export const resolveStorefrontTenant = cache(
     const { data } = await supabase
       .from("tenants")
       .select(
-        "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, logo_url, primary_color, secondary_color, storefront_template",
+        "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, logo_url, primary_color, secondary_color, storefront_template, checkout_mode",
       )
       .eq("slug", slug)
       .maybeSingle();
@@ -91,6 +94,7 @@ export const resolveStorefrontTenant = cache(
         primary_color: data.primary_color as string | null,
         secondary_color: data.secondary_color as string | null,
         storefront_template: data.storefront_template as StorefrontTemplate,
+        checkout_mode: isCheckoutMode(data.checkout_mode) ? data.checkout_mode : "vexo",
       },
     };
   },

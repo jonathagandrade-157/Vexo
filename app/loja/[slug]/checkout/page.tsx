@@ -7,6 +7,7 @@ import { StorefrontNotFound } from "@/components/storefront/storefront-not-found
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
 import { effectivePrice, lineSubtotal } from "@/features/cart/pricing";
+import { getStorePixSettings } from "@/features/checkout/pix-settings";
 import { isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 
@@ -42,7 +43,13 @@ export default async function CheckoutPage({ params }: PageProps) {
   }
 
   const { tenant } = resolution;
-  const [cart, gatewayConnected] = await Promise.all([getCart(tenant.slug), isPaymentGatewayConnected(tenant.id)]);
+  const [cart, gatewayConnected, pixSettings] = await Promise.all([
+    getCart(tenant.slug),
+    isPaymentGatewayConnected(tenant.id),
+    // Só buscado quando o caminho WhatsApp existe de verdade — uma loja
+    // `vexo` nunca mostra PIX direto, então nem vale ler a configuração.
+    tenant.checkout_mode === "vexo" ? Promise.resolve(null) : getStorePixSettings(tenant.id),
+  ]);
 
   const shellFooter = {
     description: tenant.description,
@@ -53,8 +60,11 @@ export default async function CheckoutPage({ params }: PageProps) {
 
   // Sem gateway conectado: bloqueia ANTES do formulário, nunca mostra um
   // "pagar" que não funciona nem cria um pedido sem como ser pago
-  // (prompt Etapa 11 §19).
-  if (!gatewayConnected) {
+  // (prompt Etapa 11 §19). Fase D2-B: esse bloqueio só faz sentido quando
+  // `vexo` é o único caminho da loja — `whatsapp`/`both` sempre têm um
+  // jeito de finalizar o pedido mesmo sem Mercado Pago conectado (o
+  // próprio CheckoutForm decide, abaixo, quais caminhos oferecer).
+  if (tenant.checkout_mode === "vexo" && !gatewayConnected) {
     return (
       <StorefrontShell
         cartCount={cart.itemCount}
@@ -120,7 +130,10 @@ export default async function CheckoutPage({ params }: PageProps) {
       <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-margin-desktop">
         <h1 className="font-headline text-headline-md text-on-surface">Finalizar compra</h1>
         <CheckoutForm
+          checkoutMode={tenant.checkout_mode}
+          gatewayConnected={gatewayConnected}
           hasUnavailableItems={cart.items.length !== availableItems.length}
+          pixSettings={pixSettings}
           items={availableItems.map((item) => ({
             name: item.product.name,
             quantity: item.quantity,

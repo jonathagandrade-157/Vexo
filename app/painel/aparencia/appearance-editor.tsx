@@ -124,6 +124,10 @@ export function AppearanceEditor({
         primary_color: primaryColor,
         secondary_color: secondaryColor,
         storefront_template: template,
+        // Fase D2-B: checkout_mode não afeta nenhum template Home — este
+        // preview nunca renderiza checkout, só a Home — valor fixo aqui é
+        // só para satisfazer o shape de PublicTenant, sem significado.
+        checkout_mode: "vexo" as const,
       },
       categories,
       products,

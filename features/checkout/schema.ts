@@ -45,3 +45,25 @@ export interface CheckoutActionState {
 }
 
 export const initialCheckoutState: CheckoutActionState = { status: "idle" };
+
+/**
+ * Fase D2-B — movida para cá (era privada em `actions.ts`) para ser
+ * reaproveitada também por `whatsapp-actions.ts`: as duas Actions chamam
+ * a mesma RPC (`create_order_from_cart`) e devem traduzir os mesmos erros
+ * conhecidos da mesma forma — duas cópias divergentes seriam um risco real
+ * (uma delas podendo vazar texto bruto do Postgres que a outra já trata).
+ * Nunca expõe o texto bruto do erro Postgres ao visitante.
+ */
+export function friendlyCheckoutError(message: string): string {
+  if (message.includes("cart not found") || message.includes("cart is empty")) {
+    return "Seu carrinho está vazio ou não foi encontrado. Volte para a loja e adicione produtos novamente.";
+  }
+  if (message.includes("store is not available")) {
+    return "Esta loja não está disponível no momento.";
+  }
+  const inactiveProduct = /^product (.+) is no longer available$/.exec(message);
+  if (inactiveProduct) {
+    return `O produto "${inactiveProduct[1]}" não está mais disponível. Volte ao carrinho para removê-lo e tente novamente.`;
+  }
+  return "Não foi possível finalizar o pedido. Tente novamente.";
+}

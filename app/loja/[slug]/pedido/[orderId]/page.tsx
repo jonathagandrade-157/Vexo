@@ -6,7 +6,9 @@ import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-s
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getOrderConfirmation } from "@/features/checkout/order-confirmation";
+import { getWhatsappOrderLink } from "@/features/checkout/whatsapp-link";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
+import type { RequestedPaymentMethod } from "@/lib/whatsapp/message";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,7 @@ interface PageProps {
  * (`get_order_confirmation`, atualizado só pelo webhook).
  */
 const PAYMENT_STATUS_COPY: Record<
-  "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "REFUNDED",
+  "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "REFUNDED" | "EXTERNAL",
   { icon: string; label: string; description: string }
 > = {
   PENDING: {
@@ -50,7 +52,40 @@ const PAYMENT_STATUS_COPY: Record<
     label: "Pagamento reembolsado",
     description: "O valor deste pedido foi reembolsado.",
   },
+  // Fase D2-B — nunca renderizado de fato pelo fluxo normal (pedidos
+  // orderSource='whatsapp' usam o ramo dedicado abaixo, não este mapa),
+  // mas mantido aqui como fallback seguro caso algum dia um pedido
+  // EXTERNAL acabe passando pelo caminho de renderização tradicional.
+  EXTERNAL: {
+    icon: "chat",
+    label: "Pagamento combinado no WhatsApp",
+    description: "O pagamento deste pedido é combinado diretamente com a loja.",
+  },
 };
+
+/**
+ * Fase D2-B (revisão final) — copy específica por forma de pagamento
+ * (prompt §19): PIX pede o comprovante na conversa, dinheiro reforça o
+ * troco informado, cartão só confirma a preferência. Nunca afirma
+ * "pagamento aprovado" para nenhum destes — o pedido continua
+ * `payment_status='EXTERNAL'`, sempre "aguardando confirmação da loja".
+ */
+function whatsappInstructionFor(method: RequestedPaymentMethod, cashChangeFor: number | null, total: number): string {
+  if (method === "pix") {
+    return "Após realizar o pagamento, envie o comprovante nesta conversa.";
+  }
+  if (method === "cash") {
+    return cashChangeFor === null
+      ? "Pagamento em dinheiro, sem necessidade de troco."
+      : `Informe o troco corretamente: você pagará ${cashChangeFor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}, troco de ${(cashChangeFor - total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`;
+  }
+  return "Você informou cartão como forma de pagamento.";
+}
+
+function whatsappButtonLabel(method: RequestedPaymentMethod): string {
+  return method === "pix" ? "Enviar pedido e comprovante pelo WhatsApp" : "Enviar pedido pelo WhatsApp";
+}
+
 export default async function OrderConfirmationPage({ params }: PageProps) {
   const { slug, orderId } = await params;
   const resolution = await resolveStorefrontTenant(slug);
@@ -103,6 +138,13 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
     );
   }
 
+  // Fase D2-B — pedido criado pelo fluxo WhatsApp: o link já é montado
+  // inteiramente no servidor (features/checkout/whatsapp-link.ts), a
+  // partir só de (tenant_id, order_id) — o mesmo par que já é o token de
+  // posse desta página. Nunca reconstruído no cliente, nunca passado por
+  // querystring.
+  const isWhatsappOrder = order.orderSource === "whatsapp";
+  const whatsappLink = isWhatsappOrder ? await getWhatsappOrderLink(tenant.id, orderId) : null;
   const paymentCopy = PAYMENT_STATUS_COPY[order.paymentStatus];
 
   return (
@@ -110,15 +152,48 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
       <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-margin-desktop">
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-container">
-            <span className="material-symbols-outlined text-3xl text-on-primary-container">{paymentCopy.icon}</span>
+            <span className="material-symbols-outlined text-3xl text-on-primary-container">
+              {isWhatsappOrder ? "chat" : paymentCopy.icon}
+            </span>
           </div>
-          <h1 className="font-headline text-headline-md text-on-surface">Pedido recebido!</h1>
+          <h1 className="font-headline text-headline-md text-on-surface">
+            {isWhatsappOrder ? "Pedido criado com sucesso!" : "Pedido recebido!"}
+          </h1>
           <p className="font-body text-body-md text-on-surface-variant">
             Obrigado, {order.customerName}. Seu pedido é o <strong>{order.orderNumber}</strong>.
           </p>
-          <p className="font-label text-label-md text-on-surface">
-            {paymentCopy.label} — {paymentCopy.description}
-          </p>
+          {isWhatsappOrder && order.requestedPaymentMethod ? (
+            <>
+              <p className="font-label text-label-md text-on-surface">
+                Envie seu pedido pelo WhatsApp para confirmar com a loja.
+              </p>
+              <p className="font-body text-body-sm text-on-surface-variant">
+                {whatsappInstructionFor(order.requestedPaymentMethod, order.cashChangeFor, order.total)}
+              </p>
+              <p className="font-body text-body-sm text-on-surface-variant">
+                Pagamento externo — aguardando confirmação da loja.
+              </p>
+              {whatsappLink ? (
+                <a
+                  className="mt-2 flex items-center gap-2 rounded-lg bg-[#25D366] px-6 py-3 font-label text-label-md text-white transition-colors hover:bg-[#1FB855]"
+                  href={whatsappLink}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <span className="material-symbols-outlined text-[20px]">chat</span>
+                  {whatsappButtonLabel(order.requestedPaymentMethod)}
+                </a>
+              ) : (
+                <p className="rounded-lg border border-error/30 bg-error-container/10 px-4 py-3 font-body text-body-sm text-error">
+                  Não foi possível montar o link do WhatsApp. Entre em contato com a loja diretamente.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="font-label text-label-md text-on-surface">
+              {paymentCopy.label} — {paymentCopy.description}
+            </p>
+          )}
         </div>
 
         <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-6">

@@ -7,6 +7,12 @@ import { useFormStatus } from "react-dom";
 import { OrderSummary, type OrderSummaryLine } from "@/components/storefront/order-summary";
 import { createOrderAction } from "@/features/checkout/actions";
 import { BRAZILIAN_STATES, initialCheckoutState } from "@/features/checkout/schema";
+import type { StorePixSettings } from "@/features/checkout/pix-settings";
+import { createOrderForWhatsappAction } from "@/features/checkout/whatsapp-actions";
+import { initialCheckoutWhatsappState } from "@/features/checkout/whatsapp-schema";
+import type { CheckoutMode } from "@/features/settings/checkout-schema";
+import { PIX_KEY_TYPE_LABELS } from "@/features/settings/pix-schema";
+import { REQUESTED_PAYMENT_METHODS, REQUESTED_PAYMENT_METHOD_LABELS, type RequestedPaymentMethod } from "@/lib/whatsapp/message";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 
@@ -32,7 +38,7 @@ type ShippingQuoteState =
   | { kind: "error" }
   | { kind: "loaded"; result: ShippingQuoteResponse };
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
+function SubmitButton({ disabled, label }: { disabled: boolean; label: string }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -40,13 +46,13 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
       disabled={disabled || pending}
       type="submit"
     >
-      {pending ? "Finalizando…" : "Finalizar pedido"}
+      {pending ? "Finalizando…" : label}
     </button>
   );
 }
 
-function formatShippingPrice(price: number): string {
-  return price === 0 ? "Grátis" : price.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function formatBRL(value: number): string {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 /**
@@ -55,7 +61,9 @@ function formatShippingPrice(price: number): string {
  * (não duplica um segundo campo de CEP). O preço nunca é calculado aqui:
  * só exibido a partir do que o servidor devolveu — o valor final é
  * sempre revalidado de novo no servidor ao criar o pedido
- * (features/checkout/actions.ts).
+ * (features/checkout/actions.ts / whatsapp-actions.ts). Compartilhada
+ * pelos dois caminhos (pagar online / WhatsApp) — entrega não muda com o
+ * canal de pagamento.
  */
 function ShippingSection({
   quote,
@@ -131,20 +139,277 @@ function ShippingSection({
   );
 }
 
+function formatShippingPrice(price: number): string {
+  return price === 0 ? "Grátis" : formatBRL(price);
+}
+
+const PAYMENT_METHOD_ICON: Record<RequestedPaymentMethod, string> = {
+  pix: "bolt",
+  cash: "payments",
+  card: "credit_card",
+};
+
+/** Copia a chave PIX para a área de transferência — nenhum dado sai do navegador, é só um utilitário de UX. */
+function CopyPixKeyButton({ pixKey }: { pixKey: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      className="flex items-center gap-2 rounded-lg border border-outline-variant/50 px-4 py-2 font-label text-label-md text-on-surface transition-colors hover:border-primary/50"
+      onClick={() => {
+        navigator.clipboard
+          .writeText(pixKey)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          })
+          .catch(() => undefined);
+      }}
+      type="button"
+    >
+      <span className="material-symbols-outlined text-[18px]">{copied ? "check" : "content_copy"}</span>
+      {copied ? "Chave copiada!" : "Copiar chave PIX"}
+    </button>
+  );
+}
+
+/**
+ * Fase D2-B (revisão final). Bloco exibido quando PIX é escolhido — a
+ * chave/nome do recebedor vêm sempre de `pixSettings` (prop resolvida no
+ * servidor, `features/checkout/pix-settings.ts`), nunca digitados/
+ * aceitos aqui. Se a loja não configurou PIX, avisa em vez de deixar o
+ * cliente escolher uma opção sem chave nenhuma (prompt §32).
+ */
+function PixInstructions({ pixSettings, total }: { pixSettings: StorePixSettings | null; total: number }) {
+  if (!pixSettings) {
+    return (
+      <p className="rounded-lg border border-error/30 bg-error-container/10 px-4 py-3 font-body text-body-sm text-error">
+        Esta loja ainda não configurou uma chave PIX. Escolha outra forma de pagamento.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-outline-variant/40 bg-surface-container-lowest p-4">
+      <p className="font-label text-label-md text-on-surface">💠 Pagamento via PIX</p>
+      <div>
+        <p className="font-body text-body-sm text-on-surface-variant">Total do pedido</p>
+        <p className="font-headline text-headline-sm text-on-surface">{formatBRL(total)}</p>
+      </div>
+      <div>
+        <p className="font-body text-body-sm text-on-surface-variant">
+          Chave PIX da loja ({PIX_KEY_TYPE_LABELS[pixSettings.pixKeyType]}) — {pixSettings.recipientName}
+        </p>
+        <p className="break-all font-label text-label-md text-on-surface">{pixSettings.pixKey}</p>
+      </div>
+      <CopyPixKeyButton pixKey={pixSettings.pixKey} />
+      <ol className="list-decimal space-y-1 pl-5 font-body text-body-sm text-on-surface-variant">
+        <li>Copie a chave PIX.</li>
+        <li>Faça o pagamento pelo aplicativo do seu banco.</li>
+        <li>Clique em finalizar para enviar o pedido pelo WhatsApp.</li>
+        <li>Anexe o comprovante diretamente na conversa do WhatsApp.</li>
+      </ol>
+    </div>
+  );
+}
+
+/**
+ * Fase D2-B (revisão final). "Precisa de troco?" — quando "Sim", exige o
+ * valor que o cliente vai pagar (nunca o troco em si, calculado só para
+ * exibição). A validação de verdade (cobre o total real) é sempre
+ * refeita no servidor antes de criar o pedido — isto aqui é só UX.
+ */
+function CashChangeSection({ total, error }: { total: number; error?: string }) {
+  const [wantsChange, setWantsChange] = useState<"no" | "yes">("no");
+  const [changeFor, setChangeFor] = useState("");
+  const changeForNumber = Number(changeFor.replace(",", "."));
+  const changeDue = wantsChange === "yes" && changeForNumber > 0 ? changeForNumber - total : null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-outline-variant/40 bg-surface-container-lowest p-4">
+      <p className="font-label text-label-md text-on-surface">Precisa de troco?</p>
+      <div className="flex gap-4">
+        <label className="flex items-center gap-2">
+          <input
+            checked={wantsChange === "no"}
+            className="h-4 w-4 accent-primary"
+            onChange={() => setWantsChange("no")}
+            type="radio"
+          />
+          <span className="font-body text-body-sm text-on-surface">Não</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            checked={wantsChange === "yes"}
+            className="h-4 w-4 accent-primary"
+            onChange={() => setWantsChange("yes")}
+            type="radio"
+          />
+          <span className="font-body text-body-sm text-on-surface">Sim</span>
+        </label>
+      </div>
+
+      {wantsChange === "yes" ? (
+        <div className="flex flex-col gap-2">
+          <TextField
+            error={error}
+            icon="payments"
+            id="cashChangeFor"
+            label="Troco para quanto?"
+            name="cashChangeFor"
+            onChange={setChangeFor}
+            placeholder="R$ 0,00"
+          />
+          {changeDue !== null && changeDue >= 0 ? (
+            <p className="font-body text-body-sm text-on-surface-variant">
+              Troco necessário: <strong className="text-on-surface">{formatBRL(changeDue)}</strong>
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        // name="cashChangeFor" só existe no DOM quando "Sim" é escolhido —
+        // "Não" nunca envia nenhum valor de troco (o servidor trata a
+        // ausência do campo como "sem troco", nunca lê um valor de um
+        // campo desabilitado/oculto).
+        <p className="font-body text-body-sm text-on-surface-variant">Você pagará o valor exato do pedido.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Fase D2-B (revisão final). Seleção obrigatória entre PIX/Dinheiro/
+ * Cartão — nunca "combinar com a loja"/texto livre. Só aparece no
+ * caminho WhatsApp.
+ */
+function PaymentPreferenceSection({
+  pixSettings,
+  total,
+  paymentError,
+  cashChangeError,
+}: {
+  pixSettings: StorePixSettings | null;
+  total: number;
+  paymentError?: string;
+  cashChangeError?: string;
+}) {
+  const [selected, setSelected] = useState<RequestedPaymentMethod | null>(null);
+
+  return (
+    <section className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 md:p-6">
+      <h2 className="mb-4 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
+        <span className="material-symbols-outlined text-primary">payments</span>
+        Como deseja pagar?
+      </h2>
+      <div className="flex flex-col gap-2">
+        {REQUESTED_PAYMENT_METHODS.map((method) => (
+          <label
+            className="flex cursor-pointer items-center gap-3 rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-4 py-3 transition-colors has-[:checked]:border-primary/50 has-[:checked]:bg-primary/10"
+            key={method}
+          >
+            <input
+              className="h-4 w-4 accent-primary"
+              name="paymentPreference"
+              onChange={() => setSelected(method)}
+              type="radio"
+              value={method}
+            />
+            <span className="material-symbols-outlined text-[20px] text-primary">{PAYMENT_METHOD_ICON[method]}</span>
+            <span className="font-body text-body-sm text-on-surface">{REQUESTED_PAYMENT_METHOD_LABELS[method]}</span>
+          </label>
+        ))}
+      </div>
+      {paymentError ? (
+        <p className="mt-2 font-body text-body-sm text-error" role="alert">
+          {paymentError}
+        </p>
+      ) : null}
+
+      {selected === "pix" ? (
+        <div className="mt-4">
+          <PixInstructions pixSettings={pixSettings} total={total} />
+        </div>
+      ) : null}
+      {selected === "cash" ? (
+        <div className="mt-4">
+          <CashChangeSection error={cashChangeError} total={total} />
+        </div>
+      ) : null}
+
+      <p className="mt-3 font-body text-body-sm text-on-surface-variant">
+        Essa é apenas uma preferência de pagamento. A confirmação será combinada diretamente com a loja pelo WhatsApp.
+      </p>
+    </section>
+  );
+}
+
+/** Alterna entre os dois caminhos, só quando os dois estão disponíveis (checkout_mode='both' com Mercado Pago conectado). */
+function PathToggle({ selected, onSelect }: { selected: "online" | "whatsapp"; onSelect: (path: "online" | "whatsapp") => void }) {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {(
+        [
+          { path: "online" as const, icon: "credit_card", title: "Pagar online", description: "Finalize o pagamento agora, direto na loja." },
+          { path: "whatsapp" as const, icon: "chat", title: "Pedir pelo WhatsApp", description: "Envie seu pedido e combine o pagamento com a loja." },
+        ]
+      ).map((option) => (
+        <button
+          className={`flex flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left transition-colors ${
+            selected === option.path ? "border-primary/50 bg-primary/10" : "border-outline-variant/40 bg-surface-container-lowest"
+          }`}
+          key={option.path}
+          onClick={() => onSelect(option.path)}
+          type="button"
+        >
+          <span className="flex items-center gap-2 font-label text-label-md text-on-surface">
+            <span className="material-symbols-outlined text-[20px] text-primary">{option.icon}</span>
+            {option.title}
+          </span>
+          <span className="font-body text-body-sm text-on-surface-variant">{option.description}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Formulário único com seções (não um wizard) — mesmo padrão já usado em product-form.tsx (painel), não um design novo (prompt Etapa 10 §3/§18). */
 export function CheckoutForm({
   storeSlug,
   items,
   subtotal,
   hasUnavailableItems,
+  checkoutMode,
+  gatewayConnected,
+  pixSettings,
 }: {
   storeSlug: string;
   items: OrderSummaryLine[];
   subtotal: number;
   hasUnavailableItems: boolean;
+  checkoutMode: CheckoutMode;
+  gatewayConnected: boolean;
+  pixSettings: StorePixSettings | null;
 }) {
-  const action = createOrderAction.bind(null, storeSlug);
-  const [state, formAction] = useActionState(action, initialCheckoutState);
+  // Fase D2-B — o que a loja realmente oferece AGORA (nunca só
+  // checkout_mode isolado: `both` sem Mercado Pago conectado só oferece
+  // WhatsApp, exatamente como a página de checkout já decidiu ao não
+  // bloquear a página inteira). Decisão espelhada aqui só para UI — a
+  // autoridade real está nas Actions (createOrderAction/
+  // createOrderForWhatsappAction), que revalidam tudo de novo no servidor.
+  const onlineAllowed = checkoutMode !== "whatsapp" && (checkoutMode === "vexo" || gatewayConnected);
+  const whatsappAllowed = checkoutMode !== "vexo";
+  const showToggle = onlineAllowed && whatsappAllowed;
+
+  const [selectedPath, setSelectedPath] = useState<"online" | "whatsapp">(onlineAllowed ? "online" : "whatsapp");
+
+  const onlineAction = createOrderAction.bind(null, storeSlug);
+  const [onlineState, onlineFormAction] = useActionState(onlineAction, initialCheckoutState);
+
+  const whatsappAction = createOrderForWhatsappAction.bind(null, storeSlug);
+  const [whatsappState, whatsappFormAction] = useActionState(whatsappAction, initialCheckoutWhatsappState);
+
+  const activeState = selectedPath === "online" ? onlineState : whatsappState;
+  const activeFormAction = selectedPath === "online" ? onlineFormAction : whatsappFormAction;
 
   const [quote, setQuote] = useState<ShippingQuoteState>({ kind: "idle" });
   const [selectedOption, setSelectedOption] = useState<ShippingOption | null>(null);
@@ -193,8 +458,10 @@ export function CheckoutForm({
   const submitDisabled = hasUnavailableItems || shippingBlocksSubmit;
 
   return (
-    <form action={formAction} className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+    <form action={activeFormAction} className="grid grid-cols-1 gap-8 lg:grid-cols-3">
       <div className="flex flex-col gap-6 lg:col-span-2">
+        {showToggle ? <PathToggle onSelect={setSelectedPath} selected={selectedPath} /> : null}
+
         <section className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 md:p-6">
           <h2 className="mb-4 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
             <span className="material-symbols-outlined text-primary">person</span>
@@ -203,7 +470,7 @@ export function CheckoutForm({
           <div className="flex flex-col gap-4">
             <TextField
               autoComplete="name"
-              error={state.fieldErrors?.customerName}
+              error={activeState.fieldErrors?.customerName}
               icon="person"
               id="customerName"
               label="Nome completo"
@@ -212,7 +479,7 @@ export function CheckoutForm({
             />
             <TextField
               autoComplete="email"
-              error={state.fieldErrors?.customerEmail}
+              error={activeState.fieldErrors?.customerEmail}
               icon="mail"
               id="customerEmail"
               label="E-mail"
@@ -222,7 +489,7 @@ export function CheckoutForm({
             />
             <TextField
               autoComplete="tel"
-              error={state.fieldErrors?.customerPhone}
+              error={activeState.fieldErrors?.customerPhone}
               icon="call"
               id="customerPhone"
               label="Telefone / WhatsApp"
@@ -241,7 +508,7 @@ export function CheckoutForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField
               autoComplete="postal-code"
-              error={state.fieldErrors?.zip}
+              error={activeState.fieldErrors?.zip}
               icon="pin_drop"
               id="zip"
               label="CEP"
@@ -251,7 +518,7 @@ export function CheckoutForm({
             />
             <TextField
               autoComplete="address-line2"
-              error={state.fieldErrors?.number}
+              error={activeState.fieldErrors?.number}
               icon="tag"
               id="number"
               label="Número"
@@ -261,7 +528,7 @@ export function CheckoutForm({
             <div className="sm:col-span-2">
               <TextField
                 autoComplete="address-line1"
-                error={state.fieldErrors?.street}
+                error={activeState.fieldErrors?.street}
                 icon="signpost"
                 id="street"
                 label="Endereço"
@@ -271,7 +538,7 @@ export function CheckoutForm({
             </div>
             <div className="sm:col-span-2">
               <TextField
-                error={state.fieldErrors?.complement}
+                error={activeState.fieldErrors?.complement}
                 icon="apartment"
                 id="complement"
                 label="Complemento (opcional)"
@@ -280,7 +547,7 @@ export function CheckoutForm({
               />
             </div>
             <TextField
-              error={state.fieldErrors?.neighborhood}
+              error={activeState.fieldErrors?.neighborhood}
               icon="location_city"
               id="neighborhood"
               label="Bairro"
@@ -289,7 +556,7 @@ export function CheckoutForm({
             />
             <TextField
               autoComplete="address-level2"
-              error={state.fieldErrors?.city}
+              error={activeState.fieldErrors?.city}
               icon="location_city"
               id="city"
               label="Cidade"
@@ -298,7 +565,7 @@ export function CheckoutForm({
             />
             <SelectField
               defaultValue=""
-              error={state.fieldErrors?.state}
+              error={activeState.fieldErrors?.state}
               id="state"
               label="Estado"
               name="state"
@@ -323,9 +590,18 @@ export function CheckoutForm({
           </>
         ) : null}
 
-        {state.status === "error" && state.message ? (
+        {selectedPath === "whatsapp" ? (
+          <PaymentPreferenceSection
+            cashChangeError={whatsappState.fieldErrors?.cashChangeFor}
+            paymentError={whatsappState.fieldErrors?.paymentPreference}
+            pixSettings={pixSettings}
+            total={total}
+          />
+        ) : null}
+
+        {activeState.status === "error" && activeState.message ? (
           <p className="rounded-lg border border-error/30 bg-error-container/10 px-4 py-3 font-body text-body-sm text-error" role="alert">
-            {state.message}
+            {activeState.message}
           </p>
         ) : null}
       </div>
@@ -343,7 +619,7 @@ export function CheckoutForm({
           </p>
         ) : null}
 
-        <SubmitButton disabled={submitDisabled} />
+        <SubmitButton disabled={submitDisabled} label={selectedPath === "whatsapp" ? "Continuar no WhatsApp" : "Finalizar pedido"} />
       </div>
     </form>
   );
