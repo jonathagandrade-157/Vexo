@@ -1,0 +1,29 @@
+-- Correção de infraestrutura (não uma Etapa de produto) — mesma classe de
+-- incidente já corrigida por 20260817220067_grant_base_table_privileges.sql,
+-- só que descoberta depois: aquela migration concedeu `service_role` em
+-- `orders` (`grant select on public.orders to authenticated, service_role;`)
+-- mas não em `order_items` nem em `tenants`, porque, naquele momento,
+-- nenhum código lia essas duas tabelas via `service_role` — só
+-- `authenticated`, pelo painel.
+--
+-- Isso passou a ser um problema real quando `features/checkout/
+-- whatsapp-link.ts::getWhatsappOrderLink` e `features/checkout/
+-- pix-payment.ts::getPixPaymentDetails` (ambos introduzidos bem depois,
+-- fase D2-B/D2-B.2 — muito antes de D3.1/D3.2-B, que não tocam nisto)
+-- passaram a ler `order_items`/`tenants` via `service_role`, sem que
+-- nenhuma migration complementasse o grant. Resultado observado em
+-- produção: "permission denied for table order_items" (erro de GRANT,
+-- avaliado antes de qualquer RLS — nunca uma policy).
+--
+-- Escopo estritamente estas duas linhas — nenhuma outra tabela, nenhuma
+-- mudança de RLS/policy (RLS de `order_items`/`tenants` já cobre
+-- `authenticated`/`anon` corretamente; `service_role` tem BYPASSRLS na
+-- Supabase real, então a única barreira real sempre foi este grant
+-- ausente), nenhuma alteração em `orders` (que já está correto desde a
+-- migration 067).
+--
+-- Idempotente por natureza do GRANT do Postgres (reaplicar um GRANT já
+-- concedido não é erro nem duplica privilégio) — mesmo padrão de
+-- 20260817220067, que já documenta isso.
+grant select on public.order_items to service_role;
+grant select on public.tenants to service_role;
