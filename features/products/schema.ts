@@ -41,6 +41,28 @@ export const productSchema = z
       .optional()
       .transform((v) => (v ? v : undefined)),
     categoryId: z.preprocess(emptyToUndefined, z.string().uuid("Categoria inválida").optional()),
+    // D3.2-B Ponto 2A — peso/dimensões físicas (kg/cm), fundação para uma
+    // futura cotação por transportadora (Melhor Envio). Opcionais: campo
+    // vazio vira `undefined` (nunca `0`, que seria um valor fisicamente
+    // inválido e indistinguível de "não preenchido") e é persistido como
+    // NULL — produtos existentes/sem esses dados continuam válidos em
+    // todo o resto do sistema. `.positive()` já rejeita 0 e negativos.
+    weight: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number({ message: "Peso inválido" }).positive("O peso deve ser maior que zero").finite("Peso inválido").optional(),
+    ),
+    height: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number({ message: "Altura inválida" }).positive("A altura deve ser maior que zero").finite("Altura inválida").optional(),
+    ),
+    width: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number({ message: "Largura inválida" }).positive("A largura deve ser maior que zero").finite("Largura inválida").optional(),
+    ),
+    length: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number({ message: "Comprimento inválido" }).positive("O comprimento deve ser maior que zero").finite("Comprimento inválido").optional(),
+    ),
   })
   .refine((data) => data.promotionalPrice === undefined || data.promotionalPrice <= data.price, {
     message: "O preço promocional não pode ser maior que o preço normal",

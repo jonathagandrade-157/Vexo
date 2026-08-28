@@ -43,8 +43,19 @@ export const checkoutSchema = z.object({
   // habilitada e o cliente selecionou uma modalidade no checkout.
   // Nunca a autoridade final do preço: apenas o que o cliente viu na
   // tela, revalidado no servidor antes de aplicar (features/shipping).
-  shippingMethodId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  //
+  // D3.2-B Ponto 2E: `shippingMethodId` deixou de exigir `.uuid()` —
+  // para `flat_rate`/`pickup`/`own_delivery` continua sendo um
+  // `shipping_methods.id` (uuid; a Action query já falha com segurança
+  // para um valor não-uuid, `verifyShippingPriceFresh` retorna
+  // `{valid:false}`, nunca lança); para `melhor_envio` é o `serviceId`
+  // retornado pela cotação (ex.: "1"), nunca um uuid. `shippingProvider`
+  // é o único campo novo — decide qual caminho de revalidação a Action
+  // usa (nunca decidido pelo próprio `shippingMethodId`, que sozinho não
+  // distingue os dois formatos com segurança).
+  shippingMethodId: z.preprocess(emptyToUndefined, z.string().min(1).max(100).optional()),
   shippingPrice: z.preprocess(emptyToUndefined, z.coerce.number().min(0).optional()),
+  shippingProvider: z.preprocess(emptyToUndefined, z.enum(["flat_rate", "melhor_envio"]).optional()),
 });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;

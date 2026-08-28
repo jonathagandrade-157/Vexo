@@ -26,6 +26,30 @@ describe("getAuthorizeUrl", () => {
     const url = gateway.getAuthorizeUrl("state", "https://loja.vexo.local/callback");
     expect(url).not.toContain(CLIENT_SECRET);
   });
+
+  // D3.2-B Ponto 2B — a URL de autorização passa a solicitar exatamente
+  // o scope `shipping-calculate` (fundação para a futura cotação, Ponto
+  // 2C — nenhuma chamada de cotação acontece aqui), nunca nenhum outro
+  // scope da lista confirmada em auth-sdk-php/examples/example3.php.
+  it("requests exactly the shipping-calculate scope, nothing else", () => {
+    const gateway = createMelhorEnvioGateway(CLIENT_ID, CLIENT_SECRET, true);
+    const url = new URL(gateway.getAuthorizeUrl("state", "https://loja.vexo.local/callback"));
+    expect(url.searchParams.get("scope")).toBe("shipping-calculate");
+    expect(url.searchParams.getAll("scope")).toHaveLength(1);
+  });
+
+  it("never puts access_token or refresh_token in the authorization URL", () => {
+    const gateway = createMelhorEnvioGateway(CLIENT_ID, CLIENT_SECRET, true);
+    const url = gateway.getAuthorizeUrl("state", "https://loja.vexo.local/callback");
+    expect(url).not.toContain("access_token");
+    expect(url).not.toContain("refresh_token");
+  });
+
+  it("never puts a bare tenant_id param in the authorization URL — the tenant travels only inside the signed state", () => {
+    const gateway = createMelhorEnvioGateway(CLIENT_ID, CLIENT_SECRET, true);
+    const url = new URL(gateway.getAuthorizeUrl("signed-state-with-tenant", "https://loja.vexo.local/callback"));
+    expect(url.searchParams.has("tenant_id")).toBe(false);
+  });
 });
 
 describe("exchangeCodeForTokens (mocked fetch — no real network call)", () => {

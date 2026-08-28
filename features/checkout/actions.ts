@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { getCartId } from "@/features/cart/cart-cookie";
 import { initiatePaymentForOrder, isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
+import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 import { checkoutSchema, friendlyCheckoutError, isAddressComplete, type CheckoutActionState, type CheckoutInput } from "./schema";
@@ -70,7 +71,7 @@ export async function createOrderAction(
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
   }
 
-  const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice } = parsed.data;
+  const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, shippingProvider, zip } = parsed.data;
 
   // Se a loja exige frete (shipping_settings.enabled = true), a seleção
   // de modalidade é obrigatória — nunca opcional só porque o cliente
@@ -79,7 +80,28 @@ export async function createOrderAction(
   // possível finalizar com shipping_total = 0 numa loja com entrega
   // paga configurada, só não enviando shippingMethodId/shippingPrice).
   let isPickup = false;
-  if (shippingMethodId === undefined || shippingPrice === undefined) {
+  let melhorEnvioShipping: { serviceId: string; name: string; price: number; estimatedDays: number | null } | null = null;
+
+  if (shippingProvider === "melhor_envio") {
+    // D3.2-B Ponto 2E: Melhor Envio nunca é retirada na loja (sempre
+    // exige o endereço do cliente) e NUNCA cai silenciosamente para
+    // flat_rate se a recotação falhar — rejeita a finalização, sempre.
+    // `shippingMethodId` aqui é o serviceId da cotação (nunca um uuid de
+    // shipping_methods); `shippingPrice` é só o que o cliente viu na
+    // tela, usado apenas para detectar divergência contra uma cotação
+    // NOVA (nunca a de `/api/shipping/quote`, nunca cache).
+    if (shippingMethodId === undefined || shippingPrice === undefined || !zip) {
+      return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
+    }
+    const fresh = await verifyMelhorEnvioShippingFresh(resolution.tenant.id, cartId, zip, shippingMethodId, shippingPrice);
+    if (!fresh.valid) {
+      return {
+        status: "error",
+        message: "O valor do frete mudou ou não está mais disponível. Atualize a página e selecione a opção de entrega novamente.",
+      };
+    }
+    melhorEnvioShipping = fresh;
+  } else if (shippingMethodId === undefined || shippingPrice === undefined) {
     if (await isShippingRequired(resolution.tenant.id)) {
       return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
     }
@@ -110,8 +132,8 @@ export async function createOrderAction(
     if (!isAddressComplete(parsed.data)) {
       return { status: "error", message: "Informe o endereço de entrega completo." };
     }
-    const { zip, street, number, complement, neighborhood, city, state } = parsed.data;
-    shippingAddress = { zip, street, number, complement: complement ?? null, neighborhood, city, state };
+    const { street, number, complement, neighborhood, city, state } = parsed.data;
+    shippingAddress = { zip: zip as string, street, number, complement: complement ?? null, neighborhood, city, state };
   }
 
   const supabase = createSupabasePublicClient();
@@ -145,7 +167,12 @@ export async function createOrderAction(
   // pagamento com o total que o pedido já tem (sem frete), igual ao
   // fallback já usado abaixo para falha de pagamento. O pedido fica
   // visível em /painel/pedidos para o lojista tratar manualmente.
-  if (shippingMethodId !== undefined && shippingPrice !== undefined) {
+  if (melhorEnvioShipping) {
+    // Já revalidado por verifyMelhorEnvioShippingFresh acima, na MESMA
+    // requisição — nunca uma segunda chamada HTTP aqui, nunca o
+    // shippingPrice do cliente.
+    await applyMelhorEnvioShippingToOrder(resolution.tenant.id, orderId as string, melhorEnvioShipping);
+  } else if (shippingMethodId !== undefined && shippingPrice !== undefined) {
     await applyShippingToOrder(resolution.tenant.id, orderId as string, shippingMethodId, shippingPrice);
   }
 

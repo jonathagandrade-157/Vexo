@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getCartId } from "@/features/cart/cart-cookie";
 import { getShippingQuote } from "@/features/shipping/quote";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 
@@ -11,6 +12,11 @@ import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
  * `resolveStorefrontTenant` já usado no resto do storefront (Etapa 6).
  * GET (não Server Action): é uma leitura idempotente, chamada por
  * JavaScript client-side de um Client Component, não de um `<form>`.
+ *
+ * D3.2-B Ponto 2D — `cartId` vem do MESMO cookie httpOnly que
+ * `features/cart/*` já usa (`getCartId`, nunca aceito de query/body),
+ * necessário para o provedor Melhor Envio montar `products[]` a partir
+ * do carrinho real. `flat_rate` ignora esse valor (preço fixo).
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -31,6 +37,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: "unavailable" });
   }
 
-  const quote = await getShippingQuote(resolution.tenant.id, zip);
+  const cartId = await getCartId(slug);
+  const quote = await getShippingQuote(resolution.tenant.id, zip, cartId);
   return NextResponse.json(quote);
 }

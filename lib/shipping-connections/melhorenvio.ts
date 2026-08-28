@@ -58,9 +58,30 @@ import { ShippingRefreshError, type ShippingConnectionGateway, type ShippingOAut
  * lib/billing/asaas.ts (`"VEXO-Billing/1.0"`). NUNCA contém
  * access_token/refresh_token/client_secret/tenant_id/dado de cliente.
  *
- * Nenhum `scope` é enviado na URL de autorização nesta etapa — ver
- * disclaimer já existente no Ponto 1 (nenhuma chamada autenticada além do
- * próprio token exchange/refresh acontece ainda).
+ * D3.2-B Ponto 2B — a URL de autorização passa a solicitar explicitamente
+ * o scope `shipping-calculate` (o único necessário para a futura cotação,
+ * Ponto 2C — nenhuma chamada de cotação acontece nesta etapa). Nome do
+ * scope confirmado literalmente na mesma fonte primária oficial citada
+ * acima (`auth-sdk-php/examples/example3.php`: `'shipping-calculate'` na
+ * lista de scopes do SDK). Nenhum outro scope da lista (`shipping-cancel`,
+ * `shipping-checkout`, `shipping-companies`, `shipping-generate`,
+ * `shipping-preview`, `shipping-print`, `shipping-share`,
+ * `shipping-tracking`, `ecommerce-shipping`, ou qualquer um dos scopes de
+ * `cart`/`companies`/`coupons`/`notifications`/`orders`/`products`/
+ * `purchases`/`transactions`/`users`) é solicitado — só o estritamente
+ * necessário para cotar frete.
+ *
+ * Contas já conectadas ANTES desta mudança tiveram seu token emitido sem
+ * nenhum scope — este código nunca presume que um token antigo já tem
+ * `shipping-calculate` (nenhuma chamada a um endpoint de "verificar
+ * scopes" é feita). Uma conta assim só passa a ter o scope após o
+ * lojista reconectar (desconectar + `connectMelhorEnvioAction` de novo),
+ * o que gera um novo consentimento/token através deste mesmo
+ * `getAuthorizeUrl` já atualizado — sem nenhuma migration ou mudança de
+ * schema necessária: `store_shipping_credentials` (migration 087) já faz
+ * upsert por `(tenant_id, provider)` e já limpa o segredo antigo do Vault
+ * na reconexão, então o fluxo de reconexão já era idempotente antes desta
+ * mudança.
  */
 
 const SANDBOX_BASE = "https://sandbox.melhorenvio.com.br";
@@ -212,6 +233,11 @@ export function createMelhorEnvioGateway(
       url.searchParams.set("response_type", "code");
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("state", state);
+      // D3.2-B Ponto 2B — único scope solicitado, necessário para a
+      // futura cotação (Ponto 2C). Nunca client_secret/access_token/
+      // refresh_token nesta URL — só parâmetros públicos do grant
+      // authorization_code (RFC 6749 §4.1.1).
+      url.searchParams.set("scope", "shipping-calculate");
       return url.toString();
     },
 

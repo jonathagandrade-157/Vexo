@@ -38,6 +38,11 @@ interface ProductFormProps {
     sku: string | null;
     category_id: string | null;
     main_image: string | null;
+    /** D3.2-B Ponto 2A — kg/cm, fundação para uma futura cotação por transportadora. `null` = não informado (produtos antigos). */
+    weight: number | null;
+    height: number | null;
+    width: number | null;
+    length: number | null;
   };
 }
 
@@ -187,6 +192,93 @@ export function ProductForm({ categories, product }: ProductFormProps) {
               name="sku"
               placeholder="Ex: CAM-PRM-ALG"
             />
+          </section>
+
+          {/*
+            D3.2-B Ponto 2A — todos opcionais, de propósito: um produto sem
+            peso/dimensões continua válido em todo o resto do sistema (catálogo,
+            carrinho, checkout, pedidos) — só fica de fora de uma futura cotação
+            por transportadora enquanto esses campos não forem preenchidos. Sem
+            `max`: nenhum teto foi confirmado nesta etapa (auditoria D3.2-B Ponto
+            2A). `step="0.01"`/`"0.001"` permite casas decimais; `min="0.01"`/
+            `"0.001"` só ajuda a UI a não sugerir 0 — a validação real (rejeitar
+            0/negativo) é sempre do servidor (schema Zod + CHECK no banco), nunca
+            só do navegador.
+          */}
+          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+            <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
+              <span className="material-symbols-outlined text-primary">scale</span>
+              Peso e dimensões
+            </h2>
+            <p className="mb-4 font-body text-body-sm text-on-surface-variant">
+              Opcional. Usado futuramente para calcular o frete por transportadora.
+            </p>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label text-label-md uppercase text-on-surface-variant" htmlFor="weight">
+                  Peso (kg)
+                </label>
+                <input
+                  className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface focus:outline-none"
+                  defaultValue={product?.weight ?? undefined}
+                  id="weight"
+                  min="0.001"
+                  name="weight"
+                  placeholder="Ex: 0,50"
+                  step="0.001"
+                  type="number"
+                />
+                {state.fieldErrors?.weight ? <p className="text-label-sm text-error">{state.fieldErrors.weight}</p> : null}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label text-label-md uppercase text-on-surface-variant" htmlFor="height">
+                  Altura (cm)
+                </label>
+                <input
+                  className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface focus:outline-none"
+                  defaultValue={product?.height ?? undefined}
+                  id="height"
+                  min="0.01"
+                  name="height"
+                  placeholder="Ex: 10,00"
+                  step="0.01"
+                  type="number"
+                />
+                {state.fieldErrors?.height ? <p className="text-label-sm text-error">{state.fieldErrors.height}</p> : null}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label text-label-md uppercase text-on-surface-variant" htmlFor="width">
+                  Largura (cm)
+                </label>
+                <input
+                  className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface focus:outline-none"
+                  defaultValue={product?.width ?? undefined}
+                  id="width"
+                  min="0.01"
+                  name="width"
+                  placeholder="Ex: 15,00"
+                  step="0.01"
+                  type="number"
+                />
+                {state.fieldErrors?.width ? <p className="text-label-sm text-error">{state.fieldErrors.width}</p> : null}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label text-label-md uppercase text-on-surface-variant" htmlFor="length">
+                  Comprimento (cm)
+                </label>
+                <input
+                  className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface focus:outline-none"
+                  defaultValue={product?.length ?? undefined}
+                  id="length"
+                  min="0.01"
+                  name="length"
+                  placeholder="Ex: 20,00"
+                  step="0.01"
+                  type="number"
+                />
+                {state.fieldErrors?.length ? <p className="text-label-sm text-error">{state.fieldErrors.length}</p> : null}
+              </div>
+            </div>
           </section>
         </div>
       </div>

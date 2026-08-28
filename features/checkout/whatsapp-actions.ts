@@ -7,6 +7,7 @@ import { getCart } from "@/features/cart/data";
 import { getCartId } from "@/features/cart/cart-cookie";
 import { getStorePixSettings } from "@/features/checkout/pix-settings";
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
+import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 import { friendlyCheckoutError, isAddressComplete } from "./schema";
@@ -76,7 +77,7 @@ export async function createOrderForWhatsappAction(
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
   }
 
-  const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, paymentPreference } = parsed.data;
+  const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, shippingProvider, paymentPreference, zip } = parsed.data;
 
   // "Se pagamento != cash: qualquer valor de troco enviado pelo navegador
   // deve ser ignorado" — nunca só validado/descartado por erro, IGNORADO
@@ -99,7 +100,23 @@ export async function createOrderForWhatsappAction(
   // modalidade real (nunca a que o cliente enviou) — só ela decide se o
   // endereço de entrega é obrigatório.
   let isPickup = false;
-  if (shippingMethodId === undefined || shippingPrice === undefined) {
+  let melhorEnvioShipping: { serviceId: string; name: string; price: number; estimatedDays: number | null } | null = null;
+
+  if (shippingProvider === "melhor_envio") {
+    // D3.2-B Ponto 2E: mesma regra de createOrderAction — nunca pickup,
+    // nunca fallback silencioso para flat_rate, sempre recotação nova.
+    if (shippingMethodId === undefined || shippingPrice === undefined || !zip) {
+      return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
+    }
+    const fresh = await verifyMelhorEnvioShippingFresh(resolution.tenant.id, cartId, zip, shippingMethodId, shippingPrice);
+    if (!fresh.valid) {
+      return {
+        status: "error",
+        message: "O valor do frete mudou ou não está mais disponível. Atualize a página e selecione a opção de entrega novamente.",
+      };
+    }
+    melhorEnvioShipping = fresh;
+  } else if (shippingMethodId === undefined || shippingPrice === undefined) {
     if (await isShippingRequired(resolution.tenant.id)) {
       return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
     }
@@ -122,8 +139,8 @@ export async function createOrderForWhatsappAction(
     if (!isAddressComplete(parsed.data)) {
       return { status: "error", message: "Informe o endereço de entrega completo." };
     }
-    const { zip, street, number, complement, neighborhood, city, state } = parsed.data;
-    shippingAddress = { zip, street, number, complement: complement ?? null, neighborhood, city, state };
+    const { street, number, complement, neighborhood, city, state } = parsed.data;
+    shippingAddress = { zip: zip as string, street, number, complement: complement ?? null, neighborhood, city, state };
   }
 
   // Segurança do troco (prompt §11): o total usado na validação é sempre
@@ -134,7 +151,12 @@ export async function createOrderForWhatsappAction(
   // um pedido "órfão" com troco insuficiente.
   if (cashChangeFor !== null) {
     const cart = await getCart(storeSlug);
-    const expectedTotal = cart.subtotal + (shippingPrice ?? 0);
+    // D3.2-B Ponto 2E: quando a modalidade é melhor_envio, o preço
+    // confiável é sempre o já revalidado (`melhorEnvioShipping.price`),
+    // nunca `shippingPrice` bruto do cliente — usá-lo aqui permitiria
+    // subestimar o total esperado e passar na checagem de troco com um
+    // valor insuficiente.
+    const expectedTotal = cart.subtotal + (melhorEnvioShipping?.price ?? shippingPrice ?? 0);
     if (cashChangeFor < expectedTotal) {
       return { status: "error", fieldErrors: { cashChangeFor: "O valor informado é menor que o total do pedido." }, message: "Verifique os campos destacados." };
     }
@@ -161,7 +183,9 @@ export async function createOrderForWhatsappAction(
   revalidatePath(`/loja/${storeSlug}`);
   revalidatePath(`/loja/${storeSlug}/carrinho`);
 
-  if (shippingMethodId !== undefined && shippingPrice !== undefined) {
+  if (melhorEnvioShipping) {
+    await applyMelhorEnvioShippingToOrder(resolution.tenant.id, orderId as string, melhorEnvioShipping);
+  } else if (shippingMethodId !== undefined && shippingPrice !== undefined) {
     await applyShippingToOrder(resolution.tenant.id, orderId as string, shippingMethodId, shippingPrice);
   }
 

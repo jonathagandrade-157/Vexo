@@ -247,6 +247,69 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Catálogo — categorias e 
     expect(promoErr.message).toMatch(/check constraint/i);
   });
 
+  // D3.2-B Ponto 2A — peso/dimensões físicas (weight/height/width/length):
+  // opcionais, NULL permitido/preservado, positivo estrito (zero e
+  // negativo sempre rejeitados por check constraint), decimais
+  // persistidos sem perda. Fundação para uma futura cotação por
+  // transportadora — nenhum outro fluxo lê essas colunas ainda.
+  it("a product without weight/dimensions is created normally with all four columns NULL (produto antigo)", async () => {
+    const created = await asActor(
+      { role: "authenticated", userId: fx.userAOwner },
+      (c) => c.query(
+        "insert into public.products (tenant_id, name, slug, price) values ($1, $2, $3, $4) returning weight, height, width, length",
+        [fx.tenantA, "Produto Sem Dimensões", `produto-sem-dimensoes-${runId}`, 30],
+      ),
+    );
+    expect(created.rows[0]?.weight).toBeNull();
+    expect(created.rows[0]?.height).toBeNull();
+    expect(created.rows[0]?.width).toBeNull();
+    expect(created.rows[0]?.length).toBeNull();
+  });
+
+  it("a product with valid weight/dimensions persists the exact decimal values", async () => {
+    const created = await asActor(
+      { role: "authenticated", userId: fx.userAOwner },
+      (c) => c.query(
+        `insert into public.products (tenant_id, name, slug, price, weight, height, width, length)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)
+         returning weight, height, width, length`,
+        [fx.tenantA, "Produto Com Dimensões", `produto-com-dimensoes-${runId}`, 30, 1.25, 10.5, 15.25, 20],
+      ),
+    );
+    expect(Number(created.rows[0]?.weight)).toBe(1.25);
+    expect(Number(created.rows[0]?.height)).toBe(10.5);
+    expect(Number(created.rows[0]?.width)).toBe(15.25);
+    expect(Number(created.rows[0]?.length)).toBe(20);
+  });
+
+  it.each(["weight", "height", "width", "length"] as const)(
+    "rejects %s = 0 with a check constraint violation",
+    async (column) => {
+      const err = await expectPgError(
+        asActor({ role: "authenticated", userId: fx.userAOwner }, (c) =>
+          c.query(`insert into public.products (tenant_id, name, slug, price, ${column}) values ($1, $2, $3, $4, $5)`, [
+            fx.tenantA, `Zero ${column}`, `zero-${column}-${runId}`, 30, 0,
+          ]),
+        ),
+      );
+      expect(err.message).toMatch(/check constraint/i);
+    },
+  );
+
+  it.each(["weight", "height", "width", "length"] as const)(
+    "rejects %s negative with a check constraint violation",
+    async (column) => {
+      const err = await expectPgError(
+        asActor({ role: "authenticated", userId: fx.userAOwner }, (c) =>
+          c.query(`insert into public.products (tenant_id, name, slug, price, ${column}) values ($1, $2, $3, $4, $5)`, [
+            fx.tenantA, `Negativo ${column}`, `negativo-${column}-${runId}`, 30, -5,
+          ]),
+        ),
+      );
+      expect(err.message).toMatch(/check constraint/i);
+    },
+  );
+
   // 17 — atualização de produto funciona.
   it("updating a product persists the new values", async () => {
     const created = await asActor(

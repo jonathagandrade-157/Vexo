@@ -48,6 +48,10 @@ function parseProductForm(formData: FormData) {
     promotionalPrice: formData.get("promotionalPrice"),
     sku: formData.get("sku"),
     categoryId: formData.get("categoryId"),
+    weight: formData.get("weight"),
+    height: formData.get("height"),
+    width: formData.get("width"),
+    length: formData.get("length"),
   });
 }
 
@@ -98,6 +102,10 @@ export async function createProductAction(
       price: parsed.data.price,
       promotional_price: parsed.data.promotionalPrice ?? null,
       sku: parsed.data.sku ?? null,
+      weight: parsed.data.weight ?? null,
+      height: parsed.data.height ?? null,
+      width: parsed.data.width ?? null,
+      length: parsed.data.length ?? null,
     })
     .select("id")
     .single();
@@ -123,7 +131,7 @@ export async function createProductAction(
       };
     }
     if (error.code === "23514") {
-      return { status: "error", message: "Verifique os valores informados (categoria ou preço)." };
+      return { status: "error", message: "Verifique os valores informados (categoria, preço ou peso/dimensões)." };
     }
     return { status: "error", message: "Não foi possível criar o produto. Tente novamente." };
   }
@@ -165,6 +173,10 @@ export async function updateProductAction(
         price: parsed.data.price,
         promotional_price: parsed.data.promotionalPrice ?? null,
         sku: parsed.data.sku ?? null,
+        weight: parsed.data.weight ?? null,
+        height: parsed.data.height ?? null,
+        width: parsed.data.width ?? null,
+        length: parsed.data.length ?? null,
       },
       { count: "exact" },
     )
@@ -180,7 +192,7 @@ export async function updateProductAction(
       };
     }
     if (error.code === "23514") {
-      return { status: "error", message: "Verifique os valores informados (categoria ou preço)." };
+      return { status: "error", message: "Verifique os valores informados (categoria, preço ou peso/dimensões)." };
     }
     return { status: "error", message: "Não foi possível salvar o produto. Tente novamente." };
   }
