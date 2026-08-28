@@ -69,10 +69,39 @@ const billingServerSchema = z.object({
   ASAAS_WEBHOOK_TOKEN: z.string().min(1),
 });
 
+// D3.2-B: Melhor Envio OAuth (conexão de conta — arquitetura espelha a
+// Etapa 11 do Mercado Pago). Schema separado pelo mesmo motivo exato de
+// `mercadoPagoServerSchema`: nenhum fluxo essencial pode depender de uma
+// integração de frete opcional que o tenant pode nem ter configurado.
+// Só lido por código que vai de fato usar a integração
+// (lib/shipping-connections/registry.ts, a Server Action que inicia a
+// conexão, e o Route Handler de callback OAuth).
+const melhorEnvioServerSchema = z.object({
+  // Do app registrado no painel do Melhor Envio.
+  MELHOR_ENVIO_CLIENT_ID: z.string().min(1),
+  MELHOR_ENVIO_CLIENT_SECRET: z.string().min(1),
+  // "true" (padrão, mais seguro) usa sandbox.melhorenvio.com.br; "false"
+  // usa produção — ver lib/shipping-connections/melhorenvio.ts para o
+  // disclaimer sobre a URL de produção não ter sido confirmada por
+  // fetch direto da documentação neste ambiente.
+  MELHOR_ENVIO_SANDBOX: z.string().optional(),
+  // Mesma HMAC key do Mercado Pago (lib/security/oauth-state.ts é
+  // genérico por design — um único secret assina o `state` de qualquer
+  // fluxo OAuth do VEXO, nunca um por provedor).
+  OAUTH_STATE_SECRET: z.string().min(16),
+});
+
 export type PublicEnv = z.infer<typeof publicSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
 export type MercadoPagoServerEnv = z.infer<typeof mercadoPagoServerSchema>;
 export type BillingServerEnv = z.infer<typeof billingServerSchema>;
+export interface MelhorEnvioServerEnv {
+  MELHOR_ENVIO_CLIENT_ID: string;
+  MELHOR_ENVIO_CLIENT_SECRET: string;
+  /** Derivado de MELHOR_ENVIO_SANDBOX — `true` a menos que a var esteja literalmente "false". */
+  MELHOR_ENVIO_SANDBOX: boolean;
+  OAUTH_STATE_SECRET: string;
+}
 
 function readSchema<T>(
   schema: z.ZodType<T>,
@@ -96,6 +125,7 @@ let cachedPublicEnv: PublicEnv | undefined;
 let cachedServerEnv: ServerEnv | undefined;
 let cachedMercadoPagoEnv: MercadoPagoServerEnv | undefined;
 let cachedBillingEnv: BillingServerEnv | undefined;
+let cachedMelhorEnvioEnv: MelhorEnvioServerEnv | undefined;
 
 /** Variables safe to read from client or server code (`NEXT_PUBLIC_*` only). */
 export function getPublicEnv(): PublicEnv {
@@ -180,4 +210,38 @@ export function getBillingEnv(): BillingServerEnv {
     }
   }
   return cachedBillingEnv;
+}
+
+/**
+ * Melhor Envio-only secrets (D3.2-B) — call this ONLY from code that is
+ * actually about to use the integration (gateway instantiation in
+ * lib/shipping-connections/registry.ts, the OAuth connect Server Action,
+ * the OAuth callback Route Handler). Never from auth/signup/trial/
+ * onboarding/checkout or any other core flow: those must keep working
+ * even when Melhor Envio hasn't been configured for this environment yet
+ * (same class of incident as getMercadoPagoEnv() above).
+ */
+export function getMelhorEnvioEnv(): MelhorEnvioServerEnv {
+  if (typeof window !== "undefined") {
+    throw new Error("getMelhorEnvioEnv() must never be called from the browser.");
+  }
+  if (!cachedMelhorEnvioEnv) {
+    try {
+      const raw = readSchema(melhorEnvioServerSchema, process.env, "Melhor Envio");
+      cachedMelhorEnvioEnv = {
+        MELHOR_ENVIO_CLIENT_ID: raw.MELHOR_ENVIO_CLIENT_ID,
+        MELHOR_ENVIO_CLIENT_SECRET: raw.MELHOR_ENVIO_CLIENT_SECRET,
+        MELHOR_ENVIO_SANDBOX: raw.MELHOR_ENVIO_SANDBOX !== "false",
+        OAUTH_STATE_SECRET: raw.OAUTH_STATE_SECRET,
+      };
+    } catch (cause) {
+      throw new Error(
+        "A integração com o Melhor Envio não está configurada neste ambiente " +
+          "(MELHOR_ENVIO_CLIENT_ID/MELHOR_ENVIO_CLIENT_SECRET/OAUTH_STATE_SECRET). " +
+          "Configure essas variáveis antes de conectar uma conta do Melhor Envio.",
+        { cause },
+      );
+    }
+  }
+  return cachedMelhorEnvioEnv;
 }

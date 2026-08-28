@@ -6,13 +6,28 @@ import { FeatureGate } from "@/components/painel/feature-gate";
 import { OwnDeliverySettingsForm } from "@/components/painel/own-delivery-settings-form";
 import { PanelEmptyState } from "@/components/painel/panel-empty-state";
 import { PickupSettingsForm } from "@/components/painel/pickup-settings-form";
+import { ShippingConnectionCard } from "@/components/painel/shipping-connection-card";
 import { ShippingMethodFormDialog } from "@/components/painel/shipping-method-form-dialog";
 import { ShippingMethodRow, type ShippingMethodRowData } from "@/components/painel/shipping-method-row";
 import { ShippingSettingsForm } from "@/components/painel/shipping-settings-form";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
+import { maskAccountId } from "@/features/shipping-connections/mask";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Entrega — VEXO" };
+
+const MELHOR_ENVIO_ERROR_MESSAGES: Record<string, string> = {
+  oauth_denied: "A conexão com o Melhor Envio foi cancelada.",
+  invalid_state: "Não foi possível validar a solicitação de conexão. Tente novamente.",
+  session_mismatch: "Sua sessão mudou durante a conexão. Tente novamente.",
+  exchange_failed: "Não foi possível concluir a conexão com o Melhor Envio. Tente novamente.",
+  vault_failed: "Não foi possível salvar as credenciais com segurança. Tente novamente.",
+  connection_failed: "Não foi possível concluir a conexão. Tente novamente.",
+};
+
+interface PageProps {
+  searchParams: Promise<{ me_connected?: string; me_error?: string }>;
+}
 
 /**
  * `/painel/configuracoes/entrega` — sub-rota nova (Etapa 12), mesmo shell
@@ -28,7 +43,8 @@ export const metadata: Metadata = { title: "Entrega — VEXO" };
  * em `resolveTenantAndPermission` (features/shipping/actions.ts), chamada
  * de novo em toda Server Action, independente do que esta página mostrar.
  */
-export default async function EntregaPage() {
+export default async function EntregaPage({ searchParams }: PageProps) {
+  const { me_connected: meConnected, me_error: meError } = await searchParams;
   const supabase = await createSupabaseServerClient();
 
   const membership = await getCurrentMembership();
@@ -39,6 +55,23 @@ export default async function EntregaPage() {
     p_tenant_id: tenant.id,
     p_permission_key: "settings.update",
   });
+
+  // D3.2-B — permissões próprias da conexão com o Melhor Envio, nunca
+  // reaproveitando `settings.update` (a conexão é mais sensível: MANAGER
+  // só tem `.view`, mesmo critério de `payments.manage`).
+  const [{ data: canViewShippingProvider }, { data: canManageShippingProvider }] = await Promise.all([
+    supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "shipping_provider.view" }),
+    supabase.rpc("has_permission", { p_tenant_id: tenant.id, p_permission_key: "shipping_provider.manage" }),
+  ]);
+
+  const { data: shippingProviderRow } = canViewShippingProvider
+    ? await supabase
+        .from("store_shipping_providers")
+        .select("status, connected_account_id, connected_at")
+        .eq("tenant_id", tenant.id)
+        .eq("provider", "melhor_envio")
+        .maybeSingle()
+    : { data: null };
 
   const [{ data: settingsRow }, { data: methodsData }, { data: pickupRow }, { data: ownDeliveryRow }] = await Promise.all([
     supabase.from("shipping_settings").select("enabled, origin_zip").eq("tenant_id", tenant.id).maybeSingle(),
@@ -79,6 +112,35 @@ export default async function EntregaPage() {
           Configure as modalidades de entrega que os clientes veem no checkout.
         </p>
       </div>
+
+      {/*
+        D3.2-B — conexão OAuth com o Melhor Envio. Fora do `FeatureGate`
+        "shipping" de propósito: conectar a conta é uma capacidade base
+        (nenhuma cotação de frete acontece nesta etapa), não um recurso
+        diferenciado por plano. Visível só para quem tem
+        `shipping_provider.view` (nunca reaproveita `settings.update`).
+      */}
+      {canViewShippingProvider ? (
+        <div className="flex flex-col gap-4">
+          <h2 className="font-headline text-headline-sm text-on-surface">Integrações de entrega</h2>
+          {meConnected ? (
+            <p className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 font-body text-body-sm text-emerald-400">
+              Melhor Envio conectado com sucesso.
+            </p>
+          ) : null}
+          {meError ? (
+            <p className="rounded-lg border border-error/30 bg-error-container/10 px-4 py-3 font-body text-body-sm text-error">
+              {MELHOR_ENVIO_ERROR_MESSAGES[meError] ?? "Não foi possível concluir a operação. Tente novamente."}
+            </p>
+          ) : null}
+          <ShippingConnectionCard
+            canManage={Boolean(canManageShippingProvider)}
+            connected={shippingProviderRow?.status === "connected"}
+            connectedAt={shippingProviderRow?.connected_at ?? null}
+            maskedAccountId={maskAccountId(shippingProviderRow?.connected_account_id ?? null)}
+          />
+        </div>
+      ) : null}
 
       <FeatureGate feature="shipping" featureName="Frete e entrega" tenantId={tenant.id}>
         <ShippingSettingsForm

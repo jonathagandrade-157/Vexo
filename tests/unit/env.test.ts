@@ -11,6 +11,8 @@ const VALID_ENV = {
   MERCADO_PAGO_CLIENT_SECRET: "test-mp-client-secret",
   MERCADO_PAGO_WEBHOOK_SECRET: "test-mp-webhook-secret",
   OAUTH_STATE_SECRET: "a-oauth-state-secret-thats-long-enough",
+  MELHOR_ENVIO_CLIENT_ID: "test-me-client-id",
+  MELHOR_ENVIO_CLIENT_SECRET: "test-me-client-secret",
 };
 
 describe("lib/env", () => {
@@ -131,6 +133,77 @@ describe("lib/env", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("parses valid Melhor Envio env vars, defaulting MELHOR_ENVIO_SANDBOX to true when unset", async () => {
+    Object.assign(process.env, VALID_ENV);
+    const { getMelhorEnvioEnv } = await import("@/lib/env");
+    expect(getMelhorEnvioEnv()).toEqual({
+      MELHOR_ENVIO_CLIENT_ID: VALID_ENV.MELHOR_ENVIO_CLIENT_ID,
+      MELHOR_ENVIO_CLIENT_SECRET: VALID_ENV.MELHOR_ENVIO_CLIENT_SECRET,
+      MELHOR_ENVIO_SANDBOX: true,
+      OAUTH_STATE_SECRET: VALID_ENV.OAUTH_STATE_SECRET,
+    });
+  });
+
+  it("getMelhorEnvioEnv() only treats the literal string 'false' as production", async () => {
+    Object.assign(process.env, VALID_ENV, { MELHOR_ENVIO_SANDBOX: "false" });
+    const { getMelhorEnvioEnv } = await import("@/lib/env");
+    expect(getMelhorEnvioEnv().MELHOR_ENVIO_SANDBOX).toBe(false);
+  });
+
+  it("getMelhorEnvioEnv() throws a clear, secret-free error when Melhor Envio vars are missing", async () => {
+    Object.assign(process.env, VALID_ENV);
+    delete process.env.MELHOR_ENVIO_CLIENT_ID;
+    delete process.env.MELHOR_ENVIO_CLIENT_SECRET;
+    delete process.env.OAUTH_STATE_SECRET;
+
+    const { getMelhorEnvioEnv } = await import("@/lib/env");
+    let thrown: unknown;
+    try {
+      getMelhorEnvioEnv();
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toMatch(/Melhor Envio/);
+    expect(message).toMatch(/não está configurada/);
+    for (const value of Object.values(VALID_ENV)) {
+      expect(message).not.toContain(value);
+    }
+  });
+
+  it("refuses to read Melhor Envio env vars when called from the browser", async () => {
+    Object.assign(process.env, VALID_ENV);
+    const { getMelhorEnvioEnv } = await import("@/lib/env");
+
+    vi.stubGlobal("window", {});
+    try {
+      expect(() => getMelhorEnvioEnv()).toThrow(/must never be called from the browser/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("getServerEnv() and getMercadoPagoEnv() succeed even when every Melhor Envio var is missing (integrations never depend on each other)", async () => {
+    Object.assign(process.env, VALID_ENV);
+    delete process.env.MELHOR_ENVIO_CLIENT_ID;
+    delete process.env.MELHOR_ENVIO_CLIENT_SECRET;
+
+    const { getServerEnv, getMercadoPagoEnv } = await import("@/lib/env");
+    expect(() => getServerEnv()).not.toThrow();
+    expect(() => getMercadoPagoEnv()).not.toThrow();
+  });
+
+  it("getMelhorEnvioEnv() succeeds even when every Mercado Pago var is missing", async () => {
+    Object.assign(process.env, VALID_ENV);
+    delete process.env.MERCADO_PAGO_CLIENT_ID;
+    delete process.env.MERCADO_PAGO_CLIENT_SECRET;
+    delete process.env.MERCADO_PAGO_WEBHOOK_SECRET;
+
+    const { getMelhorEnvioEnv } = await import("@/lib/env");
+    expect(() => getMelhorEnvioEnv()).not.toThrow();
   });
 
   it("memoizes the parsed value across calls", async () => {
