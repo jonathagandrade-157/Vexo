@@ -141,10 +141,17 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Conexão com o Melhor Envio
       ),
     );
 
-    const asOwner = await asActor({ role: "authenticated", userId: fx.userAOwner }, (c) =>
-      c.query("select 1 from public.shipping_credentials_vault where tenant_id = $1", [fx.tenantA]),
+    // D3.2-B (correção 090) — `authenticated` não tem mais nenhum grant de
+    // tabela sobre shipping_credentials_vault (revogado para alinhar com
+    // payment_credentials_vault), então o SELECT agora falha na camada de
+    // GRANT ("permission denied"), antes mesmo de chegar à RLS — mais
+    // restritivo que o "0 linhas via RLS" de antes da 090.
+    const selectErr = await expectPgError(
+      asActor({ role: "authenticated", userId: fx.userAOwner }, (c) =>
+        c.query("select 1 from public.shipping_credentials_vault where tenant_id = $1", [fx.tenantA]),
+      ),
     );
-    expect(asOwner.rows).toHaveLength(0);
+    expect(selectErr.message).toMatch(/permission denied/i);
 
     const insertErr = await expectPgError(
       asActor({ role: "authenticated", userId: fx.userAOwner }, (c) =>
