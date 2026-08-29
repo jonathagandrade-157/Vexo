@@ -48,6 +48,19 @@ interface TenantJoinRow {
  * `auth.users` separadamente) — por isso o proprietário é resolvido em
  * duas consultas extras, nunca um embed do PostgREST através de uma
  * relação que não existe de verdade.
+ *
+ * D3.2-B Ponto 2F.4 (correção) — `subscriptions` tem DUAS FKs para
+ * `plans` (`plan_id` e `pending_plan_id`, esta desde a migration
+ * 20260817220070), então o embed `subscriptions(plans(...))` sem
+ * desambiguação é rejeitado pelo PostgREST (PGRST201, "more than one
+ * relationship was found") — a query inteira falhava, e como o `error`
+ * era descartado, virava silenciosamente `[]`. `plans!subscriptions_plan_id_fkey`
+ * fixa explicitamente a relação pelo plano ATUAL (nunca `pending_plan_id`,
+ * que não existe para exibição aqui). Uma falha real do Supabase agora
+ * propaga como exceção (nunca vira `[]`) — mesma lógica de "log técnico
+ * sem PII + lançar", só que aqui lançar é o comportamento certo (painel
+ * interno da equipe VEXO, não uma tela de cliente): cai no error.tsx de
+ * `/master/lojas`, nunca fica indistinguível de "nenhuma loja".
  */
 export async function listTenantsForMaster(statusFilter?: TenantStatusFilter): Promise<MasterTenantRow[]> {
   const supabase = await createSupabaseServerClient();
@@ -55,7 +68,7 @@ export async function listTenantsForMaster(statusFilter?: TenantStatusFilter): P
   let query = supabase
     .from("tenants")
     .select(
-      "id, name, slug, segment, status, created_at, trial_records(status, ends_at), subscriptions(plans(name))",
+      "id, name, slug, segment, status, created_at, trial_records(status, ends_at), subscriptions(plans!subscriptions_plan_id_fkey(name))",
     )
     .order("created_at", { ascending: false });
 
@@ -63,7 +76,11 @@ export async function listTenantsForMaster(statusFilter?: TenantStatusFilter): P
     query = query.eq("status", statusFilter);
   }
 
-  const { data } = await query;
+  const { data, error } = await query;
+  if (error) {
+    console.error("[listTenantsForMaster] failed to load tenants", { statusFilter, error: error.message });
+    throw new Error("Não foi possível carregar as lojas.");
+  }
   const tenants = (data ?? []) as unknown as TenantJoinRow[];
   if (tenants.length === 0) return [];
 
@@ -151,18 +168,35 @@ interface TenantDetailSubscriptionRow {
   plans: { name: string; slug: string; monthly_price: number | null; yearly_price: number | null } | { name: string; slug: string; monthly_price: number | null; yearly_price: number | null }[] | null;
 }
 
-/** Detalhe de uma loja para `/master/lojas/[id]` — mesma fonte de dados da listagem, só escopada a um tenant e com todos os membros (não só o OWNER). Select próprio (não reaproveita `TenantJoinRow`) porque só aqui precisamos dos campos de `subscriptions` usados pela troca de plano (Etapa 20.1) — a listagem continua enxuta. */
+/**
+ * Detalhe de uma loja para `/master/lojas/[id]` — mesma fonte de dados da
+ * listagem, só escopada a um tenant e com todos os membros (não só o
+ * OWNER). Select próprio (não reaproveita `TenantJoinRow`) porque só aqui
+ * precisamos dos campos de `subscriptions` usados pela troca de plano
+ * (Etapa 20.1) — a listagem continua enxuta.
+ *
+ * D3.2-B Ponto 2F.4 (correção) — mesma desambiguação de
+ * `listTenantsForMaster` (`plans!subscriptions_plan_id_fkey`, nunca
+ * `pending_plan_id`) e mesma regra: um `error` real do Supabase lança,
+ * nunca vira `null` — `null` continua reservado exclusivamente para "esse
+ * tenant_id não existe" (nenhuma linha, sem erro), que é o que
+ * `app/master/lojas/[id]/page.tsx` usa para decidir `notFound()`.
+ */
 export async function getTenantDetailForMaster(tenantId: string): Promise<MasterTenantDetail | null> {
   const supabase = await createSupabaseServerClient();
 
-  const { data: tenant } = await supabase
+  const { data: tenant, error } = await supabase
     .from("tenants")
     .select(
-      "id, name, slug, segment, status, onboarding_completed_at, created_at, trial_records(status, ends_at), subscriptions(id, plan_id, status, trial_end, current_period_end, plans(name, slug, monthly_price, yearly_price))",
+      "id, name, slug, segment, status, onboarding_completed_at, created_at, trial_records(status, ends_at), subscriptions(id, plan_id, status, trial_end, current_period_end, plans!subscriptions_plan_id_fkey(name, slug, monthly_price, yearly_price))",
     )
     .eq("id", tenantId)
     .maybeSingle();
 
+  if (error) {
+    console.error("[getTenantDetailForMaster] failed to load tenant", { tenantId, error: error.message });
+    throw new Error("Não foi possível carregar os dados da loja.");
+  }
   if (!tenant) return null;
   const t = tenant as unknown as Omit<TenantJoinRow, "subscriptions"> & {
     onboarding_completed_at: string | null;
