@@ -35,6 +35,24 @@ const TENANT_COLUMNS =
   "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, status, created_at";
 
 /**
+ * D8 (Camada 1) — `tenants.status` que impedem QUALQUER resolução de
+ * membership ativa pelo lado do lojista (painel + onboarding + Server
+ * Actions administrativas, todas via `activeMemberships()`). Escopo
+ * deliberadamente estreito: só o campo bruto `tenants.status`, nunca
+ * `tenant_access_status()` (que também cobre billing/trial — um bloqueio
+ * comercial que esta etapa explicitamente não implementa). `pending`
+ * nunca entra aqui — já funciona normalmente hoje (ex.: onboarding
+ * concluído com a loja ainda pendente de aprovação) e a RLS pública do
+ * storefront (migration 20260817220022) já usa exatamente esta mesma
+ * lista, nunca `status = 'active'` sozinho.
+ */
+const BLOCKED_TENANT_STATUSES = new Set(["suspended", "deleted"]);
+
+function isBlockedTenantStatus(status: string): boolean {
+  return BLOCKED_TENANT_STATUSES.has(status);
+}
+
+/**
  * Consulta compartilhada — nunca a partir de um tenant_id vindo do client
  * (query param, campo oculto de formulário), sempre a partir da sessão +
  * tenant_members, a mesma tabela que a RLS já usa para autorizar
@@ -42,6 +60,14 @@ const TENANT_COLUMNS =
  * role vindo do client"). `resolveOnboardingTenant` e
  * `resolveActiveTenantForUser` só decidem o que fazer com as linhas —
  * nenhuma duplica a query.
+ *
+ * D8 (Camada 1) — filtra tenant suspenso/deletado AQUI, uma vez só: nem
+ * `resolveOnboardingTenant` nem `resolveActiveTenantForUser` (nem, por
+ * tabela, nenhuma das ~18 Server Actions que dependem desta última através
+ * de `getCurrentMembership()`) voltam a enxergar essa linha — sem precisar
+ * tocar em nenhuma delas individualmente. Filtro em memória sobre o
+ * resultado já trazido pela query (a coluna `status` já fazia parte de
+ * `TENANT_COLUMNS`), nunca uma nova query nem mudança de RLS.
  */
 async function activeMemberships(
   supabase: SupabaseClient,
@@ -64,10 +90,43 @@ async function activeMemberships(
     return [];
   }
 
-  return ((data ?? []) as unknown as MembershipRow[]).map((row) => ({
-    role: first(row.role),
-    tenant: first(row.tenant),
-  }));
+  return ((data ?? []) as unknown as MembershipRow[])
+    .map((row) => ({
+      role: first(row.role),
+      tenant: first(row.tenant),
+    }))
+    .filter(({ tenant }) => !tenant || !isBlockedTenantStatus(tenant.status));
+}
+
+/**
+ * D8 (Camada 1) — UX apenas: `activeMemberships()` já filtra tenant
+ * suspenso/deletado antes de qualquer decisão de autorização, então quem
+ * chama `resolveActiveTenantForUser` nunca sabe a diferença entre "sem
+ * tenant nenhum" e "tenant existe, mas está bloqueado". Esta função separada
+ * refaz a mesma consulta, sem o filtro, só para o gate do painel poder
+ * mostrar uma mensagem específica em vez do "sem loja" genérico — nunca é
+ * usada para autorizar nada (nenhuma Server Action a chama).
+ */
+export async function getBlockedTenantStatus(supabase: SupabaseClient): Promise<"suspended" | "deleted" | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("tenant_members")
+    .select(`tenant:tenants(status)`)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: true });
+
+  if (error) return null;
+
+  for (const row of (data ?? []) as unknown as { tenant: { status: string } | { status: string }[] | null }[]) {
+    const tenant = first(row.tenant);
+    if (tenant?.status === "suspended" || tenant?.status === "deleted") return tenant.status;
+  }
+  return null;
 }
 
 /**

@@ -5,6 +5,7 @@ import { Header } from "@/components/painel/header";
 import { MobileBottomNav } from "@/components/painel/mobile-bottom-nav";
 import { Sidebar } from "@/components/painel/sidebar";
 import { getTenantCommercialContext } from "@/features/commercial/tenant-plan";
+import { getBlockedTenantStatus } from "@/features/onboarding/resolve-tenant";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -15,9 +16,16 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * em tenant_id/role vindo do client: tudo vem de `getCurrentMembership()`
  * (sessão + tenant_members, mesma base que a RLS usa).
  *
- * Os 5 estados pedidos:
+ * Os estados pedidos:
  *   1. sem sessão                          → /login
  *   2. sem tenant nenhum (sem membership)  → /sem-loja
+ *   2b. único(s) tenant(s) do usuário estão
+ *      suspended/deleted (D8 Camada 1)     → estado informativo inerte,
+ *      nunca o shell do painel — `activeMemberships()` (`features/
+ *      onboarding/resolve-tenant.ts`) já filtra essas linhas antes de
+ *      `getCurrentMembership()` retornar, então isso cai no mesmo `if
+ *      (!membership)` do caso 2; `getBlockedTenantStatus` só é chamado
+ *      aqui para decidir a MENSAGEM, nunca para autorizar nada.
  *   3. tenant com onboarding pendente,
  *      usuário é o OWNER                   → /onboarding
  *   4. tenant com onboarding pendente,
@@ -36,7 +44,25 @@ export default async function PainelLayout({ children }: { children: ReactNode }
   if (!user) redirect("/login");
 
   const membership = await getCurrentMembership();
-  if (!membership) redirect("/sem-loja");
+  if (!membership) {
+    const blockedStatus = await getBlockedTenantStatus(supabase);
+    if (blockedStatus) {
+      return (
+        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-margin-mobile text-center md:p-margin-desktop">
+          <span className="material-symbols-outlined text-4xl text-error">block</span>
+          <div className="flex max-w-[440px] flex-col gap-2">
+            <h1 className="font-headline text-headline-sm text-on-surface">
+              {blockedStatus === "deleted" ? "Esta loja foi excluída" : "Esta loja está suspensa"}
+            </h1>
+            <p className="font-body text-body-md text-on-surface-variant">
+              O acesso ao painel não está disponível no momento. Fale com o suporte da VEXO para mais informações.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    redirect("/sem-loja");
+  }
 
   if (membership.tenant.onboarding_completed_at === null) {
     if (membership.roleKey === "OWNER") redirect("/onboarding");
