@@ -77,3 +77,28 @@ export function getProductImagePublicUrl(path: string): string {
   const { NEXT_PUBLIC_SUPABASE_URL } = getPublicEnv();
   return `${NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${path}`;
 }
+
+/**
+ * D11.2 — decide qual URL o `ProductImageUploader` deve exibir, extraída
+ * como função pura (sem DOM/React) para ser testável sem infraestrutura de
+ * teste de componente (não disponível neste projeto — vitest roda em
+ * `environment: "node"`, sem jsdom/@testing-library/react).
+ *
+ * Regra: depois de um upload confirmado com sucesso, a URL real do Storage
+ * tem prioridade sobre o preview local (que pode inclusive já ter sido
+ * revogado) — o preview local só é a fonte de verdade enquanto não há uma
+ * confirmação do servidor (idle/error, ou o instante entre a seleção do
+ * arquivo e a resposta da Server Action).
+ */
+export function resolveProductImagePreview(input: {
+  actionStatus: "idle" | "error" | "success";
+  actionImagePath: string | null | undefined;
+  initialImagePath: string | null;
+  previewUrl: string | null;
+}): { savedPath: string | null; displayUrl: string | null; isBlobPreview: boolean } {
+  const { actionStatus, actionImagePath, initialImagePath, previewUrl } = input;
+  const savedPath = actionStatus === "success" ? (actionImagePath ?? null) : initialImagePath;
+  const savedUrl = savedPath ? getProductImagePublicUrl(savedPath) : null;
+  const displayUrl = actionStatus === "success" ? (savedUrl ?? previewUrl) : (previewUrl ?? savedUrl);
+  return { savedPath, displayUrl, isBlobPreview: displayUrl !== null && displayUrl.startsWith("blob:") };
+}

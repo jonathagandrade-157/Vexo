@@ -7,7 +7,7 @@ import { useFormStatus } from "react-dom";
 
 import { ConfirmDialog } from "@/components/painel/confirm-dialog";
 import { removeProductImageAction, uploadProductImageAction } from "@/features/products/actions";
-import { getProductImagePublicUrl } from "@/features/products/image-storage";
+import { resolveProductImagePreview } from "@/features/products/image-storage";
 import { initialProductImageState } from "@/features/products/schema";
 
 function UploadStatus() {
@@ -70,25 +70,55 @@ export function ProductImageUploader({
   const uploadAction = uploadProductImageAction.bind(null, productId);
   const [state, formAction] = useActionState(uploadAction, initialProductImageState);
   const formRef = useRef<HTMLFormElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
-  const savedPath = state.status === "success" ? (state.imagePath ?? null) : initialImagePath;
-  const displayUrl = previewUrl ?? (savedPath ? getProductImagePublicUrl(savedPath) : null);
-
-  // Preview local (antes/durante o upload, e mantido depois — é a mesma
-  // foto que acabou de ser salva). Revogado só quando substituído por um
-  // novo arquivo ou quando o componente desmonta, nunca com setState
-  // dentro do próprio efeito (regra de pureza do react-compiler).
+  // D11.2 — cria E destrói a Object URL dentro do MESMO efeito (em vez de
+  // criar no handler e só destruir no cleanup, como antes). Isso é o que
+  // torna o preview resiliente ao duplo-invoke de efeitos do React Strict
+  // Mode em `next dev` (`reactStrictMode: true`, next.config.ts): naquele
+  // ciclo o React roda montagem→limpeza→montagem de novo logo após a
+  // seleção do arquivo; com criação e destruição simétricas no mesmo
+  // efeito, a segunda montagem gera uma Object URL nova e válida em vez de
+  // deixar o preview apontando para uma URL já revogada (D11.1 §N —
+  // hipótese PROVÁVEL, não confirmada por observação em navegador; este
+  // fix não depende de essa ser a única causa, só remove a corrida em si).
+  // `setPreviewUrl` aqui sincroniza React com um recurso de fato externo
+  // (o registro de Blob URLs do navegador, criado e revogado neste mesmo
+  // efeito) — não é o anti-padrão de "espelhar" um valor já derivável
+  // durante o render que a regra abaixo normalmente pega.
   useEffect(() => {
-    if (!previewUrl) return;
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
+    if (!selectedFile) return;
+    const objectUrl = URL.createObjectURL(selectedFile);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza React com a Blob URL recém-criada (recurso externo do navegador), revogada no cleanup logo abaixo; ver comentário do efeito acima.
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedFile]);
+
+  // Depois de um upload confirmado com sucesso, a URL real do Storage passa
+  // a ser a fonte de verdade (resolveProductImagePreview abaixo já prioriza
+  // `savedUrl` nesse caso) — o preview local deixa de ser necessário e é
+  // liberado aqui, o que também dispara a revogação da Object URL no
+  // cleanup do efeito acima. Erro NÃO limpa o preview: o arquivo
+  // selecionado continua visível junto da mensagem de erro (§3 do prompt).
+  useEffect(() => {
+    if (state.status !== "success") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reage a uma resposta assíncrona do servidor (useActionState), não a um valor já calculável durante o render; libera o preview local agora que a URL do Storage é a fonte de verdade.
+    setSelectedFile(null);
+  }, [state]);
+
+  const { savedPath, displayUrl, isBlobPreview } = resolveProductImagePreview({
+    actionStatus: state.status,
+    actionImagePath: state.status === "success" ? state.imagePath : undefined,
+    initialImagePath,
+    previewUrl,
+  });
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setPreviewUrl(URL.createObjectURL(file));
+    setSelectedFile(file);
     formRef.current?.requestSubmit();
   }
 
@@ -105,7 +135,7 @@ export function ProductImageUploader({
     <form action={formAction} className="flex flex-col gap-3" ref={formRef}>
       <div className="relative aspect-square w-full max-w-[220px] overflow-hidden rounded-xl border border-outline-variant/30 bg-surface-container-lowest">
         {displayUrl ? (
-          <Image alt="" className="object-cover" fill sizes="220px" src={displayUrl} unoptimized={previewUrl !== null} />
+          <Image alt="" className="object-cover" fill sizes="220px" src={displayUrl} unoptimized={isBlobPreview} />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <span className="material-symbols-outlined text-4xl text-outline">image</span>
