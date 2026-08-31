@@ -5,6 +5,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export const TENANT_STATUS_FILTERS = ["pending", "active", "suspended"] as const;
 export type TenantStatusFilter = (typeof TENANT_STATUS_FILTERS)[number];
 
+/** D11.4 — mesmo tamanho de página já usado em `features/orders/data.ts`/`features/master/audit-data.ts`. */
+export const TENANT_PAGE_SIZE = 20;
+
 export interface MasterTenantRow {
   id: string;
   name: string;
@@ -38,21 +41,86 @@ interface TenantJoinRow {
     | null;
 }
 
+export interface ListTenantsForMasterOptions {
+  status?: TenantStatusFilter;
+  /** Busca livre — combinada com OR entre nome, slug e e-mail do proprietário (D11.4 §8). */
+  q?: string;
+  /** 1-based, mesma convenção de `features/orders/data.ts`/`features/master/audit-data.ts`. */
+  page?: number;
+}
+
+export interface TenantListResult {
+  tenants: MasterTenantRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
 /**
- * Listagem de lojas para o painel MASTER (Etapa 18). RLS de `tenants`
- * (migration 20260817220012) já deixa `is_platform_admin()` (MASTER ou
- * SUPPORT_AGENT) ver TODOS os tenants — não é uma consulta nova de
- * autorização, só um novo consumidor do que já existe.
+ * Mesmo raciocínio de sanitização já duplicado localmente em
+ * `features/orders/data.ts`/`features/master/audit-data.ts` (nunca
+ * compartilhado entre features de propósito) — escapa `,`/`(`/`)`
+ * (sintaxe de filtro do `.or()` do PostgREST) e os curingas de `LIKE`
+ * (`%`/`_`), nunca interpretados como sintaxe.
+ */
+function sanitizeSearchTerm(raw: string): string {
+  return raw
+    .replace(/[,()]/g, " ")
+    .replace(/[%_\\]/g, (c) => `\\${c}`)
+    .trim()
+    .slice(0, 100);
+}
+
+/**
+ * D11.4 §7 — resolve quais `tenant_id` têm um OWNER cujo e-mail combina com
+ * o termo buscado, para poder incluí-los no `.or()` da query principal de
+ * `tenants`. Duas consultas reais no banco (nunca "trazer tudo para
+ * memória"): `profiles` por e-mail (RLS já libera para platform admin,
+ * migration 0009: "platform admins can select all profiles") → `tenant_members`
+ * pelos `user_id` encontrados, filtrando OWNER em memória sobre esse
+ * conjunto já pequeno — mesmo padrão já usado logo abaixo para resolver o
+ * proprietário de exibição de cada linha (nunca um embed novo via `!inner`:
+ * este projeto já decidiu explicitamente não depender desse recurso do
+ * PostgREST — ver comentário em `features/storefront/catalog.ts`).
+ */
+async function resolveOwnerMatchTenantIds(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  term: string,
+): Promise<string[]> {
+  const { data: profileMatches } = await supabase.from("profiles").select("id").ilike("email", `%${term}%`);
+  const profileIds = ((profileMatches ?? []) as { id: string }[]).map((p) => p.id);
+  if (profileIds.length === 0) return [];
+
+  const { data: memberRows } = await supabase
+    .from("tenant_members")
+    .select("tenant_id, role:roles(key)")
+    .in("user_id", profileIds);
+
+  return [
+    ...new Set(
+      ((memberRows ?? []) as unknown as { tenant_id: string; role: { key: string } | { key: string }[] | null }[])
+        .filter((m) => first(m.role)?.key === "OWNER")
+        .map((m) => m.tenant_id),
+    ),
+  ];
+}
+
+/**
+ * Listagem de lojas para o painel MASTER (Etapa 18; busca e paginação real
+ * no banco desde D11.4). RLS de `tenants` (migration 20260817220012) já
+ * deixa `is_platform_admin()` (MASTER ou SUPPORT_AGENT) ver TODOS os
+ * tenants — não é uma consulta nova de autorização, só um novo consumidor
+ * do que já existe.
  *
  * `profiles` não tem FK direta com `tenant_members` (ambos referenciam
  * `auth.users` separadamente) — por isso o proprietário é resolvido em
  * duas consultas extras, nunca um embed do PostgREST através de uma
  * relação que não existe de verdade.
  *
- * D3.2-B Ponto 2F.4 (correção) — `subscriptions` tem DUAS FKs para
- * `plans` (`plan_id` e `pending_plan_id`, esta desde a migration
- * 20260817220070), então o embed `subscriptions(plans(...))` sem
- * desambiguação é rejeitado pelo PostgREST (PGRST201, "more than one
+ * D3.2-B Ponto 2F.4 (correção, preservada intocada) — `subscriptions` tem
+ * DUAS FKs para `plans` (`plan_id` e `pending_plan_id`, esta desde a
+ * migration 20260817220070), então o embed `subscriptions(plans(...))`
+ * sem desambiguação é rejeitado pelo PostgREST (PGRST201, "more than one
  * relationship was found") — a query inteira falhava, e como o `error`
  * era descartado, virava silenciosamente `[]`. `plans!subscriptions_plan_id_fkey`
  * fixa explicitamente a relação pelo plano ATUAL (nunca `pending_plan_id`,
@@ -61,28 +129,56 @@ interface TenantJoinRow {
  * sem PII + lançar", só que aqui lançar é o comportamento certo (painel
  * interno da equipe VEXO, não uma tela de cliente): cai no error.tsx de
  * `/master/lojas`, nunca fica indistinguível de "nenhuma loja".
+ *
+ * D11.4 — paginação real via `range()` + `count: "exact"` (mesmo padrão de
+ * `listOrders`/`listAuditLogsForMaster`), busca por nome/slug via `.or()`
+ * ilike direto na query principal, e por e-mail do proprietário via os
+ * `tenant_id` resolvidos acima, incluídos no MESMO `.or()` (nunca uma
+ * segunda query paginada nem filtro em memória) — as três dimensões
+ * combinam como OR entre si e como AND com o filtro de `status`.
  */
-export async function listTenantsForMaster(statusFilter?: TenantStatusFilter): Promise<MasterTenantRow[]> {
+export async function listTenantsForMaster(opts: ListTenantsForMasterOptions = {}): Promise<TenantListResult> {
   const supabase = await createSupabaseServerClient();
+  const page = Math.max(1, Math.floor(opts.page ?? 1));
+  const from = (page - 1) * TENANT_PAGE_SIZE;
+  const to = from + TENANT_PAGE_SIZE - 1;
 
   let query = supabase
     .from("tenants")
     .select(
       "id, name, slug, segment, status, created_at, trial_records(status, ends_at), subscriptions(plans!subscriptions_plan_id_fkey(name))",
+      { count: "exact" },
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
-  if (statusFilter) {
-    query = query.eq("status", statusFilter);
+  if (opts.status) {
+    query = query.eq("status", opts.status);
   }
 
-  const { data, error } = await query;
+  const search = opts.q?.trim();
+  if (search) {
+    const term = sanitizeSearchTerm(search);
+    if (term.length > 0) {
+      const ownerTenantIds = await resolveOwnerMatchTenantIds(supabase, term);
+      const orParts = [`name.ilike.%${term}%`, `slug.ilike.%${term}%`];
+      if (ownerTenantIds.length > 0) {
+        orParts.push(`id.in.(${ownerTenantIds.join(",")})`);
+      }
+      query = query.or(orParts.join(","));
+    }
+  }
+
+  const { data, error, count } = await query;
   if (error) {
-    console.error("[listTenantsForMaster] failed to load tenants", { statusFilter, error: error.message });
+    console.error("[listTenantsForMaster] failed to load tenants", { status: opts.status, error: error.message });
     throw new Error("Não foi possível carregar as lojas.");
   }
   const tenants = (data ?? []) as unknown as TenantJoinRow[];
-  if (tenants.length === 0) return [];
+  const total = count ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / TENANT_PAGE_SIZE));
+
+  if (tenants.length === 0) return { tenants: [], total, page, pageCount };
 
   const tenantIds = tenants.map((t) => t.id);
 
@@ -109,7 +205,7 @@ export async function listTenantsForMaster(statusFilter?: TenantStatusFilter): P
 
   const profileById = new Map((profileRows ?? []).map((p) => [p.id, p]));
 
-  return tenants.map((t) => {
+  const rows = tenants.map((t) => {
     const ownerUserId = ownerUserIdByTenant.get(t.id);
     const owner = ownerUserId ? profileById.get(ownerUserId) : undefined;
     const trial = first(t.trial_records);
@@ -130,6 +226,8 @@ export async function listTenantsForMaster(statusFilter?: TenantStatusFilter): P
       trialEndsAt: trial?.ends_at ?? null,
     };
   });
+
+  return { tenants: rows, total, page, pageCount };
 }
 
 export interface MasterTenantMember {
