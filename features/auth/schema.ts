@@ -38,6 +38,26 @@ export const resetPasswordRequestSchema = z.object({
 export type ResetPasswordRequestInput = z.infer<typeof resetPasswordRequestSchema>;
 
 /**
+ * D7 — mesma regra mínima de senha do cadastro (`signUpSchema.password`,
+ * min 8) — não inventa uma política comercial nova (maiúscula/símbolo/
+ * etc.) que o resto do produto não exige. `.refine()` no nível do objeto
+ * (não em cada campo) é o padrão Zod para "dois campos precisam
+ * combinar" — mesmo princípio de `productSchema` (Etapa 7) validando
+ * `promotionalPrice <= price` no nível do objeto.
+ */
+export const updatePasswordSchema = z
+  .object({
+    password: z.string().min(8, "A senha precisa ter pelo menos 8 caracteres"),
+    confirmPassword: z.string().min(1, "Confirme a nova senha"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "As senhas não coincidem",
+    path: ["confirmPassword"],
+  });
+
+export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
+
+/**
  * Estados dos formulários + `initial*State` — vivem aqui, não em
  * `actions.ts`, porque um arquivo `"use server"` só pode exportar
  * funções async (qualquer outro export, como um objeto const, quebra o
@@ -66,3 +86,11 @@ export interface ResetPasswordRequestState {
 }
 
 export const initialResetPasswordRequestState: ResetPasswordRequestState = { status: "idle" };
+
+export interface UpdatePasswordActionState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  fieldErrors?: Partial<Record<keyof UpdatePasswordInput, string>>;
+}
+
+export const initialUpdatePasswordState: UpdatePasswordActionState = { status: "idle" };

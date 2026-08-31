@@ -14,11 +14,14 @@ import {
   resetPasswordRequestSchema,
   signInSchema,
   signUpSchema,
+  updatePasswordSchema,
   type ResetPasswordRequestState,
   type SignInActionState,
   type SignInInput,
   type SignUpActionState,
   type SignUpInput,
+  type UpdatePasswordActionState,
+  type UpdatePasswordInput,
 } from "./schema";
 
 interface TenantRow {
@@ -254,12 +257,86 @@ export async function resetPasswordRequestAction(
 
   const supabase = await createSupabaseServerClient();
   const { NEXT_PUBLIC_SITE_URL } = getPublicEnv();
+  // D7 (correção) — apontava para /login, um beco sem saída: o usuário
+  // clicava no link do e-mail e não tinha como definir a nova senha em
+  // lugar nenhum. Agora aponta para a página dedicada de redefinição.
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${NEXT_PUBLIC_SITE_URL}/login`,
+    redirectTo: `${NEXT_PUBLIC_SITE_URL}/redefinir-senha`,
   });
 
   return {
     status: "success",
     message: "Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.",
+  };
+}
+
+/**
+ * D7 — último passo do fluxo de recuperação de senha. Nunca recebe
+ * user_id/tenant_id do navegador: a identidade vem inteiramente da sessão
+ * de recovery do Supabase Auth, a mesma que `app/(auth)/redefinir-senha/
+ * update-password-form.tsx` já deixou estabelecida via
+ * `createSupabaseBrowserClient()` (o link de recuperação do Supabase
+ * entrega a sessão como fragmento de URL — `#access_token=...&type=
+ * recovery` — que só o client-side consegue ler; `detectSessionInUrl`,
+ * padrão do `@supabase/ssr`, processa isso automaticamente ao montar o
+ * client e grava a sessão nos cookies, os mesmos que este Server Action
+ * lê via `createSupabaseServerClient()`).
+ *
+ * Por isso `supabase.auth.getUser()` é checado ANTES de qualquer coisa:
+ * sem uma sessão válida (link expirado, inválido, já usado, ou a página
+ * aberta sem ter vindo do e-mail), `updateUser` nunca é chamado — nunca
+ * client-role/service-role bypass, sempre o mecanismo oficial do GoTrue,
+ * que só altera a senha do PRÓPRIO usuário da sessão corrente.
+ *
+ * Sempre desloga a sessão de recovery depois de trocar a senha (mesmo em
+ * caso de sucesso) — o usuário entra de novo normalmente com a senha
+ * nova pelo `/login` de sempre, nunca fica "logado por acidente" a partir
+ * de um link de e-mail.
+ */
+export async function updatePasswordAction(
+  _prevState: UpdatePasswordActionState,
+  formData: FormData,
+): Promise<UpdatePasswordActionState> {
+  const parsed = updatePasswordSchema.safeParse({
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+
+  if (!parsed.success) {
+    const fieldErrors: UpdatePasswordActionState["fieldErrors"] = {};
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0] as keyof UpdatePasswordInput;
+      fieldErrors[key] ??= issue.message;
+    }
+    return { status: "error", fieldErrors, message: "Verifique os campos destacados." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      status: "error",
+      message: "Este link de redefinição expirou ou já foi utilizado. Solicite um novo link.",
+    };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  if (error) {
+    // Nunca repassa error.message bruto do Supabase (arquitetura: nenhum
+    // detalhe interno ao usuário) — mesma postura defensiva de signInAction.
+    return {
+      status: "error",
+      message: "Não foi possível atualizar sua senha. Tente novamente.",
+    };
+  }
+
+  await supabase.auth.signOut();
+
+  return {
+    status: "success",
+    message: "Senha atualizada com sucesso. Entre novamente com sua nova senha.",
   };
 }
