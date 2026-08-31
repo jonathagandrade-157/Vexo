@@ -156,3 +156,109 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
     }
   });
 });
+
+/**
+ * D9.1 — as 4 chamadas HTTP reais do gateway (exchangeCodeForTokens,
+ * createPayment, getPayment, refundPayment) passam a usar um
+ * AbortController interno com timeout fixo (mesmo padrão de
+ * lib/billing/asaas.ts). Nunca simula o timeout de verdade esperando
+ * 10s: em vez disso, faz `fetch` rejeitar como o próprio runtime faria
+ * quando `controller.abort()` dispara (`AbortError`), o que já exercita
+ * o branch de conversão de erro sem deixar o teste lento.
+ */
+describe("timeout / AbortController (D9.1)", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function abortError(): Error {
+    const err = new Error("The operation was aborted");
+    err.name = "AbortError";
+    return err;
+  }
+
+  it("1. uma chamada normal continua funcionando (getPayment)", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ id: 1, status: "approved", transaction_amount: 42, payment_method_id: "pix", external_reference: "order-x" }),
+        { status: 200 },
+      ),
+    );
+    const payment = await gateway.getPayment("token", "1");
+    expect(payment.status).toBe("APPROVED");
+  });
+
+  it("2. uma chamada abortada (timeout) produz um erro tratado, nunca uma promise pendurada", async () => {
+    vi.mocked(global.fetch).mockRejectedValueOnce(abortError());
+    await expect(gateway.getPayment("token", "1")).rejects.toThrow(/timed out after 10000ms/);
+  });
+
+  it("2b. timeout em exchangeCodeForTokens também produz erro tratado (não só getPayment)", async () => {
+    vi.mocked(global.fetch).mockRejectedValueOnce(abortError());
+    await expect(gateway.exchangeCodeForTokens("code", "https://x/callback")).rejects.toThrow(/timed out/);
+  });
+
+  it("2c. timeout em createPayment também produz erro tratado", async () => {
+    vi.mocked(global.fetch).mockRejectedValueOnce(abortError());
+    await expect(
+      gateway.createPayment({
+        accessToken: "seller-token",
+        orderId: "order-abc",
+        orderNumber: "PED000123",
+        amount: 10,
+        customerEmail: "cliente@example.com",
+        backUrl: "https://loja.vexo.local/pedido/order-abc",
+        notificationUrl: "https://loja.vexo.local/api/webhooks/mercadopago",
+      }),
+    ).rejects.toThrow(/timed out/);
+  });
+
+  it("2d. timeout em refundPayment também produz erro tratado", async () => {
+    vi.mocked(global.fetch).mockRejectedValueOnce(abortError());
+    await expect(gateway.refundPayment("seller-token", "payment-1")).rejects.toThrow(/timed out/);
+  });
+
+  it("3. o AbortController é realmente conectado ao fetch (signal presente e é um AbortSignal)", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response(JSON.stringify({ id: 1, status: "approved", transaction_amount: 1, payment_method_id: null, external_reference: null }), { status: 200 }));
+    await gateway.getPayment("token", "1");
+    const [, init] = vi.mocked(global.fetch).mock.calls[0]!;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("4. nenhum segredo (client secret, webhook secret, access token) aparece na mensagem de erro de timeout ou rede", async () => {
+    vi.mocked(global.fetch).mockRejectedValueOnce(abortError());
+    try {
+      await gateway.createPayment({
+        accessToken: "super-secret-seller-token",
+        orderId: "order-abc",
+        orderNumber: "PED000123",
+        amount: 10,
+        customerEmail: "cliente@example.com",
+        backUrl: "https://loja.vexo.local/pedido/order-abc",
+        notificationUrl: "https://loja.vexo.local/api/webhooks/mercadopago",
+      });
+      throw new Error("expected createPayment to reject");
+    } catch (err) {
+      const message = (err as Error).message;
+      expect(message).not.toContain(CLIENT_SECRET);
+      expect(message).not.toContain(WEBHOOK_SECRET);
+      expect(message).not.toContain("super-secret-seller-token");
+    }
+  });
+
+  it("5. um erro de rede genérico (não-abort) também é convertido, sem vazar detalhe interno", async () => {
+    vi.mocked(global.fetch).mockRejectedValueOnce(new Error("ECONNRESET"));
+    await expect(gateway.getPayment("token", "1")).rejects.toThrow(/network error/);
+  });
+
+  it("6. uma resposta HTTP de erro (não-timeout) continua com o comportamento anterior — mensagem específica do endpoint", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response("", { status: 500 }));
+    await expect(gateway.getPayment("token", "1")).rejects.toThrow(/get payment failed \(500\)/);
+  });
+});

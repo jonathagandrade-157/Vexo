@@ -26,6 +26,35 @@ import type {
 const API_BASE = "https://api.mercadopago.com";
 const AUTH_BASE = "https://auth.mercadopago.com";
 
+// D9.1 — mesmo padrão de lib/billing/asaas.ts (AbortController + timeout
+// fixo): nenhuma das 4 chamadas HTTP deste gateway tinha proteção contra
+// o Mercado Pago ficar lento/indisponível, o que prenderia uma Server
+// Action/callback/webhook até o limite da função serverless. 10s é o
+// mesmo valor já usado no cliente do Asaas.
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+/**
+ * Nunca inclui headers/body na mensagem de erro (só a URL, que aqui nunca
+ * carrega token/segredo — client_id/access_token sempre vão em header ou
+ * body, nunca na URL) — mesmo cuidado de `extractErrorDescription` em
+ * lib/billing/asaas.ts: a mensagem de erro só descreve a falha de rede/
+ * timeout em si, nunca ecoa nada da requisição.
+ */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`mercadopago: request to ${url} timed out after ${DEFAULT_TIMEOUT_MS}ms`);
+    }
+    throw new Error(`mercadopago: network error calling ${url}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function mapStatus(mpStatus: string): NormalizedPaymentStatus {
   switch (mpStatus) {
     case "approved":
@@ -58,7 +87,7 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
     },
 
     async exchangeCodeForTokens(code, redirectUri) {
-      const response = await fetch(`${API_BASE}/oauth/token`, {
+      const response = await fetchWithTimeout(`${API_BASE}/oauth/token`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -87,7 +116,7 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
     },
 
     async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
-      const response = await fetch(`${API_BASE}/checkout/preferences`, {
+      const response = await fetchWithTimeout(`${API_BASE}/checkout/preferences`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -117,7 +146,7 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
     },
 
     async getPayment(accessToken, externalId) {
-      const response = await fetch(`${API_BASE}/v1/payments/${encodeURIComponent(externalId)}`, {
+      const response = await fetchWithTimeout(`${API_BASE}/v1/payments/${encodeURIComponent(externalId)}`, {
         headers: { authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) {
@@ -184,7 +213,7 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
     },
 
     async refundPayment(accessToken, externalId) {
-      const response = await fetch(`${API_BASE}/v1/payments/${encodeURIComponent(externalId)}/refunds`, {
+      const response = await fetchWithTimeout(`${API_BASE}/v1/payments/${encodeURIComponent(externalId)}/refunds`, {
         method: "POST",
         headers: { authorization: `Bearer ${accessToken}` },
       });
