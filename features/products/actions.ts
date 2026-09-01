@@ -8,12 +8,13 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils/slugify";
 import {
   buildProductImagePath,
+  isValidProductImagePath,
   PRODUCT_IMAGE_BUCKET,
-  PRODUCT_IMAGE_MAX_BYTES,
-  sniffImageMime,
+  validateProductImageUploadRequest,
 } from "./image-storage";
 import {
   productSchema,
+  type PrepareProductImageActionState,
   type ProductActionState,
   type ProductImageActionState,
   type ProductInput,
@@ -270,24 +271,113 @@ async function resolveOwnedProduct(
   return data;
 }
 
+const PRODUCT_IMAGE_UPLOAD_REQUEST_ERROR_MESSAGE: Record<string, string> = {
+  empty: "Selecione um arquivo de imagem.",
+  too_large: "Imagem muito grande. O limite é 5MB.",
+  unsupported_mime: "Formato não suportado. Envie um JPEG, PNG ou WebP.",
+};
+
 /**
- * Upload/substituição da imagem de um produto já existente (Etapa 8).
+ * D11.8 — arquitetura definitiva de upload de imagem de produto: upload
+ * direto do navegador para o Supabase Storage via signed upload URL, em
+ * vez de o arquivo atravessar o body da Server Action (que esbarrava no
+ * limite de 1MB do Next.js, e possivelmente num teto ainda menor da
+ * própria Vercel para Serverless Functions — nunca confirmado com
+ * certeza, ver relatório). O arquivo INTEIRO nunca chega a este
+ * processo: só um prefixo de bytes (o suficiente para o sniff de
+ * assinatura real) e o tamanho declarado.
+ *
  * Só disponível na edição, nunca na criação — o path do Storage depende
  * de um product_id real (arquitetura §9.2), e gerar um id antecipado só
  * para permitir upload durante a criação criaria risco de arquivo órfão
  * se o formulário for abandonado sem salvar.
  *
- * Ordem: sessão → tenant → membership → permissão → produto pertence ao
- * tenant → arquivo é validado (tamanho, depois bytes mágicos reais,
- * nunca o Content-Type/nome enviados pelo browser) → path gerado no
- * servidor → Storage (client de sessão, nunca service_role — a RLS de
- * storage.objects, migration 20260817220028, é a segunda camada) →
- * products.main_image atualizado só depois do upload confirmado.
+ * Ordem: sessão → tenant → membership → permissão (`products.update`) →
+ * produto pertence ao tenant → prefixo de bytes é validado (tamanho
+ * declarado, depois bytes mágicos reais do prefixo, nunca o
+ * Content-Type/nome enviados pelo browser) → path gerado no servidor →
+ * `createSignedUploadUrl` (client de sessão, nunca service_role — a
+ * mesma policy de INSERT em storage.objects, migration
+ * 20260817220028, § "tenant staff can upload product-media", é avaliada
+ * neste exato passo, contra o path que o servidor acabou de montar).
+ *
+ * `uploadToSignedUrl` (chamado pelo cliente com o token devolvido aqui)
+ * não exige NENHUMA policy de storage.objects — o token já é a
+ * autorização (2h de validade, SDK `@supabase/storage-js`). É por isso
+ * que o path nunca pode vir do cliente: o servidor é a única barreira
+ * entre "usuário com products.update no tenant X" e "pode escrever em
+ * qualquer path" — cada signed URL só vale para o path exato montado
+ * aqui.
  */
-export async function uploadProductImageAction(
+export async function prepareProductImageUploadAction(
   productId: string,
-  _prevState: ProductImageActionState,
   formData: FormData,
+): Promise<PrepareProductImageActionState> {
+  const resolved = await resolveTenantAndPermission("products.update");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const product = await resolveOwnedProduct(productId, resolved.tenantId);
+  if (!product) return { status: "error", message: "Produto não encontrado." };
+
+  const sizeRaw = formData.get("size");
+  const size = typeof sizeRaw === "string" ? Number(sizeRaw) : NaN;
+
+  const header = formData.get("header");
+  if (!(header instanceof Blob)) {
+    return { status: "error", message: "Selecione um arquivo de imagem." };
+  }
+  const headerBytes = new Uint8Array(await header.arrayBuffer());
+
+  const validated = validateProductImageUploadRequest(size, headerBytes);
+  if ("error" in validated) {
+    return { status: "error", message: PRODUCT_IMAGE_UPLOAD_REQUEST_ERROR_MESSAGE[validated.error] };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const path = buildProductImagePath(resolved.tenantId, productId, validated.mime);
+
+  const { data, error } = await supabase.storage
+    .from(PRODUCT_IMAGE_BUCKET)
+    .createSignedUploadUrl(path, { upsert: true });
+
+  if (error || !data) {
+    return { status: "error", message: "Não foi possível preparar o upload. Tente novamente." };
+  }
+
+  return {
+    status: "success",
+    upload: {
+      signedUrl: data.signedUrl,
+      token: data.token,
+      path: data.path,
+      bucket: PRODUCT_IMAGE_BUCKET,
+      contentType: validated.mime,
+    },
+  };
+}
+
+/**
+ * D11.8 — segunda metade do fluxo: chamada pelo cliente só depois de o
+ * upload direto (`uploadToSignedUrl`) ter terminado com sucesso contra o
+ * Storage. Recebe o mínimo necessário (productId + o path que o próprio
+ * `prepareProductImageUploadAction` gerou) — nunca tenantId/mime, e o
+ * `path` recebido NUNCA é confiado como está: `isValidProductImagePath`
+ * recomputa os 3 paths possíveis (um por mime permitido) para o
+ * tenant/produto já revalidados nesta mesma chamada e exige
+ * correspondência exata antes de gravar `products.main_image` ou tocar
+ * em qualquer storage.objects.
+ *
+ * Confirma a existência real do objeto no Storage (client de sessão —
+ * SELECT em product-media é público por design, migration
+ * 20260817220028) antes de persistir a referência: se o upload direto
+ * falhou ou foi interrompido no meio, o produto nunca passa a apontar
+ * para um arquivo que não existe. Mesma ordem de segurança de sempre:
+ * arquivo novo já confirmado no Storage → só então products.main_image
+ * → só então limpeza do objeto antigo.
+ */
+export async function confirmProductImageUploadAction(
+  productId: string,
+  path: string,
 ): Promise<ProductImageActionState> {
   const resolved = await resolveTenantAndPermission("products.update");
   if ("error" in resolved) return { status: "error", message: resolved.error };
@@ -295,81 +385,24 @@ export async function uploadProductImageAction(
   const product = await resolveOwnedProduct(productId, resolved.tenantId);
   if (!product) return { status: "error", message: "Produto não encontrado." };
 
-  const file = formData.get("file");
-  // TEMP DIAGNOSTIC LOG — VEXO image fix investigation. No PII (nome do
-  // arquivo pode conter o que o usuário digitou, mas nunca é logado
-  // aqui — só tamanho/tipo). Remover depois de confirmar a causa real.
-  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
-    step: "received",
-    productId,
-    isFile: file instanceof File,
-    size: file instanceof File ? file.size : null,
-    declaredType: file instanceof File ? file.type : null,
-  });
-  if (!(file instanceof File) || file.size === 0) {
-    return { status: "error", message: "Selecione um arquivo de imagem." };
-  }
-  if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
-    console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", { step: "rejected_size", productId, size: file.size });
-    return { status: "error", message: "Imagem muito grande. O limite é 5MB." };
-  }
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const mime = sniffImageMime(bytes);
-  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
-    step: "sniffed",
-    productId,
-    declaredType: file.type,
-    sniffedMime: mime,
-    firstBytesHex: Array.from(bytes.slice(0, 12)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
-  });
-  if (!mime) {
-    return { status: "error", message: "Formato não suportado. Envie um JPEG, PNG ou WebP." };
+  if (!isValidProductImagePath(path, resolved.tenantId, productId)) {
+    return { status: "error", message: "Caminho de imagem inválido." };
   }
 
   const supabase = await createSupabaseServerClient();
-  const newPath = buildProductImagePath(resolved.tenantId, productId, mime);
 
-  // Ordem importa para nunca deixar o produto apontando para um arquivo
-  // que não existe (prompt §17): sobe o arquivo NOVO primeiro, só depois
-  // de confirmado é que o produto passa a apontar para ele, e só então o
-  // objeto antigo (se a extensão mudou) é removido. Se qualquer passo
-  // falhar antes do fim, o pior caso é um arquivo órfão remanescente —
-  // nunca uma imagem quebrada para o lojista.
-  const { error: uploadError } = await supabase.storage
-    .from(PRODUCT_IMAGE_BUCKET)
-    .upload(newPath, file, { contentType: mime, upsert: true });
-
-  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
-    step: "uploaded",
-    productId,
-    bucket: PRODUCT_IMAGE_BUCKET,
-    path: newPath,
-    uploadError: uploadError ? { message: uploadError.message, name: uploadError.name } : null,
-  });
-
-  if (uploadError) {
-    return { status: "error", message: "Não foi possível enviar a imagem. Tente novamente." };
+  const { data: exists, error: existsError } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).exists(path);
+  if (existsError || !exists) {
+    return { status: "error", message: "Não encontramos o upload. Tente novamente." };
   }
 
   const { error: updateError } = await supabase
     .from("products")
-    .update({ main_image: newPath })
+    .update({ main_image: path })
     .eq("id", productId)
     .eq("tenant_id", resolved.tenantId);
 
-  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
-    step: "db_updated",
-    productId,
-    path: newPath,
-    updateError: updateError ? { message: updateError.message, code: updateError.code } : null,
-  });
-
   if (updateError) {
-    // Rollback: o arquivo já foi gravado no Storage, mas o produto não
-    // foi atualizado — remove o objeto recém-enviado para não deixar um
-    // arquivo válido sem nenhuma linha apontando para ele (prompt §17).
-    await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([newPath]);
     return { status: "error", message: "Não foi possível salvar a imagem no produto. Tente novamente." };
   }
 
@@ -377,13 +410,13 @@ export async function uploadProductImageAction(
   // é seguro remover o objeto antigo (path diferente = extensão trocada
   // — `upsert` não teria sobrescrito). Best-effort: uma falha aqui deixa
   // só um arquivo órfão inofensivo, nunca uma imagem quebrada.
-  if (product.main_image && product.main_image !== newPath) {
+  if (product.main_image && product.main_image !== path) {
     await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([product.main_image]);
   }
 
   revalidatePath("/painel/produtos");
   revalidatePath(`/painel/produtos/${productId}/editar`);
-  return { status: "success", imagePath: newPath };
+  return { status: "success", imagePath: path };
 }
 
 /** Remove a imagem de um produto já existente (Etapa 8). Mesmo checklist da action acima. */

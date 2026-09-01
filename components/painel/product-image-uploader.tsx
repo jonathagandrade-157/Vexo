@@ -2,12 +2,14 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { useActionState } from "react";
 
 import { ConfirmDialog } from "@/components/painel/confirm-dialog";
-import { removeProductImageAction, uploadProductImageAction } from "@/features/products/actions";
+import { confirmProductImageUploadAction, prepareProductImageUploadAction, removeProductImageAction } from "@/features/products/actions";
 import { resolveProductImagePreview } from "@/features/products/image-storage";
-import { initialProductImageState } from "@/features/products/schema";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+
+/** D11.8 — bytes suficientes para `sniffImageMime` reconhecer qualquer uma das 3 assinaturas reais (WebP, a maior, usa os primeiros 12). Só este prefixo é enviado a `prepareProductImageUploadAction` — o arquivo inteiro nunca atravessa a Server Action. */
+const MIME_SNIFF_PREFIX_BYTES = 32;
 
 function UploadStatus({ pending }: { pending: boolean }) {
   if (!pending) return null;
@@ -18,7 +20,7 @@ function UploadStatus({ pending }: { pending: boolean }) {
   );
 }
 
-/** Desabilita o input durante o envio — segunda camada de proteção contra duplo upload (prompt Etapa 8 §10/§17), além do próprio estado local já servializar o envio (D11.7: `isPending` de `useActionState`, não mais `useFormStatus` — este componente não usa mais `<form>`, ver `ProductImageUploader`). */
+/** Desabilita o input durante o envio — segunda camada de proteção contra duplo upload (prompt Etapa 8 §10/§17), além do próprio estado local já serializar o envio (D11.8: `pending` vem de `isUploading`, estado local do componente pai — nunca `useFormStatus`/`useActionState`, este componente não usa `<form>`, ver `ProductImageUploader`). */
 function FileInputLabel({
   savedPath,
   onFileChange,
@@ -52,11 +54,20 @@ function FileInputLabel({
 /**
  * Só disponível na edição (produto já existe — precisa de um id real
  * para compor o path do Storage, arquitetura §9.2). Seleção de arquivo
- * dispara o envio automaticamente (sem clique extra), chamando
- * `uploadProductImageAction` (já vinculado ao productId via `.bind`, mesmo
- * padrão de Server Action parametrizada usado em `deleteProductAction
- * (productId)` em `ProductActions`) diretamente através do dispatch que
- * `useActionState` devolve, com um `FormData` montado manualmente.
+ * dispara o envio automaticamente (sem clique extra).
+ *
+ * D11.8 — upload direto ao Supabase Storage (signed upload URL), não mais
+ * através do body da Server Action: (1) `prepareProductImageUploadAction`
+ * recebe só um prefixo de bytes do arquivo + o tamanho declarado, valida,
+ * monta o path no servidor e devolve uma signed upload URL; (2) o próprio
+ * navegador chama `uploadToSignedUrl` (via `createSupabaseBrowserClient`,
+ * só a chave `anon`, sujeito à mesma RLS) direto contra o Storage — o
+ * arquivo inteiro nunca passa por este processo Next.js/Vercel; (3)
+ * `confirmProductImageUploadAction` revalida posse/permissão, confirma
+ * que o objeto existe de fato no Storage e só então grava
+ * `products.main_image`. Sem `useActionState` aqui: não é um único
+ * dispatch, é uma sequência de 3 chamadas assíncronas orquestradas em
+ * `handleFileChange`, com pending/erro controlados por estado local.
  *
  * D11.7 — causa raiz confirmada: este componente é renderizado dentro da
  * seção "Mídia" de `ProductForm`, que por sua vez já é um `<form>` inteiro
@@ -76,8 +87,9 @@ function FileInputLabel({
  * submit nativo/Enter/validação de browser) em vez de tentar reposicionar
  * este componente para fora do form externo, o que quebraria o grid da
  * seção Mídia (itens de CSS Grid precisam ser filhos diretos do
- * container). `isPending` vem do 3º valor de `useActionState` (React 19)
- * em vez de `useFormStatus()`, que exige ancestralidade real de `<form>`.
+ * container). `isPending`/status do upload agora vêm de estado local
+ * (`useState`), não de `useFormStatus()`/`useActionState` — este
+ * componente não usa `<form>` nem um dispatch único (ver D11.8 acima).
  */
 export function ProductImageUploader({
   productId,
@@ -86,11 +98,13 @@ export function ProductImageUploader({
   productId: string;
   initialImagePath: string | null;
 }) {
-  const uploadAction = uploadProductImageAction.bind(null, productId);
-  const [state, formAction, isPending] = useActionState(uploadAction, initialProductImageState);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "error" | "success">("idle");
+  const [uploadMessage, setUploadMessage] = useState<string | undefined>(undefined);
+  const [uploadedPath, setUploadedPath] = useState<string | null | undefined>(undefined);
 
   // D11.2 — cria E destrói a Object URL dentro do MESMO efeito (em vez de
   // criar no handler e só destruir no cleanup, como antes). Isso é o que
@@ -121,30 +135,70 @@ export function ProductImageUploader({
   // cleanup do efeito acima. Erro NÃO limpa o preview: o arquivo
   // selecionado continua visível junto da mensagem de erro (§3 do prompt).
   useEffect(() => {
-    if (state.status !== "success") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reage a uma resposta assíncrona do servidor (useActionState), não a um valor já calculável durante o render; libera o preview local agora que a URL do Storage é a fonte de verdade.
+    if (uploadStatus !== "success") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reage a uma resposta assíncrona do servidor (confirmProductImageUploadAction), não a um valor já calculável durante o render; libera o preview local agora que a URL do Storage é a fonte de verdade.
     setSelectedFile(null);
-  }, [state]);
+  }, [uploadStatus]);
 
   const { savedPath, displayUrl, isBlobPreview } = resolveProductImagePreview({
-    actionStatus: state.status,
-    actionImagePath: state.status === "success" ? state.imagePath : undefined,
+    actionStatus: uploadStatus,
+    actionImagePath: uploadStatus === "success" ? uploadedPath : undefined,
     initialImagePath,
     previewUrl,
   });
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+  /**
+   * D11.8 — pipeline de upload direto: (1) só um prefixo de bytes +
+   * tamanho vão para `prepareProductImageUploadAction`; (2) o arquivo
+   * inteiro sobe direto ao Storage via `uploadToSignedUrl`, sem passar
+   * por este processo Next.js; (3) `confirmProductImageUploadAction`
+   * revalida tudo no servidor antes de gravar `products.main_image`. Erro
+   * em qualquer passo NÃO limpa o preview local (arquivo selecionado
+   * continua visível junto da mensagem de erro, mesmo comportamento de
+   * sempre).
+   */
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     setSelectedFile(file);
-    // Sem <form> (ver comentário do componente acima) — o FormData é
-    // montado aqui, com o mesmo shape que uploadProductImageAction já
-    // espera (`formData.get("file")`), e despachado diretamente via o
-    // dispatch que useActionState devolve (suportado chamar fora de um
-    // envio de <form>, não só como prop `action`).
-    const formData = new FormData();
-    formData.set("file", file);
-    formAction(formData);
+    setUploadStatus("idle");
+    setUploadMessage(undefined);
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.set("size", String(file.size));
+      formData.set("header", file.slice(0, MIME_SNIFF_PREFIX_BYTES));
+
+      const prepared = await prepareProductImageUploadAction(productId, formData);
+      if (prepared.status !== "success" || !prepared.upload) {
+        setUploadStatus("error");
+        setUploadMessage(prepared.message ?? "Não foi possível preparar o upload.");
+        return;
+      }
+
+      const { token, path, bucket, contentType } = prepared.upload;
+      const supabase = createSupabaseBrowserClient();
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .uploadToSignedUrl(path, token, file, { contentType });
+      if (uploadError) {
+        setUploadStatus("error");
+        setUploadMessage("Não foi possível enviar a imagem. Tente novamente.");
+        return;
+      }
+
+      const confirmed = await confirmProductImageUploadAction(productId, path);
+      if (confirmed.status !== "success") {
+        setUploadStatus("error");
+        setUploadMessage(confirmed.message ?? "Não foi possível salvar a imagem no produto.");
+        return;
+      }
+
+      setUploadStatus("success");
+      setUploadedPath(confirmed.imagePath ?? null);
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   async function handleRemove() {
@@ -166,11 +220,11 @@ export function ProductImageUploader({
             <span className="material-symbols-outlined text-4xl text-outline">image</span>
           </div>
         )}
-        <UploadStatus pending={isPending} />
+        <UploadStatus pending={isUploading} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <FileInputLabel onFileChange={handleFileChange} pending={isPending} savedPath={savedPath} />
+        <FileInputLabel onFileChange={handleFileChange} pending={isUploading} savedPath={savedPath} />
         {savedPath ? (
           <ConfirmDialog
             confirmLabel="Remover"
@@ -186,9 +240,9 @@ export function ProductImageUploader({
 
       <p className="font-body text-body-sm text-on-surface-variant">JPEG, PNG ou WebP — até 5MB.</p>
 
-      {state.status === "error" ? (
+      {uploadStatus === "error" ? (
         <p className="font-body text-body-sm text-error" role="alert">
-          {state.message}
+          {uploadMessage}
         </p>
       ) : null}
       {removeError ? (

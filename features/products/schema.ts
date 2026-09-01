@@ -87,3 +87,22 @@ export interface ProductImageActionState {
 }
 
 export const initialProductImageState: ProductImageActionState = { status: "idle" };
+
+/**
+ * D11.8 — retorno de `prepareProductImageUploadAction`: dados da signed
+ * upload URL só quando `status: "success"`. Chamado diretamente (sem
+ * `useActionState`) pelo mesmo motivo de `removeProductImageAction` —
+ * não é um dispatch de `<form>`, é um passo de uma sequência
+ * cliente→servidor→Storage→servidor orquestrada em `handleFileChange`.
+ */
+export interface PrepareProductImageActionState {
+  status: "error" | "success";
+  message?: string;
+  upload?: {
+    signedUrl: string;
+    token: string;
+    path: string;
+    bucket: string;
+    contentType: string;
+  };
+}

@@ -79,6 +79,47 @@ export function getProductImagePublicUrl(path: string): string {
 }
 
 /**
+ * D11.8 — validação pura do pedido de upload direto (tamanho + bytes
+ * mágicos do prefixo enviado ao `prepareProductImageUploadAction`),
+ * extraída pelo mesmo motivo de sempre neste arquivo (testável sem
+ * infraestrutura de componente/rede — só o `sniffImageMime`/
+ * `PRODUCT_IMAGE_MAX_BYTES` já existentes, reaproveitados, nunca
+ * duplicados). `size` vem do `File.size` do browser (não confiável
+ * sozinho — só bytes reais gravados no Storage é que valem, e o bucket
+ * `product-media` já impõe o limite de 5MB do lado do servidor via
+ * `file_size_limit`, migration 20260817220028); esta função só existe
+ * para dar um erro rápido e amigável antes de gerar uma signed URL à toa.
+ */
+export type ProductImageUploadRequestError = "empty" | "too_large" | "unsupported_mime";
+
+export function validateProductImageUploadRequest(
+  size: number,
+  headerBytes: Uint8Array,
+): { mime: ProductImageMime } | { error: ProductImageUploadRequestError } {
+  if (!Number.isFinite(size) || size <= 0) return { error: "empty" };
+  if (size > PRODUCT_IMAGE_MAX_BYTES) return { error: "too_large" };
+  const mime = sniffImageMime(headerBytes);
+  if (!mime) return { error: "unsupported_mime" };
+  return { mime };
+}
+
+const ALL_PRODUCT_IMAGE_MIMES: readonly ProductImageMime[] = ["image/jpeg", "image/png", "image/webp"];
+
+/**
+ * D11.8 — o cliente devolve o `path` recebido de `createSignedUploadUrl`
+ * ao confirmar o upload, mas o servidor nunca confia nele: recomputa,
+ * para o tenant/produto já validados via sessão + posse (nunca a partir
+ * de entrada do cliente), os únicos 3 paths possíveis — um por mime
+ * permitido — e exige que o path recebido seja exatamente um deles. Isso
+ * é o que impede um cliente de apontar `products.main_image` para um
+ * path arbitrário (de outro produto, outro tenant, ou fora do padrão
+ * `{tenant_id}/products/{product_id}/main.{ext}`).
+ */
+export function isValidProductImagePath(path: string, tenantId: string, productId: string): boolean {
+  return ALL_PRODUCT_IMAGE_MIMES.some((mime) => buildProductImagePath(tenantId, productId, mime) === path);
+}
+
+/**
  * D11.2 — decide qual URL o `ProductImageUploader` deve exibir, extraída
  * como função pura (sem DOM/React) para ser testável sem infraestrutura de
  * teste de componente (não disponível neste projeto — vitest roda em

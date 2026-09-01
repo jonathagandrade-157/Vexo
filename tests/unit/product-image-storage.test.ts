@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildProductImagePath,
+  isValidProductImagePath,
   PRODUCT_IMAGE_MAX_BYTES,
   sniffImageMime,
+  validateProductImageUploadRequest,
 } from "@/features/products/image-storage";
 
 function bytes(...values: number[]): Uint8Array {
@@ -65,6 +67,80 @@ describe("buildProductImagePath", () => {
 describe("PRODUCT_IMAGE_MAX_BYTES", () => {
   it("matches the documented 5MB limit (architecture §9.3)", () => {
     expect(PRODUCT_IMAGE_MAX_BYTES).toBe(5 * 1024 * 1024);
+  });
+});
+
+/**
+ * D11.8 — validação pura do pedido de `prepareProductImageUploadAction`
+ * (o passo 1 do upload direto ao Storage): tamanho declarado + bytes
+ * mágicos do prefixo enviado. Mesmo motivo de testabilidade dos outros
+ * `describe` deste arquivo — sem rede, sem Storage real.
+ */
+describe("validateProductImageUploadRequest", () => {
+  const jpegHeader = bytes(0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0);
+  const pngHeader = bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0);
+  const webpHeader = bytes(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50);
+
+  it("accepts a real JPEG within the 5MB limit", () => {
+    expect(validateProductImageUploadRequest(1024, jpegHeader)).toEqual({ mime: "image/jpeg" });
+  });
+
+  it("accepts a real PNG within the 5MB limit", () => {
+    expect(validateProductImageUploadRequest(1024, pngHeader)).toEqual({ mime: "image/png" });
+  });
+
+  it("accepts a real WebP within the 5MB limit", () => {
+    expect(validateProductImageUploadRequest(1024, webpHeader)).toEqual({ mime: "image/webp" });
+  });
+
+  it("rejects a zero/negative/NaN declared size as empty", () => {
+    expect(validateProductImageUploadRequest(0, jpegHeader)).toEqual({ error: "empty" });
+    expect(validateProductImageUploadRequest(-1, jpegHeader)).toEqual({ error: "empty" });
+    expect(validateProductImageUploadRequest(Number.NaN, jpegHeader)).toEqual({ error: "empty" });
+  });
+
+  it("rejects a declared size above 5MB, even with a valid signature", () => {
+    expect(validateProductImageUploadRequest(5 * 1024 * 1024 + 1, jpegHeader)).toEqual({ error: "too_large" });
+  });
+
+  it("accepts a declared size of exactly 5MB (boundary)", () => {
+    expect(validateProductImageUploadRequest(5 * 1024 * 1024, jpegHeader)).toEqual({ mime: "image/jpeg" });
+  });
+
+  it("rejects a header that doesn't match any real image signature (e.g. spoofed SVG/HTML)", () => {
+    const html = new TextEncoder().encode("<html><script>alert(1)</script></html>");
+    expect(validateProductImageUploadRequest(1024, html)).toEqual({ error: "unsupported_mime" });
+  });
+});
+
+/**
+ * D11.8 — o cliente devolve o `path` de volta em
+ * `confirmProductImageUploadAction`, mas o servidor nunca confia nele:
+ * recomputa os 3 paths possíveis para o tenant/produto já autenticados e
+ * exige correspondência exata. Isso é o que impede um cliente de gravar
+ * `products.main_image` apontando para outro produto/tenant, mesmo que
+ * ele já tenha conseguido — por algum outro caminho — um path/token de
+ * outro contexto.
+ */
+describe("isValidProductImagePath", () => {
+  it("accepts exactly the paths buildProductImagePath would generate for this tenant/product", () => {
+    expect(isValidProductImagePath("tenant-a/products/p1/main.jpg", "tenant-a", "p1")).toBe(true);
+    expect(isValidProductImagePath("tenant-a/products/p1/main.png", "tenant-a", "p1")).toBe(true);
+    expect(isValidProductImagePath("tenant-a/products/p1/main.webp", "tenant-a", "p1")).toBe(true);
+  });
+
+  it("rejects a path belonging to a different tenant, even for the same product id", () => {
+    expect(isValidProductImagePath("tenant-b/products/p1/main.jpg", "tenant-a", "p1")).toBe(false);
+  });
+
+  it("rejects a path belonging to a different product in the same tenant", () => {
+    expect(isValidProductImagePath("tenant-a/products/other-product/main.jpg", "tenant-a", "p1")).toBe(false);
+  });
+
+  it("rejects an arbitrary/malformed path (never a silent bypass)", () => {
+    expect(isValidProductImagePath("../tenant-a/products/p1/main.jpg", "tenant-a", "p1")).toBe(false);
+    expect(isValidProductImagePath("tenant-a/products/p1/main.svg", "tenant-a", "p1")).toBe(false);
+    expect(isValidProductImagePath("", "tenant-a", "p1")).toBe(false);
   });
 });
 
