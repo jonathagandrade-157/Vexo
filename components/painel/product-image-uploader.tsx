@@ -1,17 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
 
 import { ConfirmDialog } from "@/components/painel/confirm-dialog";
 import { removeProductImageAction, uploadProductImageAction } from "@/features/products/actions";
 import { resolveProductImagePreview } from "@/features/products/image-storage";
 import { initialProductImageState } from "@/features/products/schema";
 
-function UploadStatus() {
-  const { pending } = useFormStatus();
+function UploadStatus({ pending }: { pending: boolean }) {
   if (!pending) return null;
   return (
     <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60">
@@ -20,15 +18,16 @@ function UploadStatus() {
   );
 }
 
-/** Desabilita o input durante o envio — segunda camada de proteção contra duplo upload (prompt Etapa 8 §10/§17), além do form já serializar o próprio envio. */
+/** Desabilita o input durante o envio — segunda camada de proteção contra duplo upload (prompt Etapa 8 §10/§17), além do próprio estado local já servializar o envio (D11.7: `isPending` de `useActionState`, não mais `useFormStatus` — este componente não usa mais `<form>`, ver `ProductImageUploader`). */
 function FileInputLabel({
   savedPath,
   onFileChange,
+  pending,
 }: {
   savedPath: string | null;
   onFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  pending: boolean;
 }) {
-  const { pending } = useFormStatus();
   return (
     <label
       className={
@@ -53,12 +52,32 @@ function FileInputLabel({
 /**
  * Só disponível na edição (produto já existe — precisa de um id real
  * para compor o path do Storage, arquitetura §9.2). Seleção de arquivo
- * dispara o envio automaticamente (sem clique extra) via
- * `requestSubmit()` num form oculto ligado a `uploadProductImageAction`
- * já vinculado ao productId (`.bind`, mesmo padrão de Server Action
- * parametrizada usado em `deleteProductAction(productId)` em
- * `ProductActions`, só que aqui via `useActionState` para ter estado de
- * pending/erro).
+ * dispara o envio automaticamente (sem clique extra), chamando
+ * `uploadProductImageAction` (já vinculado ao productId via `.bind`, mesmo
+ * padrão de Server Action parametrizada usado em `deleteProductAction
+ * (productId)` em `ProductActions`) diretamente através do dispatch que
+ * `useActionState` devolve, com um `FormData` montado manualmente.
+ *
+ * D11.7 — causa raiz confirmada: este componente é renderizado dentro da
+ * seção "Mídia" de `ProductForm`, que por sua vez já é um `<form>` inteiro
+ * (nome/preço/categoria etc.). Antes, este componente também renderizava
+ * seu próprio `<form>` — HTML inválido (form dentro de form), que o
+ * navegador corrige silenciosamente ao fazer o parsing, descartando a tag
+ * `<form>` interna e deixando o `<input type="file">` como filho do form
+ * EXTERNO. Resultado: `formRef.current?.requestSubmit()` nunca disparava
+ * `uploadProductImageAction` de verdade — na prática submetia (ou tentava
+ * submeter) o form de produto, explicando por que nenhum upload de imagem
+ * de produto jamais chegou ao Storage em produção. `LogoUploader`/
+ * `BannerFormDialog` nunca tiveram esse problema por não estarem
+ * aninhados dentro de outro `<form>`.
+ *
+ * Correção: elimina o `<form>` deste componente por completo (nunca foi
+ * necessário — o envio sempre foi automático via JS, nunca dependeu de
+ * submit nativo/Enter/validação de browser) em vez de tentar reposicionar
+ * este componente para fora do form externo, o que quebraria o grid da
+ * seção Mídia (itens de CSS Grid precisam ser filhos diretos do
+ * container). `isPending` vem do 3º valor de `useActionState` (React 19)
+ * em vez de `useFormStatus()`, que exige ancestralidade real de `<form>`.
  */
 export function ProductImageUploader({
   productId,
@@ -68,8 +87,7 @@ export function ProductImageUploader({
   initialImagePath: string | null;
 }) {
   const uploadAction = uploadProductImageAction.bind(null, productId);
-  const [state, formAction] = useActionState(uploadAction, initialProductImageState);
-  const formRef = useRef<HTMLFormElement>(null);
+  const [state, formAction, isPending] = useActionState(uploadAction, initialProductImageState);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -119,7 +137,14 @@ export function ProductImageUploader({
     const file = event.target.files?.[0];
     if (!file) return;
     setSelectedFile(file);
-    formRef.current?.requestSubmit();
+    // Sem <form> (ver comentário do componente acima) — o FormData é
+    // montado aqui, com o mesmo shape que uploadProductImageAction já
+    // espera (`formData.get("file")`), e despachado diretamente via o
+    // dispatch que useActionState devolve (suportado chamar fora de um
+    // envio de <form>, não só como prop `action`).
+    const formData = new FormData();
+    formData.set("file", file);
+    formAction(formData);
   }
 
   async function handleRemove() {
@@ -132,7 +157,7 @@ export function ProductImageUploader({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-3" ref={formRef}>
+    <div className="flex flex-col gap-3">
       <div className="relative aspect-square w-full max-w-[220px] overflow-hidden rounded-xl border border-outline-variant/30 bg-surface-container-lowest">
         {displayUrl ? (
           <Image alt="" className="object-cover" fill sizes="220px" src={displayUrl} unoptimized={isBlobPreview} />
@@ -141,11 +166,11 @@ export function ProductImageUploader({
             <span className="material-symbols-outlined text-4xl text-outline">image</span>
           </div>
         )}
-        <UploadStatus />
+        <UploadStatus pending={isPending} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <FileInputLabel onFileChange={handleFileChange} savedPath={savedPath} />
+        <FileInputLabel onFileChange={handleFileChange} pending={isPending} savedPath={savedPath} />
         {savedPath ? (
           <ConfirmDialog
             confirmLabel="Remover"
@@ -171,6 +196,6 @@ export function ProductImageUploader({
           {removeError}
         </p>
       ) : null}
-    </form>
+    </div>
   );
 }
