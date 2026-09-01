@@ -12,6 +12,8 @@ export interface OnboardingTenant {
   whatsapp_phone: string | null;
   contact_email: string | null;
   onboarding_completed_at: string | null;
+  /** D12.2 — tipo de negócio (migration 20260817220093), null = tenant legado ou onboarding ainda não chegou à etapa "seu-negocio". */
+  business_type: string | null;
   status: string;
   created_at: string;
 }
@@ -32,7 +34,7 @@ function first<T>(value: T | T[] | null): T | null {
 }
 
 const TENANT_COLUMNS =
-  "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, status, created_at";
+  "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, business_type, status, created_at";
 
 /**
  * D8 (Camada 1) — `tenants.status` que impedem QUALQUER resolução de

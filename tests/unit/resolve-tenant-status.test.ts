@@ -27,6 +27,7 @@ function tenant(overrides: Partial<OnboardingTenant> & { id: string; status: str
     whatsapp_phone: null,
     contact_email: null,
     onboarding_completed_at: "2026-01-01T00:00:00.000Z",
+    business_type: null,
     created_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };

@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 
 import { segmentLabel } from "@/features/settings/segments";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
+import { resolveStoreSetupChecklist } from "@/features/painel/store-setup";
+import { storefrontHref } from "@/features/painel/store-setup-logic";
+import { isBusinessType } from "@/features/onboarding/step-definitions";
+import { StoreSetupChecklistCard } from "@/components/painel/store-setup-checklist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -44,7 +48,7 @@ export default async function PainelHomePage() {
   if (!membership) redirect("/sem-loja");
   const { tenant } = membership;
 
-  const [{ data: trial }, { count: memberCount }] = await Promise.all([
+  const [{ data: trial }, { count: memberCount }, setupChecklist] = await Promise.all([
     supabase
       .from("trial_records")
       .select("started_at, ends_at, status")
@@ -55,6 +59,7 @@ export default async function PainelHomePage() {
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenant.id)
       .eq("status", "active"),
+    resolveStoreSetupChecklist(supabase, tenant.id, isBusinessType(tenant.business_type) ? tenant.business_type : null),
   ]);
 
   const trialDaysLeft = trial ? daysRemaining(trial.ends_at as string) : null;
@@ -102,6 +107,8 @@ export default async function PainelHomePage() {
         <IndicatorCard icon="sell" label="Segmento" value={segmentLabel(tenant.segment)} />
         <IndicatorCard icon="group" label="Membros da equipe" value={String(memberCount ?? 1)} />
       </div>
+
+      <StoreSetupChecklistCard checklist={setupChecklist} storefrontHref={storefrontHref(tenant.slug)} />
 
       <div className="flex flex-col items-center rounded-xl border border-surface-container-highest bg-[#121212] px-6 py-16 text-center">
         <div className="relative mb-6 flex h-24 w-24 items-center justify-center rounded-2xl border border-outline-variant bg-surface-container-low">
