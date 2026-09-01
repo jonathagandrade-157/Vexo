@@ -106,3 +106,31 @@ export interface PrepareProductImageActionState {
     contentType: string;
   };
 }
+
+/** D13.1 — uma imagem da galeria, forma mínima que o cliente precisa (id + path público-derivável + ordem). Nunca inclui tenant_id/product_id — já implícitos no contexto do componente que renderiza. */
+export interface ProductGalleryImage {
+  id: string;
+  path: string;
+  sortOrder: number;
+}
+
+/** D13.1 — retorno de `prepareProductGalleryImageUploadAction`, mesmo formato de `PrepareProductImageActionState` mais `imageId` (identidade da imagem nova, gerada no servidor — nunca escolhida pelo cliente). */
+export interface PrepareProductGalleryImageActionState {
+  status: "error" | "success";
+  message?: string;
+  upload?: {
+    signedUrl: string;
+    token: string;
+    path: string;
+    imageId: string;
+    bucket: string;
+    contentType: string;
+  };
+}
+
+/** D13.1 — retorno de confirm/delete/reorder/setPrimary da galeria: sempre devolve a galeria inteira já atualizada (ordenada), para o cliente nunca precisar recalcular/adivinhar ordem — só refletir o que o servidor confirmou. */
+export interface ProductGalleryActionState {
+  status: "error" | "success";
+  message?: string;
+  images?: ProductGalleryImage[];
+}

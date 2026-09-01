@@ -120,6 +120,51 @@ export function isValidProductImagePath(path: string, tenantId: string, productI
 }
 
 /**
+ * D13.1 — limite de imagens por produto na galeria. Não existe nenhum
+ * `limit_key` de plano equivalente hoje (`plan_limits`, migration
+ * 20260817220058, só tem chaves de produtos/categorias — confirmado por
+ * busca antes de inventar) — por instrução explícita desta etapa, uma
+ * constante interna aqui, documentada, sem criar sistema de billing
+ * novo. Puramente um teto de bom senso (evitar abuso/objetos
+ * ilimitados no Storage), não uma feature comercial.
+ */
+export const PRODUCT_GALLERY_MAX_IMAGES = 8;
+
+/**
+ * D13.1 — path de uma imagem da GALERIA, distinto do path de
+ * `main_image` (`buildProductImagePath`, `main.{ext}` fixo por
+ * produto): `imageId` dá identidade própria e estável a cada imagem —
+ * nunca um índice/posição (uma imagem não muda de identidade ao ser
+ * reordenada). Sempre gerado no servidor
+ * (`prepareProductGalleryImageUploadAction`), nunca a partir de entrada
+ * do cliente — mesmo princípio de `buildProductImagePath`.
+ */
+export function buildProductGalleryImagePath(
+  tenantId: string,
+  productId: string,
+  imageId: string,
+  mime: ProductImageMime,
+): string {
+  return `${tenantId}/products/${productId}/gallery/${imageId}.${EXTENSION_BY_MIME[mime]}`;
+}
+
+/**
+ * D13.1 — mesmo princípio de `isValidProductImagePath`: o cliente devolve
+ * `path` ao confirmar o upload, mas o servidor nunca confia nele —
+ * recomputa os 3 paths possíveis (um por mime permitido) para o
+ * tenant/produto/imageId já resolvidos no servidor e exige
+ * correspondência exata.
+ */
+export function isValidProductGalleryImagePath(
+  path: string,
+  tenantId: string,
+  productId: string,
+  imageId: string,
+): boolean {
+  return ALL_PRODUCT_IMAGE_MIMES.some((mime) => buildProductGalleryImagePath(tenantId, productId, imageId, mime) === path);
+}
+
+/**
  * D11.2 — decide qual URL o `ProductImageUploader` deve exibir, extraída
  * como função pura (sem DOM/React) para ser testável sem infraestrutura de
  * teste de componente (não disponível neste projeto — vitest roda em

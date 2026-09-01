@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 
 import { AddToCartButton } from "@/components/storefront/add-to-cart-button";
+import { ProductGallery } from "@/components/storefront/product-gallery";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
 import { formatPrice } from "@/features/products/format-price";
 import { getProductImagePublicUrl } from "@/features/products/image-storage";
-import { getStorefrontProduct } from "@/features/storefront/catalog";
+import { getStorefrontProduct, getStorefrontProductImages } from "@/features/storefront/catalog";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { getPublicEnv } from "@/lib/env";
 
@@ -103,6 +103,19 @@ export default async function StorefrontProductPage({ params }: PageProps) {
     );
   }
 
+  // D13.1 — só buscada para ESTE produto (nunca na grade/listagem, que
+  // continua só com main_image — sem N+1 de galeria por card). Fallback
+  // para main_image se a galeria estiver vazia (produto legado ainda
+  // sem backfill aplicado, ou simplesmente sem nenhuma imagem além da
+  // principal) — nunca "some" a imagem que o storefront já mostrava.
+  const galleryRows = await getStorefrontProductImages(tenant.id, product.id);
+  const galleryImages =
+    galleryRows.length > 0
+      ? galleryRows.map((image) => ({ id: image.id, url: getProductImagePublicUrl(image.path) }))
+      : product.main_image
+        ? [{ id: product.id, url: getProductImagePublicUrl(product.main_image) }]
+        : [];
+
   return (
     <StorefrontShell cartCount={cart.itemCount} footer={shellFooter} storeName={tenant.name} storeSlug={tenant.slug}>
       <div className="mx-auto flex max-w-container-max flex-col gap-8 px-margin-mobile py-10 md:px-margin-desktop">
@@ -115,21 +128,7 @@ export default async function StorefrontProductPage({ params }: PageProps) {
         </Link>
 
         <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
-          <div className="relative aspect-square overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-low">
-            {product.main_image ? (
-              <Image
-                alt={product.name}
-                className="object-cover"
-                fill
-                sizes="(min-width: 768px) 45vw, 90vw"
-                src={getProductImagePublicUrl(product.main_image)}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <span className="material-symbols-outlined text-6xl text-outline">image</span>
-              </div>
-            )}
-          </div>
+          <ProductGallery images={galleryImages} productName={product.name} />
 
           <div className="flex flex-col gap-4">
             {product.category ? (

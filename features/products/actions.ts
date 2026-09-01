@@ -1,21 +1,29 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils/slugify";
+import { computeGallerySortOrder, isValidGalleryReorder, moveImageToFront } from "./gallery-logic";
 import {
+  buildProductGalleryImagePath,
   buildProductImagePath,
+  isValidProductGalleryImagePath,
   isValidProductImagePath,
+  PRODUCT_GALLERY_MAX_IMAGES,
   PRODUCT_IMAGE_BUCKET,
   validateProductImageUploadRequest,
 } from "./image-storage";
 import {
   productSchema,
+  type PrepareProductGalleryImageActionState,
   type PrepareProductImageActionState,
   type ProductActionState,
+  type ProductGalleryActionState,
+  type ProductGalleryImage,
   type ProductImageActionState,
   type ProductInput,
 } from "./schema";
@@ -447,4 +455,307 @@ export async function removeProductImageAction(productId: string): Promise<Produ
   revalidatePath("/painel/produtos");
   revalidatePath(`/painel/produtos/${productId}/editar`);
   return { status: "success", imagePath: null };
+}
+
+// ============================================================
+// D13.1 — galeria de imagens (product_images). products.main_image
+// continua existindo e continua sendo o que o storefront/painel legado
+// lê — a partir daqui ele é só um CACHE, sincronizado pelo trigger
+// `sync_product_main_image` (migration 20260817220096) toda vez que
+// product_images muda. Nenhuma action abaixo grava main_image
+// diretamente — só a galeria, o banco cuida do resto. As Actions de
+// main_image acima (prepare/confirm/removeProductImageAction) não são
+// removidas (compatibilidade — D13.1 §16/§22), mas `ProductForm` deixa
+// de as chamar a partir desta etapa (só `ProductGalleryUploader`).
+// ============================================================
+
+/** Sempre ordenada por sort_order (a mesma ordem que define a principal — a primeira da lista) — escopada por tenant_id + product_id, nunca por product_id sozinho. */
+async function resolveGalleryImages(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  tenantId: string,
+  productId: string,
+): Promise<ProductGalleryImage[]> {
+  const { data } = await supabase
+    .from("product_images")
+    .select("id, storage_path, sort_order")
+    .eq("tenant_id", tenantId)
+    .eq("product_id", productId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  return ((data ?? []) as { id: string; storage_path: string; sort_order: number }[]).map((row) => ({
+    id: row.id,
+    path: row.storage_path,
+    sortOrder: row.sort_order,
+  }));
+}
+
+/** Grava a ordem já validada (`isValidGalleryReorder`/`moveImageToFront`) — usada tanto por `reorderProductGalleryAction` quanto por `setPrimaryProductGalleryImageAction`, nunca duplicada entre as duas. */
+async function applyGalleryOrder(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  tenantId: string,
+  productId: string,
+  orderedIds: string[],
+): Promise<void> {
+  for (const { id, sortOrder } of computeGallerySortOrder(orderedIds)) {
+    await supabase
+      .from("product_images")
+      .update({ sort_order: sortOrder })
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .eq("product_id", productId);
+  }
+}
+
+/**
+ * D13.1 — primeira metade do upload de UMA imagem da galeria. Mesmo
+ * checklist de segurança de `prepareProductImageUploadAction` (D11.8):
+ * sessão → tenant → permissão (`products.update` — adicionar imagem a
+ * um produto já existente é uma atualização dele, nunca criação) →
+ * produto pertence ao tenant → limite de `PRODUCT_GALLERY_MAX_IMAGES`
+ * → prefixo de bytes validado → signed upload URL.
+ *
+ * Diferença do fluxo de `main_image`: aqui o servidor gera um `imageId`
+ * (UUID) novo a cada chamada — é o que dá identidade própria e estável
+ * a cada imagem da galeria (nunca um índice/posição). `upsert: false`
+ * (nunca `true`): cada imagem da galeria tem um path único por
+ * construção (novo `imageId` sempre), nunca deveria sobrescrever nada.
+ */
+export async function prepareProductGalleryImageUploadAction(
+  productId: string,
+  formData: FormData,
+): Promise<PrepareProductGalleryImageActionState> {
+  const resolved = await resolveTenantAndPermission("products.update");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const product = await resolveOwnedProduct(productId, resolved.tenantId);
+  if (!product) return { status: "error", message: "Produto não encontrado." };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { count } = await supabase
+    .from("product_images")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", resolved.tenantId)
+    .eq("product_id", productId);
+
+  if ((count ?? 0) >= PRODUCT_GALLERY_MAX_IMAGES) {
+    return { status: "error", message: `Limite de ${PRODUCT_GALLERY_MAX_IMAGES} imagens por produto atingido.` };
+  }
+
+  const sizeRaw = formData.get("size");
+  const size = typeof sizeRaw === "string" ? Number(sizeRaw) : NaN;
+
+  const header = formData.get("header");
+  if (!(header instanceof Blob)) {
+    return { status: "error", message: "Selecione um arquivo de imagem." };
+  }
+  const headerBytes = new Uint8Array(await header.arrayBuffer());
+
+  const validated = validateProductImageUploadRequest(size, headerBytes);
+  if ("error" in validated) {
+    return { status: "error", message: PRODUCT_IMAGE_UPLOAD_REQUEST_ERROR_MESSAGE[validated.error] };
+  }
+
+  const imageId = randomUUID();
+  const path = buildProductGalleryImagePath(resolved.tenantId, productId, imageId, validated.mime);
+
+  const { data, error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).createSignedUploadUrl(path, { upsert: false });
+
+  if (error || !data) {
+    return { status: "error", message: "Não foi possível preparar o upload. Tente novamente." };
+  }
+
+  return {
+    status: "success",
+    upload: {
+      signedUrl: data.signedUrl,
+      token: data.token,
+      path: data.path,
+      imageId,
+      bucket: PRODUCT_IMAGE_BUCKET,
+      contentType: validated.mime,
+    },
+  };
+}
+
+/**
+ * D13.1 — segunda metade: chamada só depois do upload direto
+ * (`uploadToSignedUrl`) ter terminado contra o Storage. `imageId`/`path`
+ * nunca são confiados como estão — `isValidProductGalleryImagePath`
+ * recomputa os 3 paths possíveis (um por mime permitido) para
+ * tenant/produto/imageId já revalidados nesta chamada. Confirma
+ * existência real do objeto antes de inserir a linha — nenhum registro
+ * órfão no banco se o upload falhou ou foi interrompido (D13.1 §8/§17).
+ * `sort_order` novo é sempre o maior já existente + 1 (a imagem nova
+ * entra no fim da fila — nunca vira principal sozinha, o lojista decide
+ * isso explicitamente com `setPrimaryProductGalleryImageAction`).
+ */
+export async function confirmProductGalleryImageUploadAction(
+  productId: string,
+  imageId: string,
+  path: string,
+): Promise<ProductGalleryActionState> {
+  const resolved = await resolveTenantAndPermission("products.update");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const product = await resolveOwnedProduct(productId, resolved.tenantId);
+  if (!product) return { status: "error", message: "Produto não encontrado." };
+
+  if (!isValidProductGalleryImagePath(path, resolved.tenantId, productId, imageId)) {
+    return { status: "error", message: "Caminho de imagem inválido." };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: exists, error: existsError } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).exists(path);
+  if (existsError || !exists) {
+    return { status: "error", message: "Não encontramos o upload. Tente novamente." };
+  }
+
+  const currentImages = await resolveGalleryImages(supabase, resolved.tenantId, productId);
+  if (currentImages.length >= PRODUCT_GALLERY_MAX_IMAGES) {
+    // Corrida rara (duas abas preparando upload quase juntas, ambas sob
+    // o limite no momento do prepare): só a primeira confirmação entra.
+    // Pior caso é um objeto órfão no Storage, nunca uma galeria acima
+    // do limite — mesma filosofia do resto do arquivo.
+    return { status: "error", message: `Limite de ${PRODUCT_GALLERY_MAX_IMAGES} imagens por produto atingido.` };
+  }
+  const nextSortOrder = currentImages.length === 0 ? 0 : Math.max(...currentImages.map((i) => i.sortOrder)) + 1;
+
+  const { error: insertError } = await supabase.from("product_images").insert({
+    id: imageId,
+    tenant_id: resolved.tenantId,
+    product_id: productId,
+    storage_path: path,
+    sort_order: nextSortOrder,
+  });
+
+  if (insertError) {
+    return { status: "error", message: "Não foi possível salvar a imagem no produto. Tente novamente." };
+  }
+
+  revalidatePath("/painel/produtos");
+  revalidatePath(`/painel/produtos/${productId}/editar`);
+  const images = await resolveGalleryImages(supabase, resolved.tenantId, productId);
+  return { status: "success", images };
+}
+
+/**
+ * D13.1 — remove uma imagem da galeria. Ordem de segurança (§11): remove
+ * a REFERÊNCIA primeiro — o trigger `sync_product_main_image` já
+ * recalcula `products.main_image` (para a próxima imagem da fila, ou
+ * `NULL` se a galeria ficar vazia) dentro da mesma escrita, nunca deixa
+ * o produto apontando para um arquivo removido. Só depois remove o
+ * objeto do Storage, best-effort — falhar aqui deixa só um arquivo
+ * órfão inofensivo, nunca uma imagem quebrada (mesma filosofia de
+ * `confirmProductImageUploadAction`).
+ */
+export async function deleteProductGalleryImageAction(
+  productId: string,
+  imageId: string,
+): Promise<ProductGalleryActionState> {
+  const resolved = await resolveTenantAndPermission("products.delete");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const product = await resolveOwnedProduct(productId, resolved.tenantId);
+  if (!product) return { status: "error", message: "Produto não encontrado." };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: row } = await supabase
+    .from("product_images")
+    .select("storage_path")
+    .eq("id", imageId)
+    .eq("tenant_id", resolved.tenantId)
+    .eq("product_id", productId)
+    .maybeSingle();
+
+  if (!row) return { status: "error", message: "Imagem não encontrada." };
+
+  const { error: deleteError, count } = await supabase
+    .from("product_images")
+    .delete({ count: "exact" })
+    .eq("id", imageId)
+    .eq("tenant_id", resolved.tenantId)
+    .eq("product_id", productId);
+
+  if (deleteError || !count) {
+    return { status: "error", message: "Não foi possível remover a imagem. Tente novamente." };
+  }
+
+  await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([row.storage_path]);
+
+  revalidatePath("/painel/produtos");
+  revalidatePath(`/painel/produtos/${productId}/editar`);
+  const images = await resolveGalleryImages(supabase, resolved.tenantId, productId);
+  return { status: "success", images };
+}
+
+/**
+ * D13.1 — reordena a galeria inteira. `orderedImageIds` (vindo do
+ * cliente) nunca é confiado como está: `isValidGalleryReorder` exige que
+ * seja EXATAMENTE uma permutação dos ids que já pertencem a este produto
+ * (mesmo tamanho, mesmos ids, sem duplicata, sem id de outro
+ * produto/tenant "inserido" no meio) antes de qualquer escrita. A
+ * posição no array — nunca um valor de sort_order enviado por item —
+ * decide o `sort_order` final (`computeGallerySortOrder`).
+ */
+export async function reorderProductGalleryAction(
+  productId: string,
+  orderedImageIds: string[],
+): Promise<ProductGalleryActionState> {
+  const resolved = await resolveTenantAndPermission("products.update");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const product = await resolveOwnedProduct(productId, resolved.tenantId);
+  if (!product) return { status: "error", message: "Produto não encontrado." };
+
+  const supabase = await createSupabaseServerClient();
+  const currentImages = await resolveGalleryImages(supabase, resolved.tenantId, productId);
+  const currentIds = currentImages.map((i) => i.id);
+
+  if (!isValidGalleryReorder(currentIds, orderedImageIds)) {
+    return { status: "error", message: "Ordem inválida." };
+  }
+
+  await applyGalleryOrder(supabase, resolved.tenantId, productId, orderedImageIds);
+
+  revalidatePath("/painel/produtos");
+  revalidatePath(`/painel/produtos/${productId}/editar`);
+  const images = await resolveGalleryImages(supabase, resolved.tenantId, productId);
+  return { status: "success", images };
+}
+
+/**
+ * D13.1 — define uma imagem como principal: move `imageId` para o início
+ * da lista (`moveImageToFront`), preservando a ordem relativa das
+ * demais, e regrava `sort_order` de todas (`applyGalleryOrder`) — o
+ * trigger `sync_product_main_image` então atualiza `products.main_image`
+ * para o path desta imagem. Nunca uma coluna `is_primary` própria (ver
+ * comentário da migration 20260817220096).
+ */
+export async function setPrimaryProductGalleryImageAction(
+  productId: string,
+  imageId: string,
+): Promise<ProductGalleryActionState> {
+  const resolved = await resolveTenantAndPermission("products.update");
+  if ("error" in resolved) return { status: "error", message: resolved.error };
+
+  const product = await resolveOwnedProduct(productId, resolved.tenantId);
+  if (!product) return { status: "error", message: "Produto não encontrado." };
+
+  const supabase = await createSupabaseServerClient();
+  const currentImages = await resolveGalleryImages(supabase, resolved.tenantId, productId);
+  const currentIds = currentImages.map((i) => i.id);
+
+  const reordered = moveImageToFront(currentIds, imageId);
+  if (!reordered) return { status: "error", message: "Imagem não encontrada." };
+
+  await applyGalleryOrder(supabase, resolved.tenantId, productId, reordered);
+
+  revalidatePath("/painel/produtos");
+  revalidatePath(`/painel/produtos/${productId}/editar`);
+  const images = await resolveGalleryImages(supabase, resolved.tenantId, productId);
+  return { status: "success", images };
 }

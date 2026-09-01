@@ -101,3 +101,32 @@ export const getStorefrontProduct = cache(
     return { ...row, category: firstCategory(row.category) };
   },
 );
+
+export interface PublicProductImage {
+  id: string;
+  path: string;
+}
+
+/**
+ * D13.1 — galeria pública de UM produto, buscada só na página de
+ * detalhe (nunca na grade/listagem — `getStorefrontProducts` continua
+ * só com `main_image`, sem N+1 de galeria por card). RLS pública de
+ * `product_images` (migration 20260817220096) já exige produto
+ * `status='active'` de um tenant não suspenso/excluído, mesmo critério
+ * de `getStorefrontProduct` — chamar isto para um produto que não
+ * passaria nesse filtro simplesmente retorna `[]`.
+ */
+export const getStorefrontProductImages = cache(
+  async (tenantId: string, productId: string): Promise<PublicProductImage[]> => {
+    const supabase = createSupabasePublicClient();
+    const { data } = await supabase
+      .from("product_images")
+      .select("id, storage_path")
+      .eq("tenant_id", tenantId)
+      .eq("product_id", productId)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    return ((data ?? []) as { id: string; storage_path: string }[]).map((row) => ({ id: row.id, path: row.storage_path }));
+  },
+);

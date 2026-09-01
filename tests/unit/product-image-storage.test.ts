@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildProductGalleryImagePath,
   buildProductImagePath,
+  isValidProductGalleryImagePath,
   isValidProductImagePath,
+  PRODUCT_GALLERY_MAX_IMAGES,
   PRODUCT_IMAGE_MAX_BYTES,
   sniffImageMime,
   validateProductImageUploadRequest,
@@ -295,5 +298,60 @@ describe("resolveProductImagePreview", () => {
     expect(result.savedPath).toBeNull();
     expect(result.displayUrl).toBe("blob:http://localhost/new-file");
     expect(result.isBlobPreview).toBe(true);
+  });
+});
+
+/**
+ * D13.1 — path/validação de UMA imagem da galeria, distinto de
+ * `main_image`: identidade própria por `imageId` (nunca índice/posição —
+ * uma imagem não muda de identidade ao ser reordenada).
+ */
+describe("buildProductGalleryImagePath", () => {
+  it("nunca é igual ao path de main_image para o mesmo tenant/produto/mime", () => {
+    const galleryPath = buildProductGalleryImagePath("tenant-a", "product-1", "img-1", "image/png");
+    const mainPath = buildProductImagePath("tenant-a", "product-1", "image/png");
+    expect(galleryPath).not.toBe(mainPath);
+    expect(galleryPath).toBe("tenant-a/products/product-1/gallery/img-1.png");
+  });
+
+  it("mapeia cada mime permitido para a extensão determinística de sempre", () => {
+    expect(buildProductGalleryImagePath("t", "p", "i", "image/jpeg")).toBe("t/products/p/gallery/i.jpg");
+    expect(buildProductGalleryImagePath("t", "p", "i", "image/webp")).toBe("t/products/p/gallery/i.webp");
+  });
+
+  it("dois imageId diferentes nunca colidem no mesmo path, mesmo mime", () => {
+    const a = buildProductGalleryImagePath("t", "p", "img-a", "image/jpeg");
+    const b = buildProductGalleryImagePath("t", "p", "img-b", "image/jpeg");
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("isValidProductGalleryImagePath", () => {
+  it("aceita exatamente os 3 paths possíveis (um por mime) para o tenant/produto/imageId dados", () => {
+    expect(isValidProductGalleryImagePath("t/products/p/gallery/i.jpg", "t", "p", "i")).toBe(true);
+    expect(isValidProductGalleryImagePath("t/products/p/gallery/i.png", "t", "p", "i")).toBe(true);
+    expect(isValidProductGalleryImagePath("t/products/p/gallery/i.webp", "t", "p", "i")).toBe(true);
+  });
+
+  it("rejeita path de outro tenant/produto/imageId, mesmo com o formato certo", () => {
+    expect(isValidProductGalleryImagePath("outro-tenant/products/p/gallery/i.jpg", "t", "p", "i")).toBe(false);
+    expect(isValidProductGalleryImagePath("t/products/outro-produto/gallery/i.jpg", "t", "p", "i")).toBe(false);
+    expect(isValidProductGalleryImagePath("t/products/p/gallery/outro-id.jpg", "t", "p", "i")).toBe(false);
+  });
+
+  it("rejeita o path de main_image (não é um path de galeria válido)", () => {
+    expect(isValidProductGalleryImagePath("t/products/p/main.jpg", "t", "p", "i")).toBe(false);
+  });
+
+  it("rejeita path arbitrário/malformado", () => {
+    expect(isValidProductGalleryImagePath("../t/products/p/gallery/i.jpg", "t", "p", "i")).toBe(false);
+    expect(isValidProductGalleryImagePath("", "t", "p", "i")).toBe(false);
+  });
+});
+
+describe("PRODUCT_GALLERY_MAX_IMAGES", () => {
+  it("é uma constante interna positiva e razoável (não um sistema de billing)", () => {
+    expect(PRODUCT_GALLERY_MAX_IMAGES).toBeGreaterThan(0);
+    expect(Number.isInteger(PRODUCT_GALLERY_MAX_IMAGES)).toBe(true);
   });
 });

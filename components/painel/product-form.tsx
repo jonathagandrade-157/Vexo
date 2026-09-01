@@ -4,12 +4,12 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 
-import { ProductImageUploader } from "@/components/painel/product-image-uploader";
+import { ProductGalleryUploader } from "@/components/painel/product-gallery-uploader";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
 import { createProductAction, updateProductAction } from "@/features/products/actions";
-import { initialProductState } from "@/features/products/schema";
+import { initialProductState, type ProductGalleryImage } from "@/features/products/schema";
 
 function SaveButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -44,10 +44,12 @@ interface ProductFormProps {
     width: number | null;
     length: number | null;
   };
+  /** D13.1 — galeria já ordenada (primeira = principal). Só é buscada/passada quando `product` existe (mesma regra de sempre: imagem só na edição, nunca na criação — o path depende de um product_id real). */
+  galleryImages?: ProductGalleryImage[];
 }
 
 /** Página dedicada (não modal) — igual ao padrão de `vexo_adicionar_produto_desktop` (Stitch), que mostra "Adicionar Produto" como página própria com "Voltar", diferente de categorias (modal inline). */
-export function ProductForm({ categories, product }: ProductFormProps) {
+export function ProductForm({ categories, product, galleryImages }: ProductFormProps) {
   const action = product ? updateProductAction : createProductAction;
   const [state, formAction] = useActionState(action, initialProductState);
 
@@ -112,7 +114,7 @@ export function ProductForm({ categories, product }: ProductFormProps) {
               Mídia
             </h2>
             {product ? (
-              <ProductImageUploader initialImagePath={product.main_image} productId={product.id} />
+              <ProductGalleryUploader initialImages={galleryImages ?? []} productId={product.id} />
             ) : (
               <p className="font-body text-body-sm text-on-surface-variant">
                 Salve o produto primeiro para adicionar uma imagem — a próxima tela já abre pronta para isso.
