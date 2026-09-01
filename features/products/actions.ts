@@ -296,15 +296,33 @@ export async function uploadProductImageAction(
   if (!product) return { status: "error", message: "Produto não encontrado." };
 
   const file = formData.get("file");
+  // TEMP DIAGNOSTIC LOG — VEXO image fix investigation. No PII (nome do
+  // arquivo pode conter o que o usuário digitou, mas nunca é logado
+  // aqui — só tamanho/tipo). Remover depois de confirmar a causa real.
+  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
+    step: "received",
+    productId,
+    isFile: file instanceof File,
+    size: file instanceof File ? file.size : null,
+    declaredType: file instanceof File ? file.type : null,
+  });
   if (!(file instanceof File) || file.size === 0) {
     return { status: "error", message: "Selecione um arquivo de imagem." };
   }
   if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+    console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", { step: "rejected_size", productId, size: file.size });
     return { status: "error", message: "Imagem muito grande. O limite é 5MB." };
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const mime = sniffImageMime(bytes);
+  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
+    step: "sniffed",
+    productId,
+    declaredType: file.type,
+    sniffedMime: mime,
+    firstBytesHex: Array.from(bytes.slice(0, 12)).map((b) => b.toString(16).padStart(2, "0")).join(" "),
+  });
   if (!mime) {
     return { status: "error", message: "Formato não suportado. Envie um JPEG, PNG ou WebP." };
   }
@@ -322,6 +340,14 @@ export async function uploadProductImageAction(
     .from(PRODUCT_IMAGE_BUCKET)
     .upload(newPath, file, { contentType: mime, upsert: true });
 
+  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
+    step: "uploaded",
+    productId,
+    bucket: PRODUCT_IMAGE_BUCKET,
+    path: newPath,
+    uploadError: uploadError ? { message: uploadError.message, name: uploadError.name } : null,
+  });
+
   if (uploadError) {
     return { status: "error", message: "Não foi possível enviar a imagem. Tente novamente." };
   }
@@ -331,6 +357,13 @@ export async function uploadProductImageAction(
     .update({ main_image: newPath })
     .eq("id", productId)
     .eq("tenant_id", resolved.tenantId);
+
+  console.log("PRODUCT_IMAGE_UPLOAD_DEBUG", {
+    step: "db_updated",
+    productId,
+    path: newPath,
+    updateError: updateError ? { message: updateError.message, code: updateError.code } : null,
+  });
 
   if (updateError) {
     // Rollback: o arquivo já foi gravado no Storage, mas o produto não
