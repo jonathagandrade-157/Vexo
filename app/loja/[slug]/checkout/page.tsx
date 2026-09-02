@@ -7,6 +7,7 @@ import { StorefrontNotFound } from "@/components/storefront/storefront-not-found
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
 import { effectivePrice, lineSubtotal } from "@/features/cart/pricing";
+import { resolveCheckoutAvailability } from "@/features/checkout/checkout-availability";
 import { getStorePixSettings } from "@/features/checkout/pix-settings";
 import { getStoreAddress } from "@/features/checkout/store-address";
 import { isPaymentGatewayConnected } from "@/features/payments/checkout";
@@ -44,18 +45,35 @@ export default async function CheckoutPage({ params }: PageProps) {
   }
 
   const { tenant } = resolution;
-  const [cart, gatewayConnected, pixSettings, storeAddress] = await Promise.all([
+  const [cart, gatewayConnected, storeAddress] = await Promise.all([
     getCart(tenant.slug),
     isPaymentGatewayConnected(tenant.id),
-    // Só buscado quando o caminho WhatsApp existe de verdade — uma loja
-    // `vexo` nunca mostra PIX direto, então nem vale ler a configuração.
-    tenant.checkout_mode === "vexo" ? Promise.resolve(null) : getStorePixSettings(tenant.id),
     // D3.1: endereço da loja para exibir quando o cliente escolher
     // retirada — sempre buscado, mesmo em lojas sem `pickup` configurado
-    // ainda (mesmo padrão de pixSettings: quem decide o que fazer com
-    // `null` é o CheckoutForm).
+    // ainda (mesmo padrão de pixSettings abaixo: quem decide o que fazer
+    // com `null` é o CheckoutForm).
     getStoreAddress(tenant.id),
   ]);
+
+  // D14.1 — única fonte de verdade de "o que esta loja oferece agora"
+  // (features/checkout/checkout-availability.ts), a mesma usada por
+  // CheckoutForm (só para UI) e por createOrderForWhatsappAction (a
+  // autoridade real, refeita no servidor a cada submit — nunca confia
+  // neste cálculo daqui). Cobre o caso novo: `checkout_mode = 'vexo'`
+  // (o padrão de fábrica) sem gateway conectado deixa de ser
+  // automaticamente um beco sem saída quando a loja já tem um WhatsApp
+  // válido configurado — nunca muda `checkout_mode` para isso.
+  const { onlineAllowed, whatsappAllowed } = resolveCheckoutAvailability(
+    tenant.checkout_mode,
+    gatewayConnected,
+    tenant.whatsapp_phone,
+  );
+
+  // Só buscado quando o caminho WhatsApp existe de verdade (modo
+  // `whatsapp`/`both`, ou o fallback acima) — uma loja `vexo` com
+  // gateway conectado nunca mostra PIX direto, então nem vale ler a
+  // configuração.
+  const pixSettings = whatsappAllowed ? await getStorePixSettings(tenant.id) : null;
 
   const shellFooter = {
     description: tenant.description,
@@ -64,13 +82,13 @@ export default async function CheckoutPage({ params }: PageProps) {
     contactEmail: tenant.contact_email,
   };
 
-  // Sem gateway conectado: bloqueia ANTES do formulário, nunca mostra um
-  // "pagar" que não funciona nem cria um pedido sem como ser pago
-  // (prompt Etapa 11 §19). Fase D2-B: esse bloqueio só faz sentido quando
-  // `vexo` é o único caminho da loja — `whatsapp`/`both` sempre têm um
-  // jeito de finalizar o pedido mesmo sem Mercado Pago conectado (o
-  // próprio CheckoutForm decide, abaixo, quais caminhos oferecer).
-  if (tenant.checkout_mode === "vexo" && !gatewayConnected) {
+  // Bloqueia ANTES do formulário, nunca mostra um "pagar" que não
+  // funciona nem cria um pedido sem como ser pago (prompt Etapa 11 §19).
+  // Só acontece de fato quando NENHUM caminho está disponível — hoje,
+  // isso só é possível em `checkout_mode = 'vexo'` sem gateway conectado
+  // E sem WhatsApp configurado (`whatsapp`/`both` sempre têm ao menos o
+  // caminho WhatsApp, preservado sem alteração).
+  if (!onlineAllowed && !whatsappAllowed) {
     return (
       <StorefrontShell
         cartCount={cart.itemCount}
@@ -91,9 +109,9 @@ export default async function CheckoutPage({ params }: PageProps) {
               Voltar ao carrinho
             </Link>
           }
-          description="Esta loja ainda não possui um meio de pagamento configurado."
+          description="Esta loja ainda não configurou um meio de pagamento online. Peça ao lojista para configurar um meio de pagamento para continuar."
           icon="credit_card_off"
-          title="Pagamento indisponível"
+          title="Pagamento online indisponível"
         />
       </StorefrontShell>
     );
@@ -141,6 +159,7 @@ export default async function CheckoutPage({ params }: PageProps) {
           hasUnavailableItems={cart.items.length !== availableItems.length}
           pixSettings={pixSettings}
           storeAddress={storeAddress}
+          whatsappPhone={tenant.whatsapp_phone}
           items={availableItems.map((item) => ({
             name: item.product.name,
             quantity: item.quantity,

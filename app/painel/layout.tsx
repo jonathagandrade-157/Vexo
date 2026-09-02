@@ -6,6 +6,7 @@ import { MobileBottomNav } from "@/components/painel/mobile-bottom-nav";
 import { Sidebar } from "@/components/painel/sidebar";
 import { getTenantCommercialContext } from "@/features/commercial/tenant-plan";
 import { getBlockedTenantStatus } from "@/features/onboarding/resolve-tenant";
+import { getUnreadNotificationCount, listRecentNotifications } from "@/features/notifications/data";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -98,10 +99,23 @@ export default async function PainelLayout({ children }: { children: ReactNode }
   // por request, mesmo padrão de getCurrentMembership).
   const commercialContext = await getTenantCommercialContext(membership.tenant.id);
 
+  // D14.1 — mesma ideia: uma leitura por request, aqui no layout (nunca
+  // dentro do NotificationBell, que é client component e nunca cria
+  // nem lê notificação diretamente do banco).
+  const [notifications, unreadNotificationCount] = await Promise.all([
+    listRecentNotifications(membership.tenant.id),
+    getUnreadNotificationCount(membership.tenant.id),
+  ]);
+
   return (
     <div className="min-h-dvh bg-background">
       <Sidebar tenantName={membership.tenant.name} unlockedFeatures={Array.from(commercialContext.features)} />
-      <Header userInitial={userInitial} userName={userName} />
+      <Header
+        notifications={notifications}
+        unreadNotificationCount={unreadNotificationCount}
+        userInitial={userInitial}
+        userName={userName}
+      />
       <main className="px-margin-mobile pb-24 pt-24 md:ml-[260px] md:px-margin-desktop md:pb-12">
         <div className="mx-auto max-w-[1440px]">{children}</div>
       </main>

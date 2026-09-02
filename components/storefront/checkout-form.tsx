@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 
 import { OrderSummary, type OrderSummaryLine } from "@/components/storefront/order-summary";
 import { createOrderAction } from "@/features/checkout/actions";
+import { resolveCheckoutAvailability } from "@/features/checkout/checkout-availability";
 import { BRAZILIAN_STATES, initialCheckoutState } from "@/features/checkout/schema";
 import type { StorePixSettings } from "@/features/checkout/pix-settings";
 import type { StoreAddress } from "@/features/checkout/store-address";
@@ -409,6 +410,7 @@ export function CheckoutForm({
   gatewayConnected,
   pixSettings,
   storeAddress,
+  whatsappPhone,
 }: {
   storeSlug: string;
   items: OrderSummaryLine[];
@@ -418,15 +420,20 @@ export function CheckoutForm({
   gatewayConnected: boolean;
   pixSettings: StorePixSettings | null;
   storeAddress: StoreAddress | null;
+  /** D14.1 — mesmo dado já público no rodapé da loja (link de contato `wa.me`), usado aqui só para decidir, junto com `resolveCheckoutAvailability`, se o fallback WhatsApp existe. */
+  whatsappPhone: string | null;
 }) {
-  // Fase D2-B — o que a loja realmente oferece AGORA (nunca só
-  // checkout_mode isolado: `both` sem Mercado Pago conectado só oferece
-  // WhatsApp, exatamente como a página de checkout já decidiu ao não
-  // bloquear a página inteira). Decisão espelhada aqui só para UI — a
-  // autoridade real está nas Actions (createOrderAction/
-  // createOrderForWhatsappAction), que revalidam tudo de novo no servidor.
-  const onlineAllowed = checkoutMode !== "whatsapp" && (checkoutMode === "vexo" || gatewayConnected);
-  const whatsappAllowed = checkoutMode !== "vexo";
+  // D14.1 — o que a loja realmente oferece AGORA, sempre pela mesma
+  // função pura da página de checkout (features/checkout/
+  // checkout-availability.ts) — nunca uma segunda conta feita aqui à
+  // parte. Decisão espelhada só para UI — a autoridade real está nas
+  // Actions (createOrderAction/createOrderForWhatsappAction), que
+  // revalidam tudo de novo no servidor.
+  const { onlineAllowed, whatsappAllowed, isWhatsappFallback } = resolveCheckoutAvailability(
+    checkoutMode,
+    gatewayConnected,
+    whatsappPhone,
+  );
   const showToggle = onlineAllowed && whatsappAllowed;
 
   const [selectedPath, setSelectedPath] = useState<"online" | "whatsapp">(onlineAllowed ? "online" : "whatsapp");
@@ -524,6 +531,21 @@ export function CheckoutForm({
   return (
     <form action={activeFormAction} className="grid grid-cols-1 gap-8 lg:grid-cols-3">
       <div className="flex flex-col gap-6 lg:col-span-2">
+        {/*
+          D14.1 — só aparece quando o WhatsApp está sendo oferecido como
+          substituto do checkout online (loja `vexo` sem gateway
+          conectado), nunca nos modos `whatsapp`/`both` (onde pedir pelo
+          WhatsApp já é um caminho normal, não uma exceção que precisa
+          de explicação). Contexto, não bloqueio — o cliente já está no
+          único formulário disponível.
+        */}
+        {isWhatsappFallback ? (
+          <p className="rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-4 py-3 font-body text-body-sm text-on-surface-variant">
+            Pagamento online indisponível no momento. Você pode finalizar seu pedido pelo WhatsApp — a loja confirma o
+            pagamento diretamente com você.
+          </p>
+        ) : null}
+
         {showToggle ? <PathToggle onSelect={setSelectedPath} selected={selectedPath} /> : null}
 
         <section className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-4 md:p-6">

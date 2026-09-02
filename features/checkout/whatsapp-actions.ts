@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 
 import { getCart } from "@/features/cart/data";
 import { getCartId } from "@/features/cart/cart-cookie";
+import { resolveCheckoutAvailability } from "@/features/checkout/checkout-availability";
 import { getStorePixSettings } from "@/features/checkout/pix-settings";
+import { isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
 import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
@@ -65,10 +67,22 @@ export async function createOrderForWhatsappAction(
     return { status: "error", message: "Esta loja não está disponível no momento." };
   }
 
-  // Gate central — decidido só pelo checkout_mode real da loja, nunca
-  // pelo caminho que o cliente escolheu na UI (que pode estar
-  // desatualizada). Uma loja `vexo` nunca aceita pedido por este caminho.
-  if (resolution.tenant.checkout_mode !== "whatsapp" && resolution.tenant.checkout_mode !== "both") {
+  // Gate central — decidido só pelo estado real da loja no momento do
+  // submit, nunca pelo caminho que o cliente escolheu na UI (que pode
+  // estar desatualizada). D14.1: a mesma função pura da página de
+  // checkout decide aqui de novo, com dado lido agora mesmo do banco
+  // (nunca um parâmetro do cliente) — cobre tanto `whatsapp`/`both`
+  // (sempre aceitos, comportamento preservado) quanto o fallback de uma
+  // loja `vexo` sem gateway conectado (novo, D14.1) — uma loja `vexo`
+  // COM gateway conectado continua rejeitando este caminho, exatamente
+  // como antes.
+  const gatewayConnected = await isPaymentGatewayConnected(resolution.tenant.id);
+  const { whatsappAllowed } = resolveCheckoutAvailability(
+    resolution.tenant.checkout_mode,
+    gatewayConnected,
+    resolution.tenant.whatsapp_phone,
+  );
+  if (!whatsappAllowed) {
     return { status: "error", message: "Esta loja não aceita pedidos pelo WhatsApp." };
   }
 
