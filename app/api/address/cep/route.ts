@@ -1,6 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { lookupCep } from "@/lib/address/cep-lookup";
+import { checkRateLimit, getClientIp, rateLimitedResponse } from "@/lib/security/rate-limit";
+
+/**
+ * D15-S.2 — 20 requisições/60s por IP (nunca por tenant — este endpoint
+ * não é escopado por loja, ver comentário abaixo). Mais generoso que
+ * shipping/quote de propósito: a BrasilAPI é gratuita e sem chave (custo
+ * zero por chamada, comentário abaixo), então o risco aqui é só
+ * disponibilidade/abuso de banda, não custo financeiro direto.
+ */
+const CEP_LOOKUP_WINDOW_SECONDS = 60;
+const CEP_LOOKUP_MAX_REQUESTS = 20;
 
 /**
  * D3.2-A — autofill de endereço pelo CEP no checkout. Reaproveita
@@ -24,6 +35,18 @@ export async function GET(request: NextRequest) {
   const cep = cepRaw.replace(/\D/g, "");
   if (cep.length !== 8) {
     return NextResponse.json({ status: "invalid_cep" });
+  }
+
+  // D15-S.2 — fail-OPEN de propósito, ao contrário de shipping/quote: a
+  // BrasilAPI é gratuita/sem chave (sem custo por chamada, comentário de
+  // lookupCep em lib/address/cep-lookup.ts), então bloquear o autofill do
+  // checkout inteiro por uma falha transitória do limiter custaria mais
+  // em experiência do lojista/cliente do que o risco real de abuso vale a
+  // pena aceitar por essa janela curta.
+  const ip = getClientIp(request) ?? "unknown";
+  const rateLimit = await checkRateLimit(`cep-lookup:${ip}`, CEP_LOOKUP_WINDOW_SECONDS, CEP_LOOKUP_MAX_REQUESTS);
+  if (rateLimit && !rateLimit.allowed) {
+    return rateLimitedResponse(rateLimit.retryAfterSeconds);
   }
 
   const result = await lookupCep(cep);

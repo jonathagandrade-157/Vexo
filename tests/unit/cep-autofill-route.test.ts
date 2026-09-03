@@ -2,8 +2,13 @@ import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/address/cep-lookup", () => ({ lookupCep: vi.fn() }));
+vi.mock("@/lib/security/rate-limit", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/security/rate-limit")>("@/lib/security/rate-limit");
+  return { ...actual, checkRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 60 })), getClientIp: vi.fn(() => "203.0.113.5") };
+});
 
 import { lookupCep } from "@/lib/address/cep-lookup";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 import { GET } from "@/app/api/address/cep/route";
 
 /**
@@ -14,6 +19,12 @@ import { GET } from "@/app/api/address/cep/route";
  * timeout, resposta incompleta) e é mockado aqui para não duplicar essa
  * cobertura. Nunca importa a BrasilAPI de verdade — nenhuma chamada de
  * rede acontece neste arquivo.
+ *
+ * D15-S.2 — checkRateLimit também é mockado (mesmo motivo: já testado
+ * isoladamente em tests/integration/rate-limit.test.ts), sempre "allowed"
+ * por padrão para os testes pré-existentes abaixo não mudarem de
+ * comportamento; os testes de rate limit propriamente ditos sobrescrevem
+ * esse mock caso a caso.
  */
 function request(cep: string | null): NextRequest {
   const url = cep === null ? "http://localhost/api/address/cep" : `http://localhost/api/address/cep?cep=${encodeURIComponent(cep)}`;
@@ -23,6 +34,8 @@ function request(cep: string | null): NextRequest {
 describe("GET /api/address/cep (D3.2-A)", () => {
   afterEach(() => {
     vi.mocked(lookupCep).mockReset();
+    vi.mocked(checkRateLimit).mockReset();
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, retryAfterSeconds: 60 });
   });
 
   it("CEP válido e encontrado: devolve status ok com os 4 campos de endereço", async () => {
@@ -106,5 +119,43 @@ describe("GET /api/address/cep (D3.2-A)", () => {
 
     expect(lookupCep).toHaveBeenCalledTimes(1);
     expect(lookupCep).toHaveBeenCalledWith("01310100");
+  });
+
+  // D15-S.2 — rate limiting.
+  it("[D15-S.2] limite atingido: HTTP 429, Retry-After, e lookupCep NUNCA é chamado", async () => {
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: false, retryAfterSeconds: 15 });
+
+    const response = await GET(request("01310100"));
+    const body = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("15");
+    expect(body).toEqual({ status: "rate_limited" });
+    expect(lookupCep).not.toHaveBeenCalled();
+  });
+
+  it("[D15-S.2] limiter indisponível (checkRateLimit retorna null): fail-OPEN — lookupCep é chamado normalmente", async () => {
+    vi.mocked(checkRateLimit).mockResolvedValue(null);
+    vi.mocked(lookupCep).mockResolvedValue({ street: "Rua X", neighborhood: "Bairro Y", city: "Cidade Z", state: "RJ" });
+
+    const response = await GET(request("01310100"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ status: "ok", street: "Rua X", neighborhood: "Bairro Y", city: "Cidade Z", state: "RJ" });
+    expect(lookupCep).toHaveBeenCalledTimes(1);
+  });
+
+  it("[D15-S.2] chave do rate limit é só o IP (endpoint não é escopado por tenant)", async () => {
+    vi.mocked(lookupCep).mockResolvedValue(null);
+
+    await GET(request("01310100"));
+
+    expect(checkRateLimit).toHaveBeenCalledWith("cep-lookup:203.0.113.5", 60, 20);
+  });
+
+  it("CEP inválido: nunca chega a checar rate limit", async () => {
+    await GET(request("123"));
+    expect(checkRateLimit).not.toHaveBeenCalled();
   });
 });

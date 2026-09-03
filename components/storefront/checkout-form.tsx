@@ -34,6 +34,8 @@ type ShippingQuoteResponse =
   | { status: "disabled" }
   | { status: "unavailable" }
   | { status: "invalid_zip" }
+  /** D15-S.2 — rate limit do endpoint (app/api/shipping/quote/route.ts), nunca um estado de negócio. */
+  | { status: "rate_limited" }
   | { status: "ok"; options: ShippingOption[] };
 
 type ShippingQuoteState =
@@ -42,10 +44,16 @@ type ShippingQuoteState =
   | { kind: "error" }
   | { kind: "loaded"; result: ShippingQuoteResponse };
 
-/** D3.2-A — espelha a resposta de `/api/address/cep` (que só repassa `CepLookupResult` de lib/address/cep-lookup.ts). */
+/**
+ * D3.2-A — espelha a resposta de `/api/address/cep` (que só repassa
+ * `CepLookupResult` de lib/address/cep-lookup.ts). D15-S.2: `rate_limited`
+ * cai naturalmente no mesmo tratamento de erro que qualquer outro
+ * `status !== "ok"` já recebe abaixo (nunca precisou de um branch próprio).
+ */
 type CepAutofillResponse =
   | { status: "invalid_cep" }
   | { status: "not_found" }
+  | { status: "rate_limited" }
   | { status: "ok"; street: string; neighborhood: string; city: string; state: string };
 
 /**
@@ -121,6 +129,13 @@ function ShippingSection({
     return (
       <p className="rounded-lg border border-error/30 bg-error-container/10 px-4 py-3 font-body text-body-sm text-error">
         Nenhuma opção de entrega disponível para este CEP no momento.
+      </p>
+    );
+  }
+  if (result.status === "rate_limited") {
+    return (
+      <p className="rounded-lg border border-error/30 bg-error-container/10 px-4 py-3 font-body text-body-sm text-error">
+        Muitas tentativas em pouco tempo. Aguarde um instante e tente novamente.
       </p>
     );
   }

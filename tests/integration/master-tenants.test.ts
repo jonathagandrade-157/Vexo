@@ -92,6 +92,28 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Master — Gestão de Lojas
     expect(row.rows[0]!.status).toBe("pending");
   });
 
+  // D15-S.1 — achado da auditoria D15-S: o docblock deste arquivo já
+  // exigia "nunca SUPPORT_AGENT ... nem via a RPC nem via UPDATE direto",
+  // mas só o caminho da RPC era testado (teste acima). O trigger
+  // prevent_unauthorized_tenant_status_change checava is_platform_admin()
+  // (MASTER OU SUPPORT_AGENT) em vez de is_platform_master() — SUPPORT_AGENT
+  // conseguia mudar tenants.status por UPDATE direto, contornando a
+  // restrição MASTER-only da RPC. Migration 20260817220098 corrige o
+  // trigger; este teste fecha a lacuna de cobertura que escondia o gap.
+  it("[D15-S.1] SUPPORT_AGENT cannot change tenant status via a direct UPDATE either", async () => {
+    const tenantId = await insertTenant("pending", fx.userAOwner);
+
+    const err = await expectPgError(
+      asActor({ role: "authenticated", userId: userSupportAgent }, (c) =>
+        c.query("update public.tenants set status = 'active' where id = $1", [tenantId]),
+      ),
+    );
+    expect(err.message).toMatch(/tenants\.status can only be changed by a platform admin/i);
+
+    const row = await withSuperuser((c) => c.query("select status from public.tenants where id = $1", [tenantId]));
+    expect(row.rows[0]!.status).toBe("pending");
+  });
+
   it("a tenant's own OWNER cannot change its status — neither via the RPC nor via a direct UPDATE", async () => {
     const viaRpc = await expectPgError(updateStatus(fx.userAOwner, fx.tenantA, "active", false));
     expect(viaRpc.message).toMatch(/only a MASTER admin/i);
@@ -105,6 +127,27 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Master — Gestão de Lojas
       ),
     );
     expect(viaDirectUpdate.message).toMatch(/tenants\.status can only be changed by a platform admin/i);
+  });
+
+  // D15-S.1 — teste de bypass explicitamente pedido pela auditoria:
+  // "status" escondido junto de um campo que o OWNER realmente pode
+  // alterar (mesmo padrão de features/settings/actions.ts) não passa por
+  // "esquecido no meio do payload" — o UPDATE inteiro falha (Postgres
+  // aplica um UPDATE por completo ou não aplica nada), então `name`
+  // também não muda.
+  it("[D15-S.1] mass assignment: smuggling status alongside a legitimate field (name) still fails atomically", async () => {
+    const before = await withSuperuser((c) => c.query("select name from public.tenants where id = $1", [fx.tenantA]));
+    const originalName = before.rows[0]!.name as string;
+
+    const err = await expectPgError(
+      asActor({ role: "authenticated", userId: fx.userAOwner }, (c) =>
+        c.query("update public.tenants set name = $1, status = 'active' where id = $2", ["Nome Forjado", fx.tenantA]),
+      ),
+    );
+    expect(err.message).toMatch(/tenants\.status can only be changed by a platform admin/i);
+
+    const after = await withSuperuser((c) => c.query("select name from public.tenants where id = $1", [fx.tenantA]));
+    expect(after.rows[0]!.name).toBe(originalName);
   });
 
   it("update_tenant_status is authenticated-only — anon and service_role have no execute grant", async () => {
