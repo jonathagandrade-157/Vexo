@@ -3,29 +3,43 @@
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isSelectableBusinessType } from "./business-type-choices";
 import { markOnboardingStepProgress, recomputeOnboardingCompletion, resolveOnboardingState, type OnboardingState } from "./progress";
 import { resolveOnboardingTenant } from "./resolve-tenant";
-import { brandInfoSchema, type BrandInfoActionState, type BrandInfoInput, type OnboardingStepActionState } from "./schema";
+import {
+  brandInfoSchema,
+  businessTypeSchema,
+  type BrandInfoActionState,
+  type BrandInfoInput,
+  type BusinessTypeActionState,
+  type OnboardingStepActionState,
+} from "./schema";
 import { isStepReachable } from "./progress-logic";
 import type { OnboardingStepDefinition } from "./step-definitions";
 
 /**
- * Etapa "seu-negocio" do wizard (D12.2) — primeira etapa da definição de
- * `ecommerce` (`features/onboarding/step-definitions.ts`), sempre a
- * primeira alcançável (nada antes dela). Grava `business_type` junto com
- * os mesmos 6 campos de marca de sempre (D12.0/arquitetura §24 Etapa 4;
- * docs/architecture/etapa-4-onboarding.md) — continua sendo o único
- * formulário de dados real do wizard nesta fase; as demais etapas são
- * "orchestrated"/"review"/"publish" e usam `completeOnboardingStepAction`
- * abaixo.
+ * Etapa "seu-negocio" do wizard (D12.2). Grava os mesmos 6 campos de marca
+ * de sempre (D12.0/arquitetura §24 Etapa 4; docs/architecture/etapa-4-
+ * onboarding.md) — continua sendo um dos formulários de dados reais do
+ * wizard nesta fase; as demais etapas são "orchestrated"/"review"/
+ * "publish" e usam `completeOnboardingStepAction` abaixo.
  *
- * D12.2 — NÃO grava mais `onboarding_completed_at` diretamente: essa
- * responsabilidade passou inteira para `recomputeOnboardingCompletion`,
- * chamado ao final desta action como de qualquer outra etapa. Com 8
- * etapas na definição de `ecommerce`, salvar "seu-negocio" nunca é
- * suficiente sozinho para completar o onboarding — o `UPDATE`
- * condicional em `recomputeOnboardingCompletion` garante isso (só grava
- * quando toda etapa `required` estiver concluída).
+ * D15.1.1 — deixou de gravar `business_type`: essa escolha agora acontece
+ * antes, na nova etapa "segmento" (`saveBusinessTypeAction` abaixo), que
+ * vem primeiro na definição (`step-definitions.ts`). Por isso esta action
+ * passa a exigir `tenant.business_type` já definido — um POST direto a
+ * esta action sem antes ter passado por "segmento" é rejeitado com
+ * redirect para lá, nunca silenciosamente aceito (mesma defesa em
+ * profundidade de sempre: a página só renderiza este formulário depois de
+ * "segmento" resolvida, mas a action não confia só nisso).
+ *
+ * D12.2 — NÃO grava `onboarding_completed_at` diretamente: essa
+ * responsabilidade é inteira de `recomputeOnboardingCompletion`, chamado
+ * ao final desta action como de qualquer outra etapa. Com 9 etapas na
+ * definição de `ecommerce`, salvar "seu-negocio" nunca é suficiente
+ * sozinho para completar o onboarding — o `UPDATE` condicional em
+ * `recomputeOnboardingCompletion` garante isso (só grava quando toda
+ * etapa `required` estiver concluída).
  *
  * O tenant a atualizar NUNCA vem de um campo do formulário — é resolvido
  * aqui a partir da sessão (auth.getUser() + tenant_members), exatamente
@@ -49,7 +63,6 @@ export async function saveBrandInfoAction(
 ): Promise<BrandInfoActionState> {
   const parsed = brandInfoSchema.safeParse({
     storeName: formData.get("storeName"),
-    businessType: formData.get("businessType"),
     segment: formData.get("segment"),
     description: formData.get("description"),
     instagram: formData.get("instagram"),
@@ -80,13 +93,18 @@ export async function saveBrandInfoAction(
     redirect("/painel");
   }
 
-  const { storeName, businessType, segment, description, instagram, whatsapp, email } = parsed.data;
+  if (!tenant.business_type) {
+    // D15.1.1 — nunca aceita dado de marca antes do tipo de negócio
+    // estar definido; manda para a etapa que realmente vem primeiro.
+    redirect("/onboarding/segmento");
+  }
+
+  const { storeName, segment, description, instagram, whatsapp, email } = parsed.data;
 
   const { error } = await supabase
     .from("tenants")
     .update({
       name: storeName,
-      business_type: businessType,
       segment,
       description: description ?? null,
       instagram_handle: instagram,
@@ -107,6 +125,59 @@ export async function saveBrandInfoAction(
 
   // Nunca uma etapa fixa — /onboarding (Server Component) resolve de
   // novo qual é a etapa atual a partir do banco e redireciona para lá.
+  redirect("/onboarding");
+}
+
+/**
+ * D15.1.1 — nova primeira etapa do wizard ("segmento"): grava
+ * `tenants.business_type` sozinha, antes de qualquer outro dado de marca.
+ * Mesmo padrão de segurança de `saveBrandInfoAction`: tenant resolvido só
+ * pela sessão (`resolveOnboardingTenant`), nunca por um campo do
+ * formulário — fecha o mesmo cenário de IDOR/tenant hopping.
+ *
+ * O schema (`businessTypeSchema`) aceita os 3 valores de `BUSINESS_TYPES`
+ * (mesmo CHECK do banco), mas só `ecommerce` tem wizard implementado
+ * (`ONBOARDING_STEPS`) — por isso a checagem extra com
+ * `isSelectableBusinessType` abaixo: mesmo que a UI (`BusinessTypeForm`)
+ * só deixe clicar em "e-commerce", esta action nunca confia nisso e
+ * rejeita qualquer outro valor de novo aqui, ainda que ele seja
+ * estruturalmente válido para a coluna.
+ */
+export async function saveBusinessTypeAction(
+  _prevState: BusinessTypeActionState,
+  formData: FormData,
+): Promise<BusinessTypeActionState> {
+  const parsed = businessTypeSchema.safeParse({ businessType: formData.get("businessType") });
+  if (!parsed.success) {
+    return { status: "error", message: "Selecione o tipo do seu negócio." };
+  }
+
+  if (!isSelectableBusinessType(parsed.data.businessType)) {
+    return { status: "error", message: "Este tipo de negócio ainda não está disponível. Em breve!" };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const tenant = await resolveOnboardingTenant(supabase, true);
+  if (!tenant) {
+    redirect("/painel");
+  }
+
+  const { error } = await supabase
+    .from("tenants")
+    .update({ business_type: parsed.data.businessType })
+    .eq("id", tenant.id);
+
+  if (error) {
+    return {
+      status: "error",
+      message: "Não foi possível salvar o tipo do seu negócio. Tente novamente.",
+    };
+  }
+
+  await markOnboardingStepProgress(tenant.id, "segmento", "completed");
+  await recomputeOnboardingCompletion(tenant.id);
+
   redirect("/onboarding");
 }
 

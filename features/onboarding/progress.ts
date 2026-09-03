@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { withLegacyBusinessTypeCompletion } from "./legacy-business-type";
 import {
   calculateOnboardingProgress,
   isOnboardingComplete,
@@ -57,11 +58,12 @@ export async function resolveOnboardingState(supabase: SupabaseClient, tenantId:
     .select("step_key, completed_at, status")
     .eq("tenant_id", tenantId);
 
-  const progress: StepProgressEntry[] = ((progressRows ?? []) as ProgressRow[]).map((row) => ({
+  const rawProgress: StepProgressEntry[] = ((progressRows ?? []) as ProgressRow[]).map((row) => ({
     stepKey: row.step_key,
     status: isStepProgressStatus(row.status) ? row.status : null,
     completedAt: row.completed_at,
   }));
+  const progress = withLegacyBusinessTypeCompletion(businessType, rawProgress);
 
   return {
     tenantId,

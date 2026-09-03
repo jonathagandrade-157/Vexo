@@ -72,6 +72,21 @@ export interface OnboardingStepDefinition {
 
 const ECOMMERCE_STEPS: readonly OnboardingStepDefinition[] = [
   {
+    // D15.1.1 — nova primeira etapa do wizard: separa "que tipo de
+    // negócio é este" (grava `tenants.business_type`, decide qual
+    // ONBOARDING_STEPS usar) de "conte sobre sua marca" (que passa a
+    // assumir `business_type` já definido). skippable: false pela mesma
+    // razão de "seu-negocio" hoje — é dado que define o resto do wizard,
+    // nunca pode ser pulado (e o protege contra `skipOnboardingStepAction`
+    // chamada diretamente, mesma defesa já usada para "seu-negocio").
+    key: "segmento",
+    title: "Tipo de negócio",
+    description: "Escolha o tipo que melhor representa sua operação.",
+    required: true,
+    skippable: false,
+    kind: "data",
+  },
+  {
     key: "seu-negocio",
     title: "Seu negócio",
     description: "Conte um pouco sobre a sua marca.",

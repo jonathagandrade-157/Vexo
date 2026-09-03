@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * D12.2 — `/onboarding` deixou de renderizar a etapa "seu-negocio"
- * diretamente (isso agora é `/onboarding/seu-negocio`, ver
+ * D12.2 — `/onboarding` deixou de renderizar a primeira etapa do wizard
+ * diretamente (isso agora é `/onboarding/{step}`, ver
  * `app/onboarding/[step]/page.tsx`): esta página virou um puro
  * resolvedor/redirecionador, sempre a partir do banco (BANCO é a fonte
  * de verdade — D12.2, "RETOMADA": nunca localStorage, nunca estado
@@ -24,12 +24,12 @@ export const metadata: Metadata = {
  * → /painel (se já existe tenant concluído) ou /sem-loja (nenhum tenant
  * nenhum) — mesmo "loop de redirect" já resolvido em D12.0/Etapa 4.
  *
- * Tenant sem `business_type` ainda (nunca chegou à etapa "seu-negocio",
- * OU é um tenant cujo onboarding já estava concluído antes desta etapa —
- * mas esses nunca chegam aqui, `resolveOnboardingTenant(true)` só
- * retorna tenant PENDENTE) → sempre `/onboarding/seu-negocio`, a única
- * etapa que não depende de uma definição de steps já resolvida (é ela
- * quem define `business_type`).
+ * Tenant sem `business_type` ainda (nunca chegou à etapa "segmento", OU é
+ * um tenant cujo onboarding já estava concluído antes desta etapa — mas
+ * esses nunca chegam aqui, `resolveOnboardingTenant(true)` só retorna
+ * tenant PENDENTE) → sempre `/onboarding/segmento` (D15.1.1 — nova
+ * primeira etapa, a única que não depende de uma definição de steps já
+ * resolvida, pois é ela quem define `business_type`).
  */
 export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
@@ -50,7 +50,7 @@ export default async function OnboardingPage() {
   }
 
   if (!tenant.business_type) {
-    redirect("/onboarding/seu-negocio");
+    redirect("/onboarding/segmento");
   }
 
   const state = await resolveOnboardingState(supabase, tenant.id);
@@ -58,7 +58,7 @@ export default async function OnboardingPage() {
 
   // Definição vazia (business_type sem wizard implementado ainda, ex.
   // 'restaurant'/'adega' nesta fase — D12.2 não os implementa) — sem
-  // etapa para resolver, volta para "seu-negocio" para o lojista poder
+  // etapa para resolver, volta para "segmento" para o lojista poder
   // reconsiderar o tipo de negócio escolhido.
-  redirect(`/onboarding/${stepKey ?? "seu-negocio"}`);
+  redirect(`/onboarding/${stepKey ?? "segmento"}`);
 }
