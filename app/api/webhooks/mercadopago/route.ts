@@ -2,7 +2,23 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getGateway } from "@/lib/payments/registry";
 import { getPaymentCredentials } from "@/lib/payments/vault";
+import { getClientIp } from "@/lib/security/rate-limit";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+
+/**
+ * Mensagem de erro segura para log — mesmo padrão de
+ * features/payments/checkout.ts:toSafeErrorMessage. Nunca inclui
+ * headers/body da requisição nem token/credencial; truncado por
+ * segurança contra mensagem anormalmente grande.
+ */
+function toSafeErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err && typeof (err as { message: unknown }).message === "string") {
+    return (err as { message: string }).message.slice(0, 500);
+  }
+  if (err instanceof Error) return err.message.slice(0, 500);
+  if (typeof err === "string") return err.slice(0, 500);
+  return "unknown error";
+}
 
 /**
  * Endpoint de webhook do Mercado Pago (arquitetura §12.1). `service_role`
@@ -20,6 +36,15 @@ export async function POST(request: NextRequest) {
   // Assinatura verificada ANTES de qualquer parsing de negócio (§12.1) —
   // falha aqui nunca toca o banco.
   if (!gateway.verifyWebhookSignature(request.headers, rawBody)) {
+    // getClientIp já existe (lib/security/rate-limit.ts, D15-S.2, em
+    // produção) — reaproveitado aqui, nenhuma infraestrutura nova. Nunca
+    // loga a assinatura recebida nem o rawBody (poderia ecoar payload
+    // forjado); só metadados que já eram públicos na requisição.
+    console.error("[webhooks] mercadopago invalid signature", {
+      ip: getClientIp(request),
+      requestId: request.headers.get("x-request-id"),
+      bodyLength: rawBody.length,
+    });
     return new NextResponse(null, { status: 401 });
   }
 
@@ -88,10 +113,19 @@ export async function POST(request: NextRequest) {
               p_amount: payment.amount,
             });
           }
-        } catch {
+        } catch (err) {
           // Consulta ao Mercado Pago falhou (indisponibilidade, token
           // expirado, etc.) — não marca processed_at, deixa o próprio
-          // webhook (MP reenvia) ou uma consulta futura reprocessar.
+          // webhook (MP reenvia) ou uma consulta futura reprocessar. O
+          // status 200 é mantido de propósito (semântica de retry do MP
+          // inalterada) — o log abaixo só existe para dar visibilidade a
+          // uma falha hoje completamente silenciosa.
+          console.error("[webhooks] mercadopago post-signature processing failed", {
+            tenantId: providerRow.tenant_id,
+            eventId: event.eventId,
+            paymentExternalId: event.paymentExternalId,
+            message: toSafeErrorMessage(err),
+          });
           return new NextResponse(null, { status: 200 });
         }
       }
