@@ -77,6 +77,13 @@ export default async function ConfiguracoesPage() {
             </span>
           )}
         </Link>
+        <Link
+          className="flex w-fit items-center gap-2 rounded-lg border border-outline-variant/50 px-4 py-2.5 font-label text-label-md text-on-surface transition-colors hover:border-primary/50"
+          href="/painel/configuracoes/dominio"
+        >
+          <span className="material-symbols-outlined text-[20px] text-primary">language</span>
+          Domínio
+        </Link>
       </div>
 
       <StoreProfileForm
