@@ -35,6 +35,16 @@ export interface CheckDomainVerificationResult {
   status?: "pending" | "verifying" | "active";
   verified?: boolean;
   expired?: boolean;
+  /**
+   * D17.3.3 — só preenchido quando o domínio permanece `verifying` após um
+   * check (nunca em `active`/`pending`): a UI precisa diferenciar essas 3
+   * causas para mostrar a mensagem certa (ticket D17.3.3 §8), mas o motivo
+   * técnico exato do resolver (`timeout` vs. `dns_error`) continua nunca
+   * exposto ao cliente — ambos colapsam em `dns_error` aqui, mesmo
+   * princípio de "nunca revelar detalhes internos do erro" já documentado
+   * abaixo.
+   */
+  reason?: "no_match" | "not_found" | "dns_error";
 }
 
 /** Mesmo checklist de sempre — cópia local, não compartilhada (mesmo padrão de domain-actions.ts/whatsapp/shipping/payments/checkout-actions.ts/pix-actions.ts). */
@@ -249,8 +259,10 @@ export async function checkDomainVerification(domainId: string): Promise<CheckDo
   }
 
   // not_found / no_match / error: continua verifying, só registra a
-  // tentativa — nunca deriva/expõe o motivo técnico exato ao cliente.
+  // tentativa — nunca deriva/expõe o motivo técnico exato (timeout vs.
+  // dns_error) ao cliente, só a categoria (D17.3.3 §8).
   await supabase.from("tenant_domains").update({ last_verification_at: now }).eq("id", domainId).eq("tenant_id", tenantId);
 
-  return { success: true, status: "verifying", verified: false, expired: false };
+  const reason: "no_match" | "not_found" | "dns_error" = dnsResult.outcome === "error" ? "dns_error" : dnsResult.outcome;
+  return { success: true, status: "verifying", verified: false, expired: false, reason };
 }

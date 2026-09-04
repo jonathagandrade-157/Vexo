@@ -260,7 +260,7 @@ describe("checkDomainVerification", () => {
 
     const result = await checkDomainVerification(DOMAIN_ID);
 
-    expect(result).toEqual({ success: true, status: "verifying", verified: false, expired: false });
+    expect(result).toEqual({ success: true, status: "verifying", verified: false, expired: false, reason: "no_match" });
     expect(client.updatePayloads[0]).not.toHaveProperty("status");
     expect(client.updatePayloads[0]).not.toHaveProperty("verified_at");
   });
@@ -286,7 +286,7 @@ describe("checkDomainVerification", () => {
     vi.mocked(checkDomainChallengeTxt).mockResolvedValue({ outcome: "not_found" });
 
     const result = await checkDomainVerification(DOMAIN_ID);
-    expect(result).toEqual({ success: true, status: "verifying", verified: false, expired: false });
+    expect(result).toEqual({ success: true, status: "verifying", verified: false, expired: false, reason: "not_found" });
   });
 
   it("erro transitório de DNS também mantém verifying, sem derrubar a Action", async () => {
@@ -310,7 +310,31 @@ describe("checkDomainVerification", () => {
     vi.mocked(checkDomainChallengeTxt).mockResolvedValue({ outcome: "error", reason: "dns_error" });
 
     const result = await checkDomainVerification(DOMAIN_ID);
-    expect(result).toEqual({ success: true, status: "verifying", verified: false, expired: false });
+    expect(result).toEqual({ success: true, status: "verifying", verified: false, expired: false, reason: "dns_error" });
+  });
+
+  it("erro de timeout também colapsa em reason=dns_error — o motivo técnico exato do resolver nunca chega ao cliente", async () => {
+    mockSession(true);
+    const client = makeServiceRoleClient([
+      {
+        data: {
+          id: DOMAIN_ID,
+          domain: "minhaloja.com.br",
+          domain_type: "custom",
+          status: "verifying",
+          verification_token_hash: "abc123",
+          verification_started_at: "2026-01-01T00:00:00.000Z",
+          verification_expires_at: "2999-01-01T00:00:00.000Z",
+        },
+        error: null,
+      },
+      { data: null, error: null },
+    ]);
+    vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(client as never);
+    vi.mocked(checkDomainChallengeTxt).mockResolvedValue({ outcome: "error", reason: "timeout" });
+
+    const result = await checkDomainVerification(DOMAIN_ID);
+    expect(result).toEqual({ success: true, status: "verifying", verified: false, expired: false, reason: "dns_error" });
   });
 
   it("11) challenge expirado volta para pending, sem consultar DNS e sem gerar novo challenge sozinho", async () => {

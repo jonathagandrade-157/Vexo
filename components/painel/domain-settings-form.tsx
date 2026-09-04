@@ -3,21 +3,10 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
+import { DomainVerificationCard } from "@/components/painel/domain-verification-card";
 import { TextField } from "@/components/ui/text-field";
 import { addCustomDomainAction, type TenantDomainRow } from "@/features/settings/domain-actions";
 import { initialDomainActionState } from "@/features/settings/domain-schema";
-
-const STATUS_LABELS: Record<TenantDomainRow["status"], string> = {
-  pending: "Pendente de verificação",
-  verifying: "Verificando",
-  active: "Ativo",
-};
-
-const STATUS_STYLES: Record<TenantDomainRow["status"], string> = {
-  pending: "bg-surface-container-highest text-on-surface-variant",
-  verifying: "bg-amber-500/10 text-amber-400",
-  active: "bg-emerald-500/10 text-emerald-400",
-};
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -33,11 +22,11 @@ function SaveButton() {
 }
 
 /**
- * D17.2 — cadastro de domínio personalizado, sempre `pending` (D17.3
- * implementa a verificação real, fora do escopo aqui). Mesmo padrão
- * visual de WhatsappSettingsForm (form + TextField + mensagens de
- * erro/sucesso). Só cadastro (ADD) — sem editar/remover/promover a
- * primário nesta etapa, não pedido no escopo.
+ * D17.2 — cadastro de domínio personalizado, sempre `pending`. D17.3.3
+ * evolui cada item da lista (`DomainVerificationCard`) para o fluxo
+ * completo de verificação DNS TXT (D17.3.2) — este componente continua
+ * responsável só pelo cadastro (form + lista), nunca pela lógica de
+ * verificação em si.
  */
 export function DomainSettingsForm({ canEdit, domains }: { canEdit: boolean; domains: TenantDomainRow[] }) {
   const [state, formAction] = useActionState(addCustomDomainAction, initialDomainActionState);
@@ -55,18 +44,7 @@ export function DomainSettingsForm({ canEdit, domains }: { canEdit: boolean; dom
       {domains.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {domains.map((d) => (
-            <li
-              key={d.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-outline-variant/40 bg-surface-container-lowest p-3"
-            >
-              <span className="break-all font-label text-label-md text-on-surface">
-                {d.domain}
-                {d.isPrimary ? <span className="ml-2 font-body text-body-sm text-on-surface-variant">(primário)</span> : null}
-              </span>
-              <span className={`inline-flex items-center rounded-full px-2 py-1 font-label text-label-sm uppercase ${STATUS_STYLES[d.status]}`}>
-                {STATUS_LABELS[d.status]}
-              </span>
-            </li>
+            <DomainVerificationCard canEdit={canEdit} domain={d} key={d.id} />
           ))}
         </ul>
       ) : (
