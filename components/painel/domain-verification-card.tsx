@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 
+import { VercelBindingSection } from "@/components/painel/vercel-binding-section";
 import type { TenantDomainRow } from "@/features/settings/domain-actions";
 import {
   checkDomainVerification,
@@ -141,6 +142,10 @@ export function DomainVerificationCard({ domain, canEdit }: { domain: TenantDoma
 
       {status === "active" && domain.verifiedAt ? (
         <p className="font-body text-body-sm text-on-surface-variant">Verificado em {new Date(domain.verifiedAt).toLocaleDateString("pt-BR")}</p>
+      ) : null}
+
+      {status === "active" ? (
+        <VercelBindingSection canEdit={canEdit} domainId={domain.id} initialStatus={domain.vercelDomainStatus} />
       ) : null}
 
       {uiState.showChallenge && challenge ? (

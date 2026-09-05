@@ -91,10 +91,29 @@ const melhorEnvioServerSchema = z.object({
   OAUTH_STATE_SECRET: z.string().min(16),
 });
 
+// D17.5.1: Vercel Domains API (binding de domínio customizado já
+// verificado — D17.3/D17.4 — ao projeto Vercel). Schema separado pelo
+// mesmo motivo exato do Mercado Pago/Melhor Envio/Billing acima: nenhum
+// fluxo essencial (auth/cadastro/trial/onboarding/checkout/Host Routing)
+// pode quebrar só porque esta integração opcional ainda não está
+// configurada neste ambiente. `VERCEL_PROJECT_ID`/`VERCEL_TEAM_ID` nunca
+// são resolvidos dinamicamente (por nome, por busca) — são sempre os
+// valores fixos e já confirmados do projeto real (`vexo.ecommerce`/
+// `vexo5`), lidos de env var em vez de hardcoded no código-fonte (que é
+// público) pelo mesmo motivo de qualquer outro ID de configuração do
+// projeto (nunca um segredo, mas também nunca hardcoded como constante de
+// infraestrutura de produção).
+const vercelServerSchema = z.object({
+  VERCEL_API_TOKEN: z.string().min(1),
+  VERCEL_PROJECT_ID: z.string().min(1),
+  VERCEL_TEAM_ID: z.string().min(1),
+});
+
 export type PublicEnv = z.infer<typeof publicSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
 export type MercadoPagoServerEnv = z.infer<typeof mercadoPagoServerSchema>;
 export type BillingServerEnv = z.infer<typeof billingServerSchema>;
+export type VercelServerEnv = z.infer<typeof vercelServerSchema>;
 export interface MelhorEnvioServerEnv {
   MELHOR_ENVIO_CLIENT_ID: string;
   MELHOR_ENVIO_CLIENT_SECRET: string;
@@ -126,6 +145,7 @@ let cachedServerEnv: ServerEnv | undefined;
 let cachedMercadoPagoEnv: MercadoPagoServerEnv | undefined;
 let cachedBillingEnv: BillingServerEnv | undefined;
 let cachedMelhorEnvioEnv: MelhorEnvioServerEnv | undefined;
+let cachedVercelEnv: VercelServerEnv | undefined;
 
 /** Variables safe to read from client or server code (`NEXT_PUBLIC_*` only). */
 export function getPublicEnv(): PublicEnv {
@@ -244,4 +264,35 @@ export function getMelhorEnvioEnv(): MelhorEnvioServerEnv {
     }
   }
   return cachedMelhorEnvioEnv;
+}
+
+/**
+ * D17.5.1 — segredos da Vercel Domains API. Chamar SOMENTE de código que
+ * vai de fato registrar/consultar um domínio na Vercel
+ * (`lib/vercel/domains.ts` e as Server Actions que o usam) — nunca de
+ * auth/cadastro/trial/onboarding, do Host Routing (`proxy.ts`, que nunca
+ * chama a Vercel) ou de qualquer outro fluxo essencial, mesmo cuidado de
+ * `getMercadoPagoEnv()`/`getMelhorEnvioEnv()` acima.
+ *
+ * O token nunca é logado, nunca é devolvido por nenhuma função pública
+ * deste módulo (só o objeto validado, mantido inteiramente server-side
+ * pelo chamador) e nunca aparece na mensagem de erro abaixo.
+ */
+export function getVercelEnv(): VercelServerEnv {
+  if (typeof window !== "undefined") {
+    throw new Error("getVercelEnv() must never be called from the browser.");
+  }
+  if (!cachedVercelEnv) {
+    try {
+      cachedVercelEnv = readSchema(vercelServerSchema, process.env, "Vercel");
+    } catch (cause) {
+      throw new Error(
+        "A integração com a Vercel Domains API não está configurada neste ambiente " +
+          "(VERCEL_API_TOKEN/VERCEL_PROJECT_ID/VERCEL_TEAM_ID). " +
+          "Configure essas variáveis antes de registrar um domínio na Vercel.",
+        { cause },
+      );
+    }
+  }
+  return cachedVercelEnv;
 }

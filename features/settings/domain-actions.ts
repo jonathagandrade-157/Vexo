@@ -16,6 +16,8 @@ export interface TenantDomainRow {
   status: "pending" | "verifying" | "active";
   verifiedAt: string | null;
   createdAt: string;
+  /** D17.5.1 — estado do binding na Vercel (eixo separado de `status`, auditoria D17.5.0 §J). Nunca inclui o código de erro bruto nem timestamps internos do binding — só o suficiente para a UI decidir o que mostrar. */
+  vercelDomainStatus: "not_registered" | "registering" | "registered" | "configuration_error" | "certificate_error" | "unknown";
 }
 
 /** Mesmo checklist de sempre — cópia local, não compartilhada (mesmo padrão de whatsapp/shipping/payments/checkout-actions.ts/pix-actions.ts). */
@@ -63,7 +65,7 @@ function domainsClient() {
 export async function listTenantDomains(tenantId: string): Promise<TenantDomainRow[]> {
   const { data } = await domainsClient()
     .from("tenant_domains")
-    .select("id, domain, domain_type, is_primary, status, verified_at, created_at")
+    .select("id, domain, domain_type, is_primary, status, verified_at, created_at, vercel_domain_status")
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: true });
 
@@ -75,6 +77,7 @@ export async function listTenantDomains(tenantId: string): Promise<TenantDomainR
     status: row.status as "pending" | "verifying" | "active",
     verifiedAt: row.verified_at as string | null,
     createdAt: row.created_at as string,
+    vercelDomainStatus: row.vercel_domain_status as TenantDomainRow["vercelDomainStatus"],
   }));
 }
 
