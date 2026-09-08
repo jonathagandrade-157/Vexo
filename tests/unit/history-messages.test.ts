@@ -20,6 +20,15 @@ describe("resolveHistoryActionLabel", () => {
     expect(resolveHistoryActionLabel("TENANT_PIX_SETTINGS_UPDATED")).toBe("Configurações de PIX atualizadas");
   });
 
+  it("D18.5.1 — traduz os 6 eventos novos (aparência/checkout_mode/endereço/banners)", () => {
+    expect(resolveHistoryActionLabel("TENANT_APPEARANCE_UPDATED")).toBe("Aparência da loja atualizada");
+    expect(resolveHistoryActionLabel("TENANT_CHECKOUT_MODE_UPDATED")).toBe("Forma de receber pedidos atualizada");
+    expect(resolveHistoryActionLabel("TENANT_ADDRESS_UPDATED")).toBe("Endereço da loja atualizado");
+    expect(resolveHistoryActionLabel("STOREFRONT_BANNER_CREATED")).toBe("Banner criado");
+    expect(resolveHistoryActionLabel("STOREFRONT_BANNER_UPDATED")).toBe("Banner atualizado");
+    expect(resolveHistoryActionLabel("STOREFRONT_BANNER_DELETED")).toBe("Banner excluído");
+  });
+
   it("§8 — action desconhecida (não catalogada) cai no fallback seguro, nunca no texto técnico bruto", () => {
     expect(resolveHistoryActionLabel("SOME_FUTURE_EVENT_NOT_YET_MAPPED")).toBe("Alteração registrada");
   });
@@ -36,6 +45,10 @@ describe("resolveHistoryEntityLabel", () => {
     expect(resolveHistoryEntityLabel("product")).toBe("Produto");
     expect(resolveHistoryEntityLabel("tenant_member")).toBe("Equipe");
     expect(resolveHistoryEntityLabel("tenant_domain")).toBe("Domínio");
+  });
+
+  it("D18.5.1 — traduz o novo tipo de entidade 'storefront_banner'", () => {
+    expect(resolveHistoryEntityLabel("storefront_banner")).toBe("Banner");
   });
 
   it("resource_type nulo vira travessão, nunca quebra", () => {
@@ -77,6 +90,30 @@ describe("buildHistoryEventDescription — §9", () => {
         after: { status: "suspended" },
       }),
     ).toBe("Status alterado(a)");
+  });
+
+  it("D18.5.1 — descreve mudanças nos campos novos (checkout_mode/endereço/aparência)", () => {
+    expect(
+      buildHistoryEventDescription({
+        action: "TENANT_CHECKOUT_MODE_UPDATED",
+        before: { checkout_mode: "vexo" },
+        after: { checkout_mode: "whatsapp" },
+      }),
+    ).toBe("Forma de receber pedidos alterado(a)");
+    expect(
+      buildHistoryEventDescription({
+        action: "TENANT_ADDRESS_UPDATED",
+        before: { address_city: null },
+        after: { address_city: "São Paulo" },
+      }),
+    ).toBe("Endereço alterado(a)");
+    expect(
+      buildHistoryEventDescription({
+        action: "TENANT_APPEARANCE_UPDATED",
+        before: { primary_color: "#000000" },
+        after: { primary_color: "#ffffff" },
+      }),
+    ).toBe("Cor primária alterado(a)");
   });
 
   it("sem before/after (ex.: evento de criação) cai no rótulo da própria ação", () => {

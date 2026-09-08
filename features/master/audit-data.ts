@@ -16,6 +16,17 @@ export const AUDIT_PAGE_SIZE = 20;
  * `PAYMENT_OVERRIDE` existe apenas como `check` constraint em
  * `audit_logs` (reservado para um futuro override manual de pagamento) —
  * nenhum trigger/RPC o emite hoje, por isso fica fora desta lista.
+ *
+ * D18.5.1 — acrescenta os 6 eventos novos criados nesta fase
+ * (TENANT_APPEARANCE_UPDATED/TENANT_CHECKOUT_MODE_UPDATED/
+ * TENANT_ADDRESS_UPDATED/STOREFRONT_BANNER_*, migration
+ * 20260817220108). Esta lista já estava incompleta antes disso (faltam,
+ * por exemplo, TENANT_PIX_SETTINGS_UPDATED, os eventos TENANT_DOMAIN_ e
+ * TEAM_MEMBER_ de D18.1/D18.3) — corrigir essas lacunas pré-existentes é um gap
+ * separado, fora do escopo desta fase (só usada para popular o filtro de
+ * `/master/auditoria`; a listagem em si sempre mostra `action` como veio
+ * do banco, então nenhum desses eventos deixa de aparecer, só não pode
+ * ser filtrado por enquanto).
  */
 export const AUDIT_ACTIONS = [
   "BILLING_INVOICE_CREATED",
@@ -61,6 +72,12 @@ export const AUDIT_ACTIONS = [
   "SHIPPING_PROVIDER_CONNECTION_CREATED",
   "SHIPPING_PROVIDER_CONNECTION_REMOVED",
   "SHIPPING_SETTINGS_UPDATED",
+  "STOREFRONT_BANNER_CREATED",
+  "STOREFRONT_BANNER_DELETED",
+  "STOREFRONT_BANNER_UPDATED",
+  "TENANT_ADDRESS_UPDATED",
+  "TENANT_APPEARANCE_UPDATED",
+  "TENANT_CHECKOUT_MODE_UPDATED",
   "TENANT_CREATED",
   "TENANT_ONBOARDING_COMPLETED",
   "TENANT_PLAN_CHANGED",

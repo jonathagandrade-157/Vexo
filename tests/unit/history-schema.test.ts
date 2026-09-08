@@ -28,6 +28,20 @@ describe("historyFiltersSchema", () => {
     if (result.success) expect(result.data.action).toBe("PRODUCT_CREATED");
   });
 
+  it("D18.5.1 — aceita as 6 actions novas e a nova entidade 'storefront_banner'", () => {
+    for (const action of [
+      "TENANT_APPEARANCE_UPDATED",
+      "TENANT_CHECKOUT_MODE_UPDATED",
+      "TENANT_ADDRESS_UPDATED",
+      "STOREFRONT_BANNER_CREATED",
+      "STOREFRONT_BANNER_UPDATED",
+      "STOREFRONT_BANNER_DELETED",
+    ]) {
+      expect(historyFiltersSchema.safeParse({ action }).success).toBe(true);
+    }
+    expect(historyFiltersSchema.safeParse({ resourceType: "storefront_banner" }).success).toBe(true);
+  });
+
   it("descarta uma action fora do catálogo (nunca vira WHERE dinâmico)", () => {
     const result = historyFiltersSchema.safeParse({ action: "DROP TABLE audit_logs;" });
     expect(result.success).toBe(false);

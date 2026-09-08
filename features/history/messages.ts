@@ -16,6 +16,12 @@ const ACTION_LABELS: Record<HistoryAction, string> = {
   TENANT_ONBOARDING_COMPLETED: "Configuração inicial concluída",
   TENANT_SETTINGS_UPDATED: "Configurações da loja atualizadas",
   TENANT_PIX_SETTINGS_UPDATED: "Configurações de PIX atualizadas",
+  TENANT_APPEARANCE_UPDATED: "Aparência da loja atualizada",
+  TENANT_CHECKOUT_MODE_UPDATED: "Forma de receber pedidos atualizada",
+  TENANT_ADDRESS_UPDATED: "Endereço da loja atualizado",
+  STOREFRONT_BANNER_CREATED: "Banner criado",
+  STOREFRONT_BANNER_UPDATED: "Banner atualizado",
+  STOREFRONT_BANNER_DELETED: "Banner excluído",
   USER_ROLE_CHANGED: "Função de um membro alterada",
   TEAM_MEMBER_INVITED: "Membro convidado",
   TEAM_MEMBER_REMOVED: "Membro removido da equipe",
@@ -68,6 +74,7 @@ export function resolveHistoryActionLabel(action: string): string {
 const ENTITY_TYPE_LABELS: Record<HistoryEntityType, string> = {
   tenant: "Loja",
   tenant_member: "Equipe",
+  storefront_banner: "Banner",
   category: "Categoria",
   product: "Produto",
   order: "Pedido",
@@ -122,6 +129,14 @@ const FIELD_LABELS: Record<string, string> = {
   pix_enabled: "PIX",
   pix_key: "Chave PIX",
   plan_id: "Plano",
+  logo_url: "Logo",
+  primary_color: "Cor primária",
+  secondary_color: "Cor secundária",
+  storefront_template: "Modelo visual",
+  checkout_mode: "Forma de receber pedidos",
+  address_city: "Endereço",
+  title: "Título",
+  link_url: "Link",
 };
 
 function firstChangedFieldLabel(before: unknown, after: unknown): string | null {

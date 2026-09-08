@@ -12,6 +12,12 @@ export const HISTORY_PAGE_SIZE = 20;
  * `tenant_id = null`) que nunca devem aparecer para um lojista — mantê-las
  * fora daqui, e não só filtrá-las depois, evita que apareçam como opção no
  * filtro de evento por engano.
+ *
+ * D18.5.1 — acrescenta os 6 eventos novos criados nesta fase
+ * (TENANT_APPEARANCE_UPDATED/TENANT_CHECKOUT_MODE_UPDATED/
+ * TENANT_ADDRESS_UPDATED/STOREFRONT_BANNER_*, migration
+ * 20260817220108) — mesmo princípio: só entra aqui quando existe um
+ * emissor real (trigger) correspondente.
  */
 export const HISTORY_ACTIONS = [
   "TENANT_CREATED",
@@ -20,6 +26,12 @@ export const HISTORY_ACTIONS = [
   "TENANT_ONBOARDING_COMPLETED",
   "TENANT_SETTINGS_UPDATED",
   "TENANT_PIX_SETTINGS_UPDATED",
+  "TENANT_APPEARANCE_UPDATED",
+  "TENANT_CHECKOUT_MODE_UPDATED",
+  "TENANT_ADDRESS_UPDATED",
+  "STOREFRONT_BANNER_CREATED",
+  "STOREFRONT_BANNER_UPDATED",
+  "STOREFRONT_BANNER_DELETED",
   "USER_ROLE_CHANGED",
   "TEAM_MEMBER_INVITED",
   "TEAM_MEMBER_REMOVED",
@@ -74,6 +86,7 @@ export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 export const HISTORY_ENTITY_TYPES = [
   "tenant",
   "tenant_member",
+  "storefront_banner",
   "category",
   "product",
   "order",
