@@ -18,11 +18,26 @@ import { LogoutButton } from "./logout-button";
  * só desenha o cadeado, a fonte de verdade é sempre o servidor. Item sem
  * `featureKey` (ex.: Produtos, Configurações) nunca é bloqueado por
  * plano — só os que têm uma feature real associada.
+ *
+ * D18.4 §11 — `grantedPermissions` mesmo princípio: computado uma vez no
+ * layout (Server Component, via RPC `has_permission`), nunca decidido
+ * aqui. Item sem `requiresPermission` (todo item pré-existente) nunca é
+ * escondido por permissão — só os que declaram uma real.
  */
-export function Sidebar({ tenantName, unlockedFeatures }: { tenantName: string; unlockedFeatures: string[] }) {
+export function Sidebar({
+  tenantName,
+  unlockedFeatures,
+  grantedPermissions,
+}: {
+  tenantName: string;
+  unlockedFeatures: string[];
+  grantedPermissions: string[];
+}) {
   const pathname = usePathname();
   const unlocked = new Set(unlockedFeatures);
+  const granted = new Set(grantedPermissions);
   const isLocked = (item: (typeof MAIN_NAV_ITEMS)[number]) => Boolean(item.featureKey) && !unlocked.has(item.featureKey!);
+  const visibleNavItems = MAIN_NAV_ITEMS.filter((item) => !item.requiresPermission || granted.has(item.requiresPermission));
 
   return (
     <nav className="fixed left-0 top-0 hidden h-screen w-[260px] flex-col border-r border-outline-variant bg-surface-container-lowest py-unit md:flex">
@@ -40,7 +55,7 @@ export function Sidebar({ tenantName, unlockedFeatures }: { tenantName: string; 
 
       <div className="flex-1 overflow-y-auto px-unit">
         <ul className="space-y-1">
-          {MAIN_NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const active = item.href === "/painel" ? pathname === "/painel" : pathname.startsWith(item.href);
             const locked = isLocked(item);
             return (

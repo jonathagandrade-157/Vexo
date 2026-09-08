@@ -20,6 +20,16 @@ export interface NavItem {
    * sempre esteve.
    */
   featureKey?: string;
+  /**
+   * D18.4 §11 — chave de `permissions.key` (RBAC, Etapa 2) exigida para o
+   * item aparecer no menu. Só preenchida quando o item já é gated na
+   * própria página por uma permission real (mesmo princípio de
+   * `featureKey`: nunca inventa uma checagem nova aqui) — itens existentes
+   * como "Equipe" continuam sem este campo de propósito (D18.4 "não
+   * alterar itens existentes"), mesmo hoje sendo gated por `team.view`/
+   * `team.manage` dentro da própria página.
+   */
+  requiresPermission?: string;
 }
 
 export const MAIN_NAV_ITEMS: NavItem[] = [
@@ -30,6 +40,7 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/painel/marketing", label: "Marketing", icon: "campaign", implemented: false },
   { href: "/painel/aparencia", label: "Aparência", icon: "palette", implemented: true },
   { href: "/painel/equipe", label: "Equipe", icon: "groups", implemented: true },
+  { href: "/painel/historico", label: "Histórico", icon: "history", implemented: true, requiresPermission: "settings.view" },
   { href: "/painel/configuracoes", label: "Configurações", icon: "settings", implemented: true },
 ];
 

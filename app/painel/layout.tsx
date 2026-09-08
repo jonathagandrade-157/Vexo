@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { Header } from "@/components/painel/header";
 import { MobileBottomNav } from "@/components/painel/mobile-bottom-nav";
+import { MAIN_NAV_ITEMS } from "@/components/painel/nav-items";
 import { Sidebar } from "@/components/painel/sidebar";
 import { getTenantCommercialContext } from "@/features/commercial/tenant-plan";
 import { getBlockedTenantStatus } from "@/features/onboarding/resolve-tenant";
@@ -99,6 +100,23 @@ export default async function PainelLayout({ children }: { children: ReactNode }
   // por request, mesmo padrão de getCurrentMembership).
   const commercialContext = await getTenantCommercialContext(membership.tenant.id);
 
+  // D18.4 §11 — mesmo princípio: uma checagem por request para cada
+  // permission que algum item de `MAIN_NAV_ITEMS` declare (hoje só
+  // `settings.view`, de "Histórico") — nunca decidido dentro do Sidebar
+  // (Client Component). Um item sem `requiresPermission` nunca entra
+  // nesta lista, então não gera nenhuma checagem extra.
+  const requiredPermissions = [...new Set(MAIN_NAV_ITEMS.map((item) => item.requiresPermission).filter((p): p is string => Boolean(p)))];
+  const permissionChecks = await Promise.all(
+    requiredPermissions.map(async (permissionKey) => {
+      const { data: allowed } = await supabase.rpc("has_permission", {
+        p_tenant_id: membership.tenant.id,
+        p_permission_key: permissionKey,
+      });
+      return allowed ? permissionKey : null;
+    }),
+  );
+  const grantedPermissions = permissionChecks.filter((p): p is string => Boolean(p));
+
   // D14.1 — mesma ideia: uma leitura por request, aqui no layout (nunca
   // dentro do NotificationBell, que é client component e nunca cria
   // nem lê notificação diretamente do banco).
@@ -109,7 +127,11 @@ export default async function PainelLayout({ children }: { children: ReactNode }
 
   return (
     <div className="min-h-dvh bg-background">
-      <Sidebar tenantName={membership.tenant.name} unlockedFeatures={Array.from(commercialContext.features)} />
+      <Sidebar
+        grantedPermissions={grantedPermissions}
+        tenantName={membership.tenant.name}
+        unlockedFeatures={Array.from(commercialContext.features)}
+      />
       <Header
         notifications={notifications}
         unreadNotificationCount={unreadNotificationCount}

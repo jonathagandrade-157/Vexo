@@ -159,7 +159,8 @@ const REDACTED = "[redacted]";
  */
 const SENSITIVE_KEY_PATTERN = /token|secret|password|senha|credential|api[_-]?key|client[_-]?secret|webhook[_-]?secret/i;
 
-function redactSensitiveJson(value: unknown): unknown {
+/** D18.4 — exportada para reuso por `features/history/data.ts` (histórico do lojista): mesma redação, nunca uma segunda implementação. */
+export function redactSensitiveJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redactSensitiveJson);
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
