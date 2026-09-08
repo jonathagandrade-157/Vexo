@@ -40,12 +40,19 @@ function mockAuthClient(overrides: {
   const getUser = vi.fn().mockResolvedValue({ data: { user: resolvedUser }, error: null });
   const updateUser = vi.fn().mockResolvedValue({ error: overrides.updateUserError ?? null });
   const signOut = vi.fn().mockResolvedValue({ error: null });
+  // D18.3 — updatePasswordAction também chama accept_tenant_invite() (RPC)
+  // logo após updateUser, para o fluxo de convite de equipe reaproveitar
+  // esta mesma página/Action (ver features/team/actions.ts). No-op seguro
+  // aqui: os testes deste arquivo cobrem só o fluxo de recuperação de
+  // senha, nunca convite.
+  const rpc = vi.fn().mockResolvedValue({ data: null, error: null });
 
   vi.mocked(createSupabaseServerClient).mockResolvedValue({
     auth: { resetPasswordForEmail, getUser, updateUser, signOut },
+    rpc,
   } as never);
 
-  return { resetPasswordForEmail, getUser, updateUser, signOut };
+  return { resetPasswordForEmail, getUser, updateUser, signOut, rpc };
 }
 
 function formDataOf(fields: Record<string, string>): FormData {

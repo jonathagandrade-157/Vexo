@@ -29,6 +29,7 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/painel/clientes", label: "Clientes", icon: "group", implemented: false, featureKey: "customers" },
   { href: "/painel/marketing", label: "Marketing", icon: "campaign", implemented: false },
   { href: "/painel/aparencia", label: "Aparência", icon: "palette", implemented: true },
+  { href: "/painel/equipe", label: "Equipe", icon: "groups", implemented: true },
   { href: "/painel/configuracoes", label: "Configurações", icon: "settings", implemented: true },
 ];
 

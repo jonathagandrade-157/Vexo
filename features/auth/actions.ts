@@ -298,6 +298,18 @@ export async function updatePasswordAction(
     };
   }
 
+  // D18.3 — mesma página/Action também é o destino do link de CONVITE de
+  // equipe (`inviteTeamMemberAction`, `supabase.auth.admin.inviteUserByEmail`
+  // com `redirectTo` apontando para cá): o link de convite do Supabase Auth
+  // estabelece sessão por fragmento de URL exatamente como o de recovery
+  // (por isso `UpdatePasswordForm` já escuta tanto `PASSWORD_RECOVERY`
+  // quanto `SIGNED_IN`), então este é o único ponto que precisa saber a
+  // diferença. `accept_tenant_invite()` (RPC, 20260817220105) só transiciona
+  // linha(s) `tenant_members` já 'invited' do PRÓPRIO usuário (auth.uid()
+  // interno) para 'active' — no-op silencioso e seguro para o fluxo comum
+  // de "esqueci minha senha", que nunca tem nenhuma linha 'invited'.
+  await supabase.rpc("accept_tenant_invite");
+
   await supabase.auth.signOut();
 
   return {
