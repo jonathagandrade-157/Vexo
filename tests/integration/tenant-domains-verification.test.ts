@@ -121,18 +121,22 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("tenant_domains — fundaç�
     await withSuperuser((c) => c.query("delete from public.tenant_domains where domain in ($1, $2)", [activeDomain, pendingDomain]));
   });
 
-  it("authenticated continua sem conseguir inserir/atualizar tenant_domains diretamente (RLS de D17.1 intacta)", async () => {
-    const domain = `verif-authenticated-blocked-${fx.tenantA}.example.com`;
-    await expectPgError(
-      asActor(
-        { role: "authenticated", userId: fx.userAOwner },
-        (c) =>
-          c.query(
-            "insert into public.tenant_domains (tenant_id, domain, domain_type, status, verification_method) values ($1, $2, 'custom', 'pending', 'dns_txt')",
-            [fx.tenantA, domain],
-          ),
-        { commit: false },
-      ),
+  // D18.2 (migration 20260817220104) adicionou policies de INSERT/UPDATE/
+  // DELETE para `authenticated` escopadas por `settings.update` — um
+  // OWNER autenticado agora consegue inserir diretamente. Cobertura
+  // completa de permissão/isolamento entre tenants para `authenticated`
+  // vive em tests/integration/tenant-domains-rls-authenticated.test.ts.
+  it("authenticated OWNER do tenant (com settings.update) consegue inserir tenant_domains diretamente desde D18.2", async () => {
+    const domain = `verif-authenticated-allowed-${fx.tenantA}.example.com`;
+    const result = await asActor(
+      { role: "authenticated", userId: fx.userAOwner },
+      (c) =>
+        c.query(
+          "insert into public.tenant_domains (tenant_id, domain, domain_type, status, verification_method) values ($1, $2, 'custom', 'pending', 'dns_txt') returning domain",
+          [fx.tenantA, domain],
+        ),
+      { commit: false },
     );
+    expect(result.rows[0]).toMatchObject({ domain });
   });
 });

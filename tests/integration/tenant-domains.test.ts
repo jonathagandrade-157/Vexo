@@ -1,17 +1,24 @@
 /**
  * D17.2 — cadastro de domínio no painel (`features/settings/domain-actions.ts`).
  *
- * A tabela `tenant_domains` (D17.1) só tem uma policy pública de SELECT
- * para `anon` (`status = 'active'`) — nenhuma policy de INSERT/UPDATE/
- * DELETE para `anon` nem `authenticated`, de propósito, e esta etapa não
- * altera isso. `addCustomDomainAction` opera via `service_role` depois de
- * validar auth → membership → permissão → tenant_id no próprio código da
- * Action (não testável aqui sem o runtime do Next.js/Server Actions —
- * ver relatório D17.2). O que ESTE arquivo confirma é a garantia de banco
- * por trás dessa Action: `authenticated`/`anon` continuam sem acesso
- * direto (mesmo um OWNER não pode contornar a Action escrevendo direto),
- * e o `UNIQUE(domain)` é a autoridade final contra duplicidade/
- * cross-tenant mesmo sob corrida — exatamente como a Action assume.
+ * A tabela `tenant_domains` (D17.1) tinha, nesta etapa, só uma policy
+ * pública de SELECT para `anon` (`status = 'active'`) — nenhuma policy de
+ * INSERT/UPDATE/DELETE para `anon` nem `authenticated`, de propósito.
+ * `addCustomDomainAction` opera via `service_role` depois de validar
+ * auth → membership → permissão → tenant_id no próprio código da Action
+ * (não testável aqui sem o runtime do Next.js/Server Actions — ver
+ * relatório D17.2).
+ *
+ * D18.2 (migration 20260817220104) adicionou policies de INSERT/UPDATE/
+ * DELETE para `authenticated`, escopadas por `has_permission(tenant_id,
+ * 'settings.update')` — ou seja, um OWNER/ADMIN autenticado agora
+ * consegue inserir diretamente (RLS deixou de ser a única barreira,
+ * passou a ser uma segunda camada coerente com a autorização já exigida
+ * pela Server Action). O teste abaixo foi atualizado para refletir esse
+ * novo estado; a cobertura completa de isolamento entre tenants e
+ * permissão (`settings.update`) para authenticated vive em
+ * `tests/integration/tenant-domains-rls-authenticated.test.ts` (D18.2).
+ * `anon` e o `UNIQUE(domain)` continuam exatamente como antes.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asActor, expectPgError, pool, withSuperuser } from "./helpers/db";
@@ -28,18 +35,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("tenant_domains — cadastro
     await pool.end();
   });
 
-  it("authenticated (mesmo OWNER do tenant) não consegue inserir em tenant_domains diretamente — sem policy de INSERT para authenticated", async () => {
-    await expectPgError(
-      asActor(
-        { role: "authenticated", userId: fx.userAOwner },
-        (c) =>
-          c.query(
-            "insert into public.tenant_domains (tenant_id, domain, domain_type, status) values ($1, $2, 'custom', 'pending')",
-            [fx.tenantA, `owner-direct-${fx.tenantA}.example.com`],
-          ),
-        { commit: false },
-      ),
+  it("authenticated OWNER do tenant (com settings.update) consegue inserir em tenant_domains diretamente desde D18.2", async () => {
+    const domain = `owner-direct-${fx.tenantA}.example.com`;
+    const result = await asActor(
+      { role: "authenticated", userId: fx.userAOwner },
+      (c) =>
+        c.query(
+          "insert into public.tenant_domains (tenant_id, domain, domain_type, status) values ($1, $2, 'custom', 'pending') returning domain",
+          [fx.tenantA, domain],
+        ),
+      { commit: false },
     );
+    expect(result.rows[0]).toMatchObject({ domain });
   });
 
   it("anon não consegue inserir em tenant_domains", async () => {
