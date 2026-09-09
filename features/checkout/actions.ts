@@ -9,6 +9,7 @@ import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } fr
 import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { checkCheckoutRateLimit } from "./rate-limit";
 import { checkoutSchema, friendlyCheckoutError, isAddressComplete, type CheckoutActionState, type CheckoutInput } from "./schema";
 
 function fieldErrorsFrom(parsed: ReturnType<typeof checkoutSchema.safeParse>): CheckoutActionState["fieldErrors"] {
@@ -47,6 +48,15 @@ export async function createOrderAction(
   const resolution = await resolveStorefrontTenant(storeSlug);
   if (resolution.status !== "ready") {
     return { status: "error", message: "Esta loja não está disponível no momento." };
+  }
+
+  // D19.1.3.1 (H1) — o mais cedo possível, antes de qualquer outra
+  // validação/consulta: nunca vale a pena gastar trabalho num pedido que
+  // já vai ser recusado por taxa. Ver features/checkout/rate-limit.ts
+  // para o porquê de fail-open aqui (diferente da cotação de frete).
+  const rateLimit = await checkCheckoutRateLimit(resolution.tenant.id);
+  if (rateLimit.limited) {
+    return { status: "error", message: rateLimit.message };
   }
 
   // Fase D2-B — defesa em profundidade independente da checagem de

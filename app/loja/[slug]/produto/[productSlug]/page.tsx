@@ -158,7 +158,7 @@ export default async function StorefrontProductPage({ params }: PageProps) {
             {product.description ? (
               <p className="font-body text-body-lg text-on-surface-variant">{product.description}</p>
             ) : null}
-            <AddToCartButton productId={product.id} storeSlug={tenant.slug} />
+            <AddToCartButton inStock={product.inStock} productId={product.id} storeSlug={tenant.slug} />
           </div>
         </div>
       </div>

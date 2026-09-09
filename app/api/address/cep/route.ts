@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   // checkout inteiro por uma falha transitória do limiter custaria mais
   // em experiência do lojista/cliente do que o risco real de abuso vale a
   // pena aceitar por essa janela curta.
-  const ip = getClientIp(request) ?? "unknown";
+  const ip = getClientIp(request.headers) ?? "unknown";
   const rateLimit = await checkRateLimit(`cep-lookup:${ip}`, CEP_LOOKUP_WINDOW_SECONDS, CEP_LOOKUP_MAX_REQUESTS);
   if (rateLimit && !rateLimit.allowed) {
     return rateLimitedResponse(rateLimit.retryAfterSeconds);

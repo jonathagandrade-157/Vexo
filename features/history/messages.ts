@@ -36,6 +36,9 @@ const ACTION_LABELS: Record<HistoryAction, string> = {
   PRODUCT_IMAGE_UPLOADED: "Imagem de produto enviada",
   PRODUCT_IMAGE_UPDATED: "Imagem de produto atualizada",
   PRODUCT_IMAGE_DELETED: "Imagem de produto excluída",
+  PRODUCT_STOCK_DEFINED: "Estoque definido",
+  PRODUCT_STOCK_ADJUSTED: "Estoque ajustado",
+  PRODUCT_STOCK_REMOVED: "Controle de estoque removido",
   ORDER_CREATED: "Pedido criado",
   ORDER_STATUS_CHANGED: "Status do pedido alterado",
   ORDER_PAYMENT_CONFIRMED: "Pagamento de pedido confirmado",
@@ -77,6 +80,7 @@ const ENTITY_TYPE_LABELS: Record<HistoryEntityType, string> = {
   storefront_banner: "Banner",
   category: "Categoria",
   product: "Produto",
+  product_inventory: "Estoque",
   order: "Pedido",
   shipping_settings: "Frete",
   shipping_method: "Frete",
@@ -137,6 +141,7 @@ const FIELD_LABELS: Record<string, string> = {
   address_city: "Endereço",
   title: "Título",
   link_url: "Link",
+  stock_quantity: "Estoque",
 };
 
 function firstChangedFieldLabel(before: unknown, after: unknown): string | null {

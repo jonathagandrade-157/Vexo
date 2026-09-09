@@ -22,6 +22,8 @@ export interface PublicProductSummary {
 
 export interface PublicProduct extends PublicProductSummary {
   description: string | null;
+  /** D19.1.2 — `true` quando o produto não tem controle de estoque definido (D19.1.1 §8) OU tem estoque > 0; `false` só quando há uma linha em product_inventory com stock_quantity = 0. */
+  inStock: boolean;
 }
 
 interface CategoryJoinRow {
@@ -83,13 +85,24 @@ export const getStorefrontProducts = cache(
   },
 );
 
+interface StockJoinRow {
+  product_inventory: { stock_quantity: number } | { stock_quantity: number }[] | null;
+}
+
+function isInStock(row: StockJoinRow["product_inventory"]): boolean {
+  const inv = Array.isArray(row) ? row[0] : row;
+  // Ausência de linha = "não controlado" (D19.1.1 §8) → sempre disponível.
+  if (!inv) return true;
+  return inv.stock_quantity > 0;
+}
+
 export const getStorefrontProduct = cache(
   async (tenantId: string, productSlug: string): Promise<PublicProduct | null> => {
     const supabase = createSupabasePublicClient();
     const { data } = await supabase
       .from("products")
       .select(
-        "id, name, slug, description, price, promotional_price, main_image, category:categories(id, name, slug)",
+        "id, name, slug, description, price, promotional_price, main_image, category:categories(id, name, slug), product_inventory(stock_quantity)",
       )
       .eq("tenant_id", tenantId)
       .eq("slug", productSlug)
@@ -97,8 +110,8 @@ export const getStorefrontProduct = cache(
       .maybeSingle();
 
     if (!data) return null;
-    const row = data as unknown as PublicProduct & CategoryJoinRow;
-    return { ...row, category: firstCategory(row.category) };
+    const row = data as unknown as PublicProduct & CategoryJoinRow & StockJoinRow;
+    return { ...row, category: firstCategory(row.category), inStock: isInStock(row.product_inventory) };
   },
 );
 

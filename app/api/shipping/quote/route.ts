@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
   // que `flat_rate` (cálculo local, sem custo externo) também fica
   // indisponível nesse cenário raro — nunca vale a pena separar os dois
   // caminhos só por causa disso.
-  const ip = getClientIp(request) ?? "unknown";
+  const ip = getClientIp(request.headers) ?? "unknown";
   const rateLimitKey = `shipping-quote:${ip}:${resolution.tenant.id}`;
   const rateLimit = await checkRateLimit(rateLimitKey, SHIPPING_QUOTE_WINDOW_SECONDS, SHIPPING_QUOTE_MAX_REQUESTS);
   if (!rateLimit) {

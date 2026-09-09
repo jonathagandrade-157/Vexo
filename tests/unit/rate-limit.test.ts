@@ -11,8 +11,9 @@ import { getClientIp, rateLimitedResponse } from "@/lib/security/rate-limit";
  * tests/unit/cep-autofill-route.test.ts).
  */
 
-function requestWithHeaders(headers: Record<string, string>): NextRequest {
-  return new NextRequest("http://localhost/api/shipping/quote", { headers });
+/** D19.1.3.1 — getClientIp passou a receber `Headers` diretamente (não mais `Request`). */
+function requestWithHeaders(headers: Record<string, string>): Headers {
+  return new NextRequest("http://localhost/api/shipping/quote", { headers }).headers;
 }
 
 describe("getClientIp", () => {

@@ -46,15 +46,21 @@ export async function checkRateLimit(key: string, windowSeconds: number, maxRequ
  * `null` só quando nenhum dos dois headers está presente (nunca deveria
  * acontecer atrás do proxy da Vercel em produção, mas local/dev não tem
  * esse proxy) — cada chamador decide o que fazer nesse caso.
+ *
+ * D19.1.3.1 — recebe `Headers` diretamente (não mais `Request`): um Route
+ * Handler passa `request.headers`, e uma Server Action (sem `Request`
+ * disponível) passa o resultado de `headers()` de `next/headers` — mesma
+ * interface `.get(name)` nos dois casos, sem precisar de um objeto
+ * `Request` inteiro só para isso.
  */
-export function getClientIp(request: Request): string | null {
-  const forwardedFor = request.headers.get("x-forwarded-for");
+export function getClientIp(headersList: Headers): string | null {
+  const forwardedFor = headersList.get("x-forwarded-for");
   if (forwardedFor) {
     const first = forwardedFor.split(",")[0]?.trim();
     if (first) return first;
   }
 
-  const realIp = request.headers.get("x-real-ip");
+  const realIp = headersList.get("x-real-ip");
   if (realIp?.trim()) return realIp.trim();
 
   return null;

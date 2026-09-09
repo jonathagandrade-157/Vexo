@@ -102,5 +102,10 @@ export function friendlyCheckoutError(message: string): string {
   if (inactiveProduct) {
     return `O produto "${inactiveProduct[1]}" não está mais disponível. Volte ao carrinho para removê-lo e tente novamente.`;
   }
+  // D19.1.2 — mesmo padrão dos dois casos acima: nunca expõe o texto bruto do erro Postgres ao visitante.
+  const insufficientStock = /^insufficient stock for product (.+)$/.exec(message);
+  if (insufficientStock) {
+    return `O produto "${insufficientStock[1]}" não tem estoque suficiente. Volte ao carrinho e ajuste a quantidade.`;
+  }
   return "Não foi possível finalizar o pedido. Tente novamente.";
 }

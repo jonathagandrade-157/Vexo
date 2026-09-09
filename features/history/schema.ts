@@ -18,6 +18,11 @@ export const HISTORY_PAGE_SIZE = 20;
  * TENANT_ADDRESS_UPDATED/STOREFRONT_BANNER_*, migration
  * 20260817220108) — mesmo princípio: só entra aqui quando existe um
  * emissor real (trigger) correspondente.
+ *
+ * D19.1.2 — acrescenta PRODUCT_STOCK_DEFINED/ADJUSTED/REMOVED (migration
+ * 20260817220109). PRODUCT_STOCK_ADJUSTED só é emitido para ajuste manual
+ * (painel) — o decremento automático do checkout (anon) nunca gera este
+ * evento (ver comentário da migration).
  */
 export const HISTORY_ACTIONS = [
   "TENANT_CREATED",
@@ -46,6 +51,9 @@ export const HISTORY_ACTIONS = [
   "PRODUCT_IMAGE_UPLOADED",
   "PRODUCT_IMAGE_UPDATED",
   "PRODUCT_IMAGE_DELETED",
+  "PRODUCT_STOCK_DEFINED",
+  "PRODUCT_STOCK_ADJUSTED",
+  "PRODUCT_STOCK_REMOVED",
   "ORDER_CREATED",
   "ORDER_STATUS_CHANGED",
   "ORDER_PAYMENT_CONFIRMED",
@@ -89,6 +97,7 @@ export const HISTORY_ENTITY_TYPES = [
   "storefront_banner",
   "category",
   "product",
+  "product_inventory",
   "order",
   "shipping_settings",
   "shipping_method",

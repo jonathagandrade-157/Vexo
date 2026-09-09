@@ -15,6 +15,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Produtos — VEXO" };
 
+interface InventoryRow {
+  stock_quantity: number;
+  low_stock_threshold: number | null;
+}
+
 interface ProductQueryRow {
   id: string;
   name: string;
@@ -24,11 +29,45 @@ interface ProductQueryRow {
   status: "active" | "inactive";
   main_image: string | null;
   category: { name: string } | { name: string }[] | null;
+  /** D19.1.2 — ausente (`[]`/`null`) = "estoque não controlado" (D19.1.1 §8), nunca 0/ilimitado inferido. */
+  product_inventory: InventoryRow | InventoryRow[] | null;
 }
 
 function categoryName(category: ProductQueryRow["category"]): string {
   const c = Array.isArray(category) ? category[0] : category;
   return c?.name ?? "Sem categoria";
+}
+
+function inventoryOf(row: ProductQueryRow["product_inventory"]): InventoryRow | null {
+  const inv = Array.isArray(row) ? row[0] : row;
+  return inv ?? null;
+}
+
+/** D19.1.2 §11 — "Sem controle" (sem linha) nunca é tratado como "sem estoque"; só uma linha com stock_quantity = 0 é. */
+function StockBadge({ inventory }: { inventory: InventoryRow | null }) {
+  if (!inventory) {
+    return <span className="font-body text-body-sm text-on-surface-variant">Sem controle</span>;
+  }
+  if (inventory.stock_quantity === 0) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-error-container/20 px-2 py-1 font-label text-label-sm uppercase text-error">
+        Sem estoque
+      </span>
+    );
+  }
+  const isLow = inventory.low_stock_threshold !== null && inventory.stock_quantity <= inventory.low_stock_threshold;
+  return (
+    <span
+      className={
+        isLow
+          ? "inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-1 font-label text-label-sm text-amber-400"
+          : "font-body text-body-sm text-on-surface"
+      }
+    >
+      {isLow ? <span className="material-symbols-outlined text-[14px]">warning</span> : null}
+      {inventory.stock_quantity}
+    </span>
+  );
 }
 
 function ProductThumbnail({ mainImage, name, size }: { mainImage: string | null; name: string; size: number }) {
@@ -74,7 +113,9 @@ export default async function ProdutosPage() {
 
   const { data } = await supabase
     .from("products")
-    .select("id, name, sku, price, promotional_price, status, main_image, category:categories(name)")
+    .select(
+      "id, name, sku, price, promotional_price, status, main_image, category:categories(name), product_inventory(stock_quantity, low_stock_threshold)",
+    )
     .eq("tenant_id", tenant.id)
     .order("created_at", { ascending: false });
 
@@ -131,6 +172,7 @@ export default async function ProdutosPage() {
                   <th className="p-4 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Produto</th>
                   <th className="p-4 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Categoria</th>
                   <th className="p-4 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Preço</th>
+                  <th className="p-4 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Estoque</th>
                   <th className="p-4 font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Status</th>
                   <th className="p-4 text-right font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Ações</th>
                 </tr>
@@ -161,6 +203,9 @@ export default async function ProdutosPage() {
                       ) : (
                         formatPrice(product.price)
                       )}
+                    </td>
+                    <td className="p-4">
+                      <StockBadge inventory={inventoryOf(product.product_inventory)} />
                     </td>
                     <td className="p-4">
                       <span
@@ -200,6 +245,9 @@ export default async function ProdutosPage() {
                   </div>
                   <div className="mt-0.5 font-body text-body-sm text-on-surface-variant">
                     {product.promotional_price !== null ? formatPrice(product.promotional_price) : formatPrice(product.price)}
+                  </div>
+                  <div className="mt-1">
+                    <StockBadge inventory={inventoryOf(product.product_inventory)} />
                   </div>
                   <div className="mt-2 flex items-center justify-between">
                     <span

@@ -21,10 +21,33 @@ function SubmitButton() {
 }
 
 /** Formulário real (prompt Etapa 9 §9: "não criar botões meramente visuais") — quantidade + submit, confirmação inline, sem navegar (o contador do header atualiza via revalidatePath da própria action). */
-export function AddToCartButton({ productId, storeSlug }: { productId: string; storeSlug: string }) {
+export function AddToCartButton({
+  productId,
+  storeSlug,
+  inStock = true,
+}: {
+  productId: string;
+  storeSlug: string;
+  /** D19.1.2 — `false` só quando o produto tem estoque controlado e zerado (D19.1.1 §8/§12): o produto continua visível, só a compra fica bloqueada. Nunca escondido. */
+  inStock?: boolean;
+}) {
   const action = addToCartAction.bind(null, storeSlug);
   const [state, formAction] = useActionState(action, initialCartActionState);
   const [quantity, setQuantity] = useState(1);
+
+  if (!inStock) {
+    return (
+      <div className="flex flex-col gap-2">
+        <button
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-surface-container-highest px-6 py-3 font-label text-label-md text-on-surface-variant"
+          disabled
+          type="button"
+        >
+          Indisponível
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-3">

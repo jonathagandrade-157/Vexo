@@ -46,10 +46,12 @@ interface ProductFormProps {
   };
   /** D13.1 — galeria já ordenada (primeira = principal). Só é buscada/passada quando `product` existe (mesma regra de sempre: imagem só na edição, nunca na criação — o path depende de um product_id real). */
   galleryImages?: ProductGalleryImage[];
+  /** D19.1.2 — `null` = "estoque não controlado ainda" (D19.1.1 §8), nunca 0/ilimitado — os campos ficam em branco, nunca pré-preenchidos com um valor inventado. */
+  inventory?: { stock_quantity: number; low_stock_threshold: number | null } | null;
 }
 
 /** Página dedicada (não modal) — igual ao padrão de `vexo_adicionar_produto_desktop` (Stitch), que mostra "Adicionar Produto" como página própria com "Voltar", diferente de categorias (modal inline). */
-export function ProductForm({ categories, product, galleryImages }: ProductFormProps) {
+export function ProductForm({ categories, product, galleryImages, inventory }: ProductFormProps) {
   const action = product ? updateProductAction : createProductAction;
   const [state, formAction] = useActionState(action, initialProductState);
 
@@ -194,6 +196,62 @@ export function ProductForm({ categories, product, galleryImages }: ProductFormP
               name="sku"
               placeholder="Ex: CAM-PRM-ALG"
             />
+          </section>
+
+          {/*
+            D19.1.2 — ambos opcionais, de propósito: deixar em branco
+            (na criação, ou apagando o valor na edição) significa "não
+            controlar estoque deste produto" (D19.1.1 §8) — o produto
+            continua vendendo normalmente, sem checagem nenhuma. Só
+            preencher `stockQuantity` liga o controle real (checagem +
+            decremento atômico no checkout).
+          */}
+          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+            <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
+              <span className="material-symbols-outlined text-primary">inventory</span>
+              Estoque
+            </h2>
+            <p className="mb-4 font-body text-body-sm text-on-surface-variant">
+              Opcional. Deixe em branco para não controlar o estoque deste produto.
+            </p>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label text-label-md uppercase text-on-surface-variant" htmlFor="stockQuantity">
+                  Quantidade em estoque
+                </label>
+                <input
+                  className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface focus:outline-none"
+                  defaultValue={inventory?.stock_quantity}
+                  id="stockQuantity"
+                  min="0"
+                  name="stockQuantity"
+                  placeholder="Ex: 20"
+                  step="1"
+                  type="number"
+                />
+                {state.fieldErrors?.stockQuantity ? (
+                  <p className="text-label-sm text-error">{state.fieldErrors.stockQuantity}</p>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-label text-label-md uppercase text-on-surface-variant" htmlFor="lowStockThreshold">
+                  Avisar quando o estoque atingir (opcional)
+                </label>
+                <input
+                  className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest px-3 py-2.5 font-body text-body-sm text-on-surface focus:outline-none"
+                  defaultValue={inventory?.low_stock_threshold ?? undefined}
+                  id="lowStockThreshold"
+                  min="0"
+                  name="lowStockThreshold"
+                  placeholder="Ex: 5"
+                  step="1"
+                  type="number"
+                />
+                {state.fieldErrors?.lowStockThreshold ? (
+                  <p className="text-label-sm text-error">{state.fieldErrors.lowStockThreshold}</p>
+                ) : null}
+              </div>
+            </div>
           </section>
 
           {/*

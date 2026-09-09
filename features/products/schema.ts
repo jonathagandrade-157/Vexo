@@ -63,6 +63,24 @@ export const productSchema = z
       emptyToUndefined,
       z.coerce.number({ message: "Comprimento inválido" }).positive("O comprimento deve ser maior que zero").finite("Comprimento inválido").optional(),
     ),
+    // D19.1.2 — estoque (product_inventory, tabela separada de products).
+    // Ambos opcionais: campo vazio vira `undefined`, nunca `0` (que seria
+    // "zero em estoque", um valor real e diferente de "não definido").
+    // `stockQuantity` ausente é a própria decisão de "não controlar
+    // estoque deste produto" (D19.1.1 §8) — a Action decide o que fazer
+    // com isso (nunca esta camada de validação).
+    stockQuantity: z.preprocess(
+      emptyToUndefined,
+      z.coerce.number({ message: "Estoque inválido" }).int("O estoque deve ser um número inteiro").nonnegative("O estoque não pode ser negativo").optional(),
+    ),
+    lowStockThreshold: z.preprocess(
+      emptyToUndefined,
+      z.coerce
+        .number({ message: "Limite de estoque baixo inválido" })
+        .int("O limite deve ser um número inteiro")
+        .nonnegative("O limite não pode ser negativo")
+        .optional(),
+    ),
   })
   .refine((data) => data.promotionalPrice === undefined || data.promotionalPrice <= data.price, {
     message: "O preço promocional não pode ser maior que o preço normal",

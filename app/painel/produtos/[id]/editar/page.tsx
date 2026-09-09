@@ -29,7 +29,7 @@ export default async function EditarProdutoPage({ params }: PageProps) {
   // profundidade — mesmo padrão de toda Action desta etapa): um id de
   // produto de outro tenant nunca retorna aqui, mesmo que alguém
   // manipule a URL diretamente.
-  const [{ data: product }, { data: categories }, { data: galleryRows }] = await Promise.all([
+  const [{ data: product }, { data: categories }, { data: galleryRows }, { data: inventory }] = await Promise.all([
     supabase
       .from("products")
       .select("id, name, description, price, promotional_price, sku, category_id, main_image, weight, height, width, length")
@@ -50,6 +50,13 @@ export default async function EditarProdutoPage({ params }: PageProps) {
       .eq("product_id", id)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true }),
+    // D19.1.2 — ausência de linha = "estoque não controlado" (D19.1.1 §8), nunca 0/ilimitado inferido pelo formulário.
+    supabase
+      .from("product_inventory")
+      .select("stock_quantity, low_stock_threshold")
+      .eq("tenant_id", tenant.id)
+      .eq("product_id", id)
+      .maybeSingle(),
   ]);
 
   if (!product) notFound();
@@ -60,5 +67,12 @@ export default async function EditarProdutoPage({ params }: PageProps) {
     sortOrder: row.sort_order,
   }));
 
-  return <ProductForm categories={categories ?? []} galleryImages={galleryImages} product={product} />;
+  return (
+    <ProductForm
+      categories={categories ?? []}
+      galleryImages={galleryImages}
+      inventory={inventory ?? null}
+      product={product}
+    />
+  );
 }

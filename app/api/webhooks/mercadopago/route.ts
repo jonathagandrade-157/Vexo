@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // loga a assinatura recebida nem o rawBody (poderia ecoar payload
     // forjado); só metadados que já eram públicos na requisição.
     console.error("[webhooks] mercadopago invalid signature", {
-      ip: getClientIp(request),
+      ip: getClientIp(request.headers),
       requestId: request.headers.get("x-request-id"),
       bodyLength: rawBody.length,
     });

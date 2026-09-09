@@ -27,6 +27,12 @@ export const AUDIT_PAGE_SIZE = 20;
  * `/master/auditoria`; a listagem em si sempre mostra `action` como veio
  * do banco, então nenhum desses eventos deixa de aparecer, só não pode
  * ser filtrado por enquanto).
+ *
+ * D19.1.2 — acrescenta os 3 eventos de estoque (PRODUCT_STOCK_DEFINED/
+ * ADJUSTED/REMOVED, migration 20260817220109). PRODUCT_STOCK_ADJUSTED só
+ * é emitido para ajuste manual (painel); o decremento automático do
+ * checkout roda como `anon` e não passa por `private.log_audit()` (ver
+ * comentário da migration) — nunca aparecerá aqui, de propósito.
  */
 export const AUDIT_ACTIONS = [
   "BILLING_INVOICE_CREATED",
@@ -65,6 +71,9 @@ export const AUDIT_ACTIONS = [
   "PRODUCT_IMAGE_UPDATED",
   "PRODUCT_IMAGE_UPLOADED",
   "PRODUCT_STATUS_CHANGED",
+  "PRODUCT_STOCK_ADJUSTED",
+  "PRODUCT_STOCK_DEFINED",
+  "PRODUCT_STOCK_REMOVED",
   "PRODUCT_UPDATED",
   "SHIPPING_METHOD_CREATED",
   "SHIPPING_METHOD_DELETED",
