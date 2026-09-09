@@ -50,6 +50,7 @@ export async function addToCartAction(
   const parsed = addToCartSchema.safeParse({
     productId: formData.get("productId"),
     quantity: formData.get("quantity"),
+    variantId: formData.get("variantId"),
   });
   if (!parsed.success) {
     return { status: "error", message: "Quantidade inválida." };
@@ -72,6 +73,38 @@ export async function addToCartAction(
     return { status: "error", message: "Este produto não está mais disponível." };
   }
 
+  // D20.4 — nunca confia no variantId isoladamente (mesmo princípio do
+  // productId acima, e do checkout desde D19.1.3.1): revalida que a
+  // variante existe, pertence a ESTE tenant e a ESTE produto, e está
+  // ativa. Um produto que TEM variantes cadastradas exige a escolha —
+  // mesma regra já garantida pelo trigger de banco (defesa em
+  // profundidade, nunca depende só de uma camada).
+  let variantId: string | null = null;
+  if (parsed.data.variantId) {
+    const { data: variant } = await supabase
+      .from("product_variants")
+      .select("id")
+      .eq("id", parsed.data.variantId)
+      .eq("tenant_id", tenant.id)
+      .eq("product_id", product.id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!variant) {
+      return { status: "error", message: "Esta opção não está mais disponível." };
+    }
+    variantId = variant.id;
+  } else {
+    const { data: anyVariant } = await supabase
+      .from("product_variants")
+      .select("id")
+      .eq("product_id", product.id)
+      .limit(1)
+      .maybeSingle();
+    if (anyVariant) {
+      return { status: "error", message: "Selecione uma opção antes de adicionar ao carrinho." };
+    }
+  }
+
   let cartId: string;
   try {
     cartId = await ensureCart(storeSlug, tenant.id);
@@ -84,6 +117,7 @@ export async function addToCartAction(
     p_cart_id: cartId,
     p_product_id: product.id,
     p_quantity: parsed.data.quantity,
+    p_variant_id: variantId,
   });
   if (error) {
     return { status: "error", message: "Não foi possível adicionar ao carrinho. Tente novamente." };
