@@ -144,6 +144,12 @@ export async function listOrders(tenantId: string, opts: ListOrdersOptions): Pro
   };
 }
 
+/** D20.5 — snapshot de um par opção/valor da variante comprada, na ordem de exibição (product_options.position) no momento da compra. */
+export interface OrderItemVariantOption {
+  option: string;
+  value: string;
+}
+
 export interface OrderDetailItem {
   id: string;
   product_name: string;
@@ -151,6 +157,16 @@ export interface OrderDetailItem {
   quantity: number;
   unit_price: number;
   subtotal: number;
+  /**
+   * D20.5 — NULL para produto simples. Quando o item era de variante mas
+   * ela foi excluída depois da compra, variant_id volta a ser NULL
+   * (ON DELETE SET NULL) mesmo com variant_sku/variant_label/
+   * variant_options preenchidos — o snapshot nunca desaparece.
+   */
+  variant_id: string | null;
+  variant_sku: string | null;
+  variant_label: string | null;
+  variant_options: OrderItemVariantOption[] | null;
 }
 
 export interface OrderStatusHistoryEntry {
@@ -217,7 +233,7 @@ export async function getOrderDetail(tenantId: string, orderId: string): Promise
   const [{ data: items }, { data: history }] = await Promise.all([
     supabase
       .from("order_items")
-      .select("id, product_name, product_slug, quantity, unit_price, subtotal")
+      .select("id, product_name, product_slug, quantity, unit_price, subtotal, variant_id, variant_sku, variant_label, variant_options")
       .eq("order_id", orderId)
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: true }),

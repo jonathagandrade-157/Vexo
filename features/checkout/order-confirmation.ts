@@ -5,12 +5,23 @@ import { cache } from "react";
 import type { RequestedPaymentMethod } from "@/lib/whatsapp/message";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 
+/** D20.5 — snapshot de um par opção/valor da variante comprada, na ordem de exibição (product_options.position) no momento da compra. */
+export interface OrderConfirmationVariantOption {
+  option: string;
+  value: string;
+}
+
 export interface OrderConfirmationItem {
   productName: string;
   productSlug: string;
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  /** D20.5 — null para produto simples, ou quando a variante comprada foi excluída depois (variantSku/variantLabel/variantOptions continuam preenchidos nesse caso — o snapshot nunca desaparece). */
+  variantId: string | null;
+  variantSku: string | null;
+  variantLabel: string | null;
+  variantOptions: OrderConfirmationVariantOption[] | null;
 }
 
 export interface OrderConfirmation {

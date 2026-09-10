@@ -131,6 +131,9 @@ export default async function PedidoDetalhePage({ params }: PageProps) {
                 <div className="flex items-start justify-between gap-3" key={item.id}>
                   <div className="min-w-0">
                     <p className="truncate font-body text-body-sm text-on-surface">{item.product_name}</p>
+                    {item.variant_label ? (
+                      <p className="truncate font-body text-body-sm text-on-surface-variant">{item.variant_label}</p>
+                    ) : null}
                     <p className="font-body text-body-sm text-on-surface-variant">
                       {item.quantity} × {formatPrice(item.unit_price)}
                     </p>

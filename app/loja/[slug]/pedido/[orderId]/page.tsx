@@ -231,6 +231,8 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               subtotal: item.subtotal,
+              variantLabel: item.variantLabel,
+              variantId: item.variantId,
             }))}
             shippingTotal={order.shippingTotal}
             subtotal={order.subtotal}
