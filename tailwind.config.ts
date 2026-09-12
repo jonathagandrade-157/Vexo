@@ -67,11 +67,26 @@ const config: Config = {
         background: "#131316",
         "on-background": "#e4e1e5",
         "surface-variant": "#353437",
+        // Clínica Tajy landing page (/tajy) — namespaced so it never
+        // collides with the VEXO product tokens above. Ported 1:1 from
+        // the Stitch export's `tailwind.config` (brand.*) and DESIGN.md.
+        tajy: {
+          black: "#0c0f10",
+          deep: "#111415",
+          surface: "#191c1d",
+          surfaceHigh: "#222628",
+          card: "#16191b",
+          gold: "#c5a059",
+          goldLight: "#dfba73",
+          goldDark: "#9e7d3b",
+        },
       },
       fontFamily: {
         display: ["var(--font-hanken-grotesk)", "system-ui", "sans-serif"],
         body: ["var(--font-inter)", "system-ui", "sans-serif"],
         label: ["var(--font-jetbrains-mono)", "ui-monospace", "monospace"],
+        "tajy-serif": ["var(--font-tajy-serif)", "Georgia", "serif"],
+        "tajy-sans": ["var(--font-tajy-sans)", "system-ui", "sans-serif"],
       },
       fontSize: {
         "display-lg": [

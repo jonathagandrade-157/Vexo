@@ -77,10 +77,13 @@ const nextConfig: NextConfig = {
           //    (features/checkout/actions.ts, features/shipping-
           //    connections/actions.ts) — nunca fetch/XHR/iframe do
           //    navegador, então nunca entram em connect-src/frame-src.
-          //  - frame-src/frame-ancestors 'self': único iframe do projeto é
-          //    o preview de Aparência, sempre same-origin (src relativo);
-          //    frame-ancestors 'self' é o equivalente nativo de CSP para o
-          //    X-Frame-Options: SAMEORIGIN já em vigor (não o substitui).
+          //  - frame-src inclui https://www.google.com além de 'self': o
+          //    preview de Aparência é sempre same-origin, mas a página de
+          //    demonstração /tajy embute um mapa via Google Maps Embed
+          //    (components/tajy/Location.tsx, sem API key) — único uso de
+          //    iframe de terceiro no projeto. frame-ancestors continua
+          //    apenas 'self', equivalente nativo do X-Frame-Options:
+          //    SAMEORIGIN já em vigor (não o substitui).
           //  - object-src 'none': nenhum <object>/<embed> no projeto, sem
           //    caso de uso legítimo para permitir.
           //  - media-src/worker-src omitidos: nenhum <video>/<audio>/
@@ -106,7 +109,7 @@ function buildCspReportOnly(): string {
     img-src 'self' blob:;
     font-src 'self' https://fonts.gstatic.com;
     connect-src 'self' https://*.supabase.co${isDev ? " http://127.0.0.1:54321 http://localhost:54321" : ""};
-    frame-src 'self';
+    frame-src 'self' https://www.google.com;
     upgrade-insecure-requests;
   `;
   return csp.replace(/\s{2,}/g, " ").trim();
