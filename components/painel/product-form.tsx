@@ -1,15 +1,18 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 
 import { ProductGalleryUploader } from "@/components/painel/product-gallery-uploader";
+import { ProductOptionsEditor } from "@/components/painel/product-options-editor";
+import { VariantsTable } from "@/components/painel/variants-table";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
 import { createProductAction, updateProductAction } from "@/features/products/actions";
 import { initialProductState, type ProductGalleryImage } from "@/features/products/schema";
+import type { ProductOptionWithValues, ProductVariantRow } from "@/features/products/variants-data";
 
 function SaveButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
@@ -48,12 +51,28 @@ interface ProductFormProps {
   galleryImages?: ProductGalleryImage[];
   /** D19.1.2 — `null` = "estoque não controlado ainda" (D19.1.1 §8), nunca 0/ilimitado — os campos ficam em branco, nunca pré-preenchidos com um valor inventado. */
   inventory?: { stock_quantity: number; low_stock_threshold: number | null } | null;
+  /** D20.6 Fase 3.3 — opções+valores já cadastrados, mesma regra de galleryImages: só existe quando `product` existe (opções são configuradas depois do produto salvo, nunca na criação). */
+  initialOptions?: ProductOptionWithValues[];
+  /** D20.6 Fase 3.3 — variantes já geradas, mesma regra acima. */
+  initialVariants?: ProductVariantRow[];
 }
 
 /** Página dedicada (não modal) — igual ao padrão de `vexo_adicionar_produto_desktop` (Stitch), que mostra "Adicionar Produto" como página própria com "Voltar", diferente de categorias (modal inline). */
-export function ProductForm({ categories, product, galleryImages, inventory }: ProductFormProps) {
+export function ProductForm({ categories, product, galleryImages, inventory, initialOptions, initialVariants }: ProductFormProps) {
   const action = product ? updateProductAction : createProductAction;
   const [state, formAction] = useActionState(action, initialProductState);
+
+  // D20.6 Fase 3.3 — estado "levantado" para ProductForm: ProductOptionsEditor
+  // e VariantsTable são dois componentes independentes (cada um com seu
+  // próprio useState interno, Fases 3.1/3.2), mas VariantsTable precisa do
+  // nome/posição ATUAL de cada opção/valor para montar o rótulo da
+  // combinação (ex.: "Preto / P"). Sem isto, renomear um valor em
+  // ProductOptionsEditor e gerar variantes na sequência mostraria o rótulo
+  // antigo até a página recarregar — nunca um bug de dado (a geração no
+  // servidor sempre lê o estado real do banco), só um rótulo desatualizado
+  // na tela. `onOptionsChange` (Fase 3.3, prop opcional/aditiva) mantém as
+  // duas visões sincronizadas sem precisar de contexto/store global.
+  const [options, setOptions] = useState<ProductOptionWithValues[]>(initialOptions ?? []);
 
   return (
     <form action={formAction} noValidate>
@@ -342,6 +361,37 @@ export function ProductForm({ categories, product, galleryImages, inventory }: P
           </section>
         </div>
       </div>
+
+      {/*
+        D20.6 Fase 3.3 — mesma regra da seção "Mídia" acima: opções e
+        variantes só fazem sentido depois que o produto existe de verdade
+        (o path de imagem e, aqui, as linhas de product_options/
+        product_variants dependem de um product_id real) — nunca
+        disponível na criação, o fluxo de criação em si não muda em nada.
+      */}
+      <section className="mt-6 rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+        <h2 className="mb-2 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
+          <span className="material-symbols-outlined text-primary">tune</span>
+          Opções do produto
+        </h2>
+        <p className="mb-6 font-body text-body-sm text-on-surface-variant">
+          Opcional. Cadastre opções (ex.: Cor, Tamanho) e seus valores para depois gerar as variantes deste produto — produtos simples,
+          sem nenhuma opção, continuam funcionando exatamente como antes.
+        </p>
+        {product ? (
+          <ProductOptionsEditor initialOptions={options} onOptionsChange={setOptions} productId={product.id} />
+        ) : (
+          <p className="font-body text-body-sm text-on-surface-variant">
+            Salve o produto primeiro para configurar opções — a próxima tela já abre pronta para isso.
+          </p>
+        )}
+      </section>
+
+      {product ? (
+        <section className="mt-6 rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+          <VariantsTable initialOptions={options} initialVariants={initialVariants ?? []} productId={product.id} />
+        </section>
+      ) : null}
 
       {state.status === "error" && state.message ? (
         <p className="mt-6 rounded-lg border border-error/30 bg-error-container/10 px-4 py-2 font-body text-body-sm text-error" role="alert">

@@ -25,13 +25,28 @@ const TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const CART_ID = "22222222-2222-2222-2222-222222222222";
 const STORE_SLUG = "loja-teste";
 
-function fakeSupabase(rows: unknown[]) {
-  const order = vi.fn().mockResolvedValue({ data: rows, error: null });
-  const eq2 = vi.fn(() => ({ order }));
-  const eq1 = vi.fn(() => ({ eq: eq2 }));
-  const select = vi.fn(() => ({ eq: eq1 }));
-  const from = vi.fn(() => ({ select }));
-  return { from, select, eq1, eq2, order };
+/**
+ * D20.6 Fase 3.5 — `getCart` agora também consulta product_variant_options/
+ * product_option_values/product_options (fetchVariantLabels, só quando há
+ * ao menos uma variante ativa resolvida) para montar o rótulo da variante
+ * ("Preto / M"). O builder despacha por nome de tabela: `cart_items` usa a
+ * cadeia `.select().eq().eq().order()` de sempre; as 3 tabelas de rótulo
+ * usam `.select().eq().in()` — ambas as formas terminam resolvendo
+ * `{data, error: null}` a partir de `tables[nomeDaTabela] ?? []`.
+ */
+function fakeSupabase(tables: { cart_items: unknown[]; [table: string]: unknown[] | undefined }) {
+  function builder(rows: unknown[]) {
+    const resolved = Promise.resolve({ data: rows, error: null });
+    const b = {
+      select: () => b,
+      eq: () => b,
+      in: () => resolved,
+      order: () => resolved,
+    };
+    return b;
+  }
+  const from = vi.fn((table: string) => builder(tables[table] ?? []));
+  return { from };
 }
 
 function product(overrides: Partial<Record<string, unknown>> = {}) {
@@ -65,10 +80,10 @@ describe("getCart", () => {
     vi.mocked(getCartId).mockReset();
   });
 
-  function setup(rows: unknown[]) {
+  function setup(cartItemsRows: unknown[]) {
     vi.mocked(resolveStorefrontTenant).mockResolvedValue({ status: "ready", tenant: { id: TENANT_ID } } as never);
     vi.mocked(getCartId).mockResolvedValue(CART_ID);
-    const supabase = fakeSupabase(rows);
+    const supabase = fakeSupabase({ cart_items: cartItemsRows });
     vi.mocked(createSupabasePublicClient).mockReturnValue(supabase as never);
     return supabase;
   }
@@ -128,6 +143,48 @@ describe("getCart", () => {
     });
     // 3 * 60 (preço da VARIANTE), nunca 3 * 50 (preço do produto-pai).
     expect(cart.subtotal).toBe(180);
+  });
+
+  // D20.6 Fase 3.5 — rótulo da variante ("Preto / M"): junção em memória
+  // de product_variant_options/product_option_values/product_options,
+  // ordenada por product_options.position — mesmo formato de
+  // v_variant_label em create_order_from_cart (migration 20260817220118).
+  it("an active variant's label is built from product_variant_options/product_option_values/product_options, ordered by option position", async () => {
+    vi.mocked(resolveStorefrontTenant).mockResolvedValue({ status: "ready", tenant: { id: TENANT_ID } } as never);
+    vi.mocked(getCartId).mockResolvedValue(CART_ID);
+    const supabase = fakeSupabase({
+      cart_items: [
+        { id: "item-1", quantity: 1, variant_id: "variant-1", product: product(), variant: activeVariant() },
+      ],
+      // Fora de ordem de propósito (Tamanho antes de Cor) — o rótulo
+      // final precisa respeitar product_options.position, nunca a ordem
+      // em que as linhas chegam do banco.
+      product_variant_options: [
+        { variant_id: "variant-1", product_option_value_id: "value-tamanho-m" },
+        { variant_id: "variant-1", product_option_value_id: "value-cor-preto" },
+      ],
+      product_option_values: [
+        { id: "value-tamanho-m", value: "M", product_option_id: "option-tamanho" },
+        { id: "value-cor-preto", value: "Preto", product_option_id: "option-cor" },
+      ],
+      product_options: [
+        { id: "option-cor", position: 0 },
+        { id: "option-tamanho", position: 1 },
+      ],
+    });
+    vi.mocked(createSupabasePublicClient).mockReturnValue(supabase as never);
+
+    const cart = await getCart(STORE_SLUG);
+
+    expect(cart.items[0]?.variant?.label).toBe("Preto / M");
+  });
+
+  it("a variant with no resolvable product_variant_options rows gets label: null, never throws", async () => {
+    setup([{ id: "item-1", quantity: 1, variant_id: "variant-1", product: product(), variant: activeVariant() }]);
+
+    const cart = await getCart(STORE_SLUG);
+
+    expect(cart.items[0]?.variant?.label).toBeNull();
   });
 
   // 3/4/5/6 — variante existente no cart_item, mas o embed voltou null

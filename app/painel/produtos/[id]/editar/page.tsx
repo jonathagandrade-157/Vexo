@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { ProductForm } from "@/components/painel/product-form";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
+import { getProductOptionsWithValues, getProductVariants } from "@/features/products/variants-data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Editar produto — VEXO" };
@@ -29,35 +30,39 @@ export default async function EditarProdutoPage({ params }: PageProps) {
   // profundidade — mesmo padrão de toda Action desta etapa): um id de
   // produto de outro tenant nunca retorna aqui, mesmo que alguém
   // manipule a URL diretamente.
-  const [{ data: product }, { data: categories }, { data: galleryRows }, { data: inventory }] = await Promise.all([
-    supabase
-      .from("products")
-      .select("id, name, description, price, promotional_price, sku, category_id, main_image, weight, height, width, length")
-      .eq("id", id)
-      .eq("tenant_id", tenant.id)
-      .maybeSingle(),
-    supabase
-      .from("categories")
-      .select("id, name")
-      .eq("tenant_id", tenant.id)
-      .eq("status", "active")
-      .order("name", { ascending: true }),
-    // D13.1 — galeria, já ordenada (primeira = principal, mesmo critério do trigger sync_product_main_image).
-    supabase
-      .from("product_images")
-      .select("id, storage_path, sort_order")
-      .eq("tenant_id", tenant.id)
-      .eq("product_id", id)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: true }),
-    // D19.1.2 — ausência de linha = "estoque não controlado" (D19.1.1 §8), nunca 0/ilimitado inferido pelo formulário.
-    supabase
-      .from("product_inventory")
-      .select("stock_quantity, low_stock_threshold")
-      .eq("tenant_id", tenant.id)
-      .eq("product_id", id)
-      .maybeSingle(),
-  ]);
+  const [{ data: product }, { data: categories }, { data: galleryRows }, { data: inventory }, initialOptions, initialVariants] =
+    await Promise.all([
+      supabase
+        .from("products")
+        .select("id, name, description, price, promotional_price, sku, category_id, main_image, weight, height, width, length")
+        .eq("id", id)
+        .eq("tenant_id", tenant.id)
+        .maybeSingle(),
+      supabase
+        .from("categories")
+        .select("id, name")
+        .eq("tenant_id", tenant.id)
+        .eq("status", "active")
+        .order("name", { ascending: true }),
+      // D13.1 — galeria, já ordenada (primeira = principal, mesmo critério do trigger sync_product_main_image).
+      supabase
+        .from("product_images")
+        .select("id, storage_path, sort_order")
+        .eq("tenant_id", tenant.id)
+        .eq("product_id", id)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+      // D19.1.2 — ausência de linha = "estoque não controlado" (D19.1.1 §8), nunca 0/ilimitado inferido pelo formulário.
+      supabase
+        .from("product_inventory")
+        .select("stock_quantity, low_stock_threshold")
+        .eq("tenant_id", tenant.id)
+        .eq("product_id", id)
+        .maybeSingle(),
+      // D20.6 Fase 3.3 — opções+valores e variantes já geradas (Fases 3.1/3.2), mesmas funções de leitura já testadas, nenhuma query nova.
+      getProductOptionsWithValues(supabase, tenant.id, id),
+      getProductVariants(supabase, tenant.id, id),
+    ]);
 
   if (!product) notFound();
 
@@ -71,6 +76,8 @@ export default async function EditarProdutoPage({ params }: PageProps) {
     <ProductForm
       categories={categories ?? []}
       galleryImages={galleryImages}
+      initialOptions={initialOptions}
+      initialVariants={initialVariants}
       inventory={inventory ?? null}
       product={product}
     />

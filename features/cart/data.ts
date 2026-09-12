@@ -22,6 +22,8 @@ export interface CartItemVariant {
   sku: string | null;
   price: number;
   promotional_price: number | null;
+  /** D20.6 Fase 3.5 — rótulo legível da combinação (ex.: "Preto / M"), mesmo formato/ordenação de `v_variant_label` em create_order_from_cart (valores unidos por " / ", ordenados por product_options.position) — nunca recalculado com uma regra diferente entre carrinho e pedido. `null` só se a variante não tiver nenhum product_variant_options resolvível (nunca deveria acontecer para uma variante ativa real, mas defensivo). */
+  label: string | null;
 }
 
 export interface CartItemView {
@@ -81,9 +83,90 @@ function firstProduct(row: ProductJoinRow["product"]): (CartItemProduct & { stat
   return p ?? null;
 }
 
-function firstVariant(row: ProductJoinRow["variant"]): (CartItemVariant & { is_active: boolean }) | null {
+function firstVariant(row: ProductJoinRow["variant"]): (Omit<CartItemVariant, "label"> & { is_active: boolean }) | null {
   const v = Array.isArray(row) ? row[0] : row;
   return v ?? null;
+}
+
+interface VariantOptionLinkRow {
+  variant_id: string;
+  product_option_value_id: string;
+}
+interface OptionValueRow {
+  id: string;
+  value: string;
+  product_option_id: string;
+}
+interface OptionRow {
+  id: string;
+  position: number;
+}
+
+/**
+ * D20.6 Fase 3.5 — rótulo de cada variante resolvida ("Preto / M"), sempre
+ * via 3 queries simples seguidas de junção em memória (nunca um select
+ * aninhado product_variant_options→product_option_values→product_options
+ * do PostgREST) — mesma cautela já documentada em
+ * features/products/variants-data.ts/features/storefront/product-variants.ts
+ * contra a ambiguidade array-vs-objeto de embeds aninhados. Mesmo formato
+ * (" / ", ordenado por product_options.position) de `v_variant_label` em
+ * create_order_from_cart (migration 20260817220118) — nunca uma segunda
+ * regra de formatação divergente entre carrinho e pedido.
+ */
+async function fetchVariantLabels(
+  supabase: ReturnType<typeof createSupabasePublicClient>,
+  tenantId: string,
+  variantIds: string[],
+): Promise<Map<string, string>> {
+  const labels = new Map<string, string>();
+  if (variantIds.length === 0) return labels;
+
+  const { data: linkRows } = await supabase
+    .from("product_variant_options")
+    .select("variant_id, product_option_value_id")
+    .eq("tenant_id", tenantId)
+    .in("variant_id", variantIds);
+  const links = (linkRows ?? []) as VariantOptionLinkRow[];
+  if (links.length === 0) return labels;
+
+  const valueIds = [...new Set(links.map((link) => link.product_option_value_id))];
+  const { data: valueRows } = await supabase
+    .from("product_option_values")
+    .select("id, value, product_option_id")
+    .eq("tenant_id", tenantId)
+    .in("id", valueIds);
+  const values = (valueRows ?? []) as OptionValueRow[];
+  const valueById = new Map(values.map((value) => [value.id, value]));
+
+  const optionIds = [...new Set(values.map((value) => value.product_option_id))];
+  const { data: optionRows } = await supabase
+    .from("product_options")
+    .select("id, position")
+    .eq("tenant_id", tenantId)
+    .in("id", optionIds);
+  const positionByOptionId = new Map(((optionRows ?? []) as OptionRow[]).map((option) => [option.id, option.position]));
+
+  const entriesByVariant = new Map<string, { value: string; position: number }[]>();
+  for (const link of links) {
+    const value = valueById.get(link.product_option_value_id);
+    if (!value) continue;
+    const position = positionByOptionId.get(value.product_option_id) ?? 0;
+    const entries = entriesByVariant.get(link.variant_id) ?? [];
+    entries.push({ value: value.value, position });
+    entriesByVariant.set(link.variant_id, entries);
+  }
+
+  for (const [variantId, entries] of entriesByVariant) {
+    labels.set(
+      variantId,
+      entries
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map((entry) => entry.value)
+        .join(" / "),
+    );
+  }
+  return labels;
 }
 
 /**
@@ -111,7 +194,7 @@ export const getCart = cache(async (storeSlug: string): Promise<CartView> => {
     .order("created_at", { ascending: true });
 
   const rows = (data ?? []) as unknown as ProductJoinRow[];
-  const items: CartItemView[] = rows
+  const itemsWithoutLabel = rows
     .map((row) => {
       const product = firstProduct(row.product);
       if (!product) return null; // produto excluído — cascata já removeu a linha, mas defensivo contra corrida de leitura
@@ -132,15 +215,14 @@ export const getCart = cache(async (storeSlug: string): Promise<CartView> => {
       //      silenciosamente a variante ausente (variant fica null,
       //      subtotal exclui o item via `available=false`, nunca cai no
       //      preço do produto-pai como se fosse produto simples).
-      let variant: CartItemVariant | null = null;
+      let variant: (Omit<CartItemVariant, "label"> & { is_active: boolean }) | null = null;
       let available: boolean;
       if (row.variant_id === null) {
         available = status === "active";
       } else {
         const variantRow = firstVariant(row.variant);
         if (variantRow && variantRow.is_active) {
-          const { is_active, ...variantFields } = variantRow;
-          variant = variantFields;
+          variant = variantRow;
           available = status === "active";
         } else {
           available = false;
@@ -149,7 +231,23 @@ export const getCart = cache(async (storeSlug: string): Promise<CartView> => {
 
       return { id: row.id, quantity: row.quantity, available, product: productFields, variantId: row.variant_id, variant };
     })
-    .filter((item): item is CartItemView => item !== null);
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  // D20.6 Fase 3.5 — rótulo da variante ("Preto / M"), resolvido só para
+  // as variantes que de fato vieram disponíveis acima — nunca para um
+  // variantId indisponível (item.variant === null nesse caso, ver
+  // comentário acima; o item continua visível sem rótulo, mesmo
+  // princípio de nunca inventar dado para algo indisponível).
+  const resolvedVariantIds = itemsWithoutLabel
+    .map((item) => item.variant?.id)
+    .filter((id): id is string => id !== undefined);
+  const labels = await fetchVariantLabels(supabase, resolution.tenant.id, resolvedVariantIds);
+
+  const items: CartItemView[] = itemsWithoutLabel.map((item) => {
+    if (!item.variant) return { ...item, variant: null };
+    const { is_active, ...variantFields } = item.variant;
+    return { ...item, variant: { ...variantFields, label: labels.get(item.variant.id) ?? null } };
+  });
 
   return {
     items,

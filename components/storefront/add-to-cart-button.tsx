@@ -25,17 +25,37 @@ export function AddToCartButton({
   productId,
   storeSlug,
   inStock = true,
+  variantId,
+  disabled = false,
+  disabledLabel,
 }: {
   productId: string;
   storeSlug: string;
   /** D19.1.2 — `false` só quando o produto tem estoque controlado e zerado (D19.1.1 §8/§12): o produto continua visível, só a compra fica bloqueada. Nunca escondido. */
   inStock?: boolean;
+  /**
+   * D20.6 Fase 3.4 — variante já resolvida pela seleção do cliente
+   * (ProductVariantSelector). `undefined`/omitido preserva 100% o
+   * comportamento de produto simples (Etapa 9/D20.4) — nenhum input
+   * `variantId` é renderizado no form, exatamente como antes desta fase.
+   * Nunca confiado como está: `addToCartAction` (D20.4) já revalida que a
+   * variante existe, pertence a este tenant/produto e está ativa.
+   */
+  variantId?: string;
+  /**
+   * D20.6 Fase 3.4 — bloqueia o envio por um motivo que NÃO é falta de
+   * estoque (ex.: seleção de opções incompleta, combinação inexistente) —
+   * generaliza o mesmo tratamento visual (botão estático desabilitado) que
+   * `!inStock` já usava, com rótulo customizável em vez de "Indisponível".
+   */
+  disabled?: boolean;
+  disabledLabel?: string;
 }) {
   const action = addToCartAction.bind(null, storeSlug);
   const [state, formAction] = useActionState(action, initialCartActionState);
   const [quantity, setQuantity] = useState(1);
 
-  if (!inStock) {
+  if (!inStock || disabled) {
     return (
       <div className="flex flex-col gap-2">
         <button
@@ -43,7 +63,7 @@ export function AddToCartButton({
           disabled
           type="button"
         >
-          Indisponível
+          {!inStock ? "Indisponível" : (disabledLabel ?? "Selecione as opções")}
         </button>
       </div>
     );
@@ -52,6 +72,7 @@ export function AddToCartButton({
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <input name="productId" type="hidden" value={productId} />
+      {variantId ? <input name="variantId" type="hidden" value={variantId} /> : null}
       <div className="flex items-center gap-3">
         <div className="flex items-center rounded-lg border border-outline-variant/50">
           <button

@@ -12,6 +12,22 @@ describe("effectivePrice", () => {
   });
 });
 
+describe("effectivePrice — variante (D20.4, também usado pelo storefront desde D20.6 Fase 3.4)", () => {
+  it("usa o preço da variante, não o do produto-pai, quando uma variante é informada", () => {
+    expect(effectivePrice({ price: 100, promotional_price: null }, { price: 150, promotional_price: null })).toBe(150);
+  });
+
+  it("prefere o preço promocional DA VARIANTE, mesmo que o produto-pai não tenha nenhum", () => {
+    expect(effectivePrice({ price: 100, promotional_price: null }, { price: 150, promotional_price: 120 })).toBe(120);
+  });
+
+  it("variant undefined/null preserva 100% o comportamento de produto simples (preço do produto-pai)", () => {
+    expect(effectivePrice({ price: 100, promotional_price: 79.9 })).toBe(79.9);
+    expect(effectivePrice({ price: 100, promotional_price: 79.9 }, null)).toBe(79.9);
+    expect(effectivePrice({ price: 100, promotional_price: 79.9 }, undefined)).toBe(79.9);
+  });
+});
+
 describe("lineSubtotal", () => {
   it("multiplies the effective price by quantity", () => {
     expect(lineSubtotal({ price: 10, promotional_price: null }, 3)).toBe(30);

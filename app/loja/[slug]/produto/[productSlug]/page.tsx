@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AddToCartButton } from "@/components/storefront/add-to-cart-button";
 import { ProductGallery } from "@/components/storefront/product-gallery";
+import { ProductVariantSelector } from "@/components/storefront/product-variant-selector";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
@@ -10,6 +11,7 @@ import { getCart } from "@/features/cart/data";
 import { formatPrice } from "@/features/products/format-price";
 import { getProductImagePublicUrl } from "@/features/products/image-storage";
 import { getStorefrontProduct, getStorefrontProductImages } from "@/features/storefront/catalog";
+import { getStorefrontProductVariantsData } from "@/features/storefront/product-variants";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { getPublicEnv } from "@/lib/env";
 
@@ -108,7 +110,12 @@ export default async function StorefrontProductPage({ params }: PageProps) {
   // para main_image se a galeria estiver vazia (produto legado ainda
   // sem backfill aplicado, ou simplesmente sem nenhuma imagem além da
   // principal) — nunca "some" a imagem que o storefront já mostrava.
-  const galleryRows = await getStorefrontProductImages(tenant.id, product.id);
+  // D20.6 Fase 3.4 — opções/valores/variantes públicas deste produto,
+  // buscadas junto (mesma regra: só na página de detalhe, nunca na grade).
+  const [galleryRows, variantsData] = await Promise.all([
+    getStorefrontProductImages(tenant.id, product.id),
+    getStorefrontProductVariantsData(tenant.id, product.id),
+  ]);
   const galleryImages =
     galleryRows.length > 0
       ? galleryRows.map((image) => ({ id: image.id, url: getProductImagePublicUrl(image.path) }))
@@ -139,26 +146,45 @@ export default async function StorefrontProductPage({ params }: PageProps) {
             <h1 className="font-display text-display-lg-mobile text-on-surface md:text-display-lg">
               {product.name}
             </h1>
-            <div className="flex items-center gap-3">
-              {product.promotional_price !== null ? (
-                <>
+            {variantsData.options.length === 0 ? (
+              <div className="flex items-center gap-3">
+                {product.promotional_price !== null ? (
+                  <>
+                    <span className="font-headline text-headline-md text-on-surface">
+                      {formatPrice(product.promotional_price)}
+                    </span>
+                    <span className="font-body text-body-lg text-on-surface-variant line-through">
+                      {formatPrice(product.price)}
+                    </span>
+                  </>
+                ) : (
                   <span className="font-headline text-headline-md text-on-surface">
-                    {formatPrice(product.promotional_price)}
-                  </span>
-                  <span className="font-body text-body-lg text-on-surface-variant line-through">
                     {formatPrice(product.price)}
                   </span>
-                </>
-              ) : (
-                <span className="font-headline text-headline-md text-on-surface">
-                  {formatPrice(product.price)}
-                </span>
-              )}
-            </div>
+                )}
+              </div>
+            ) : null}
             {product.description ? (
               <p className="font-body text-body-lg text-on-surface-variant">{product.description}</p>
             ) : null}
-            <AddToCartButton inStock={product.inStock} productId={product.id} storeSlug={tenant.slug} />
+            {/*
+              D20.6 Fase 3.4 — produto sem nenhuma opção cadastrada: mesmo
+              AddToCartButton de sempre (Etapa 9/D20.4), comportamento
+              intocado. Produto com opções: ProductVariantSelector assume o
+              preço (variante resolvida prevalece, D20 §H) + seleção +
+              adicionar ao carrinho, nunca os dois ao mesmo tempo.
+            */}
+            {variantsData.options.length > 0 ? (
+              <ProductVariantSelector
+                options={variantsData.options}
+                product={{ price: product.price, promotional_price: product.promotional_price }}
+                productId={product.id}
+                storeSlug={tenant.slug}
+                variants={variantsData.variants}
+              />
+            ) : (
+              <AddToCartButton inStock={product.inStock} productId={product.id} storeSlug={tenant.slug} />
+            )}
           </div>
         </div>
       </div>

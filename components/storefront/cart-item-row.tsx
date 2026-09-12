@@ -40,8 +40,10 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
 
       <div className="min-w-0 flex-1">
         <p className="truncate font-label text-label-md text-on-surface">{item.product.name}</p>
+        {/* D20.6 Fase 3.5 — rótulo da variante ("Preto / M"), mesmo padrão já usado em order-summary.tsx (D20.5) para checkout/confirmação. */}
+        {item.variant?.label ? <p className="truncate font-body text-body-sm text-on-surface-variant">{item.variant.label}</p> : null}
         {item.available ? (
-          <p className="font-body text-body-sm text-on-surface-variant">{formatPrice(effectivePrice(item.product))}</p>
+          <p className="font-body text-body-sm text-on-surface-variant">{formatPrice(effectivePrice(item.product, item.variant))}</p>
         ) : (
           <p className="font-body text-body-sm text-error">Produto não está mais disponível</p>
         )}
@@ -72,7 +74,7 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
       ) : null}
 
       <p className="w-20 text-right font-label text-label-md text-on-surface">
-        {item.available ? formatPrice(effectivePrice(item.product) * item.quantity) : "—"}
+        {item.available ? formatPrice(effectivePrice(item.product, item.variant) * item.quantity) : "—"}
       </p>
 
       <button

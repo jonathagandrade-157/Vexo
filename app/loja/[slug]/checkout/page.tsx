@@ -163,8 +163,13 @@ export default async function CheckoutPage({ params }: PageProps) {
           items={availableItems.map((item) => ({
             name: item.product.name,
             quantity: item.quantity,
-            unitPrice: effectivePrice(item.product),
-            subtotal: lineSubtotal(item.product, item.quantity),
+            unitPrice: effectivePrice(item.product, item.variant),
+            subtotal: lineSubtotal(item.product, item.quantity, item.variant),
+            // D20.6 Fase 3.5 — mesmos campos que order-summary.tsx já suporta
+            // desde D20.5 (usados pela confirmação do pedido) — o checkout
+            // (a partir do carrinho ao vivo) nunca os preenchia até agora.
+            variantLabel: item.variant?.label ?? null,
+            variantId: item.variantId,
           }))}
           storeSlug={tenant.slug}
           subtotal={cart.subtotal}
