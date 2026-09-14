@@ -93,6 +93,8 @@ export interface ProductActionState {
   status: "idle" | "error" | "success";
   message?: string;
   fieldErrors?: Partial<Record<keyof ProductInput, string>>;
+  /** D20.7 — id do produto recém-criado, só em `status: "success"` de `createProductAction`. O cliente decide o que fazer com ele (concluir o upload das imagens selecionadas antes do save, depois navegar) — a Action não redireciona mais sozinha. */
+  productId?: string;
 }
 
 export const initialProductState: ProductActionState = { status: "idle" };

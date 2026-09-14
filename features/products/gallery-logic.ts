@@ -55,3 +55,60 @@ export function moveImageToFront(currentIds: readonly string[], targetId: string
   if (!currentIds.includes(targetId)) return null;
   return [targetId, ...currentIds.filter((id) => id !== targetId)];
 }
+
+/**
+ * D20.7 — move um item uma posição para a esquerda/direita dentro do
+ * array, preservando a ordem relativa dos demais. `null` quando o id não
+ * existe ou já está no limite (nada a mover) — mesmo formato de retorno
+ * de `moveImageToFront`. Genérica sobre `string[]`, reaproveitada pelo
+ * reorder por botões ←→ de imagens ainda não enviadas ao Storage
+ * (`ProductGalleryUploader`, seleção antes do primeiro save do produto).
+ */
+export function moveArrayItem(currentIds: readonly string[], targetId: string, direction: -1 | 1): string[] | null {
+  const index = currentIds.indexOf(targetId);
+  const targetIndex = index + direction;
+  if (index === -1 || targetIndex < 0 || targetIndex >= currentIds.length) return null;
+  const next = [...currentIds];
+  const [moved] = next.splice(index, 1);
+  next.splice(targetIndex, 0, moved!);
+  return next;
+}
+
+/**
+ * D20.7 — quantos arquivos de uma seleção múltipla cabem no limite da
+ * galeria, dado o que já existe (imagens já persistidas + já
+ * selecionadas/ainda não enviadas). Pura — usada por
+ * `ProductGalleryUploader` antes de sequer tentar estagiar qualquer
+ * arquivo além do limite.
+ */
+export function acceptableFileCount(currentCount: number, requestedCount: number, maxImages: number): number {
+  const remaining = Math.max(0, maxImages - currentCount);
+  return Math.min(remaining, Math.max(0, requestedCount));
+}
+
+export interface StagedUploadStep {
+  id: string;
+  /**
+   * `true` só para o primeiro item desta rodada, e só quando a galeria
+   * ainda não tem NENHUMA imagem persistida — mesma regra de sempre
+   * (principal = primeira da fila real, sort_order 0). Se o item marcado
+   * como tal falhar, quem consome este plano (`ProductGalleryUploader`)
+   * NUNCA deve tentar os seguintes desta rodada: um arquivo diferente do
+   * pretendido nunca pode virar "principal" silenciosamente (D20.7 Fase
+   * 4 §8) — os demais continuam pendentes, disponíveis para nova
+   * tentativa quando o problema do principal for resolvido.
+   */
+  isIntendedPrimary: boolean;
+}
+
+/**
+ * D20.7 — decide, para uma rodada de envio de arquivos ainda não
+ * enviados, a ordem de tentativa e qual deles é o "principal" pretendido
+ * — pura, sem I/O, testável sem o componente React que a consome. Nunca
+ * decide o que fazer com uma falha em si (isso só se sabe em tempo de
+ * execução, ao chamar de fato `prepareProductGalleryImageUploadAction`/
+ * `confirmProductGalleryImageUploadAction`) — só o plano inicial.
+ */
+export function planStagedUpload(itemIds: readonly string[], hasExistingImages: boolean): StagedUploadStep[] {
+  return itemIds.map((id, index) => ({ id, isIntendedPrimary: !hasExistingImages && index === 0 }));
+}

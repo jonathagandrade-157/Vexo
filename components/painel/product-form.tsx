@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { ProductGalleryUploader } from "@/components/painel/product-gallery-uploader";
 import { ProductOptionsEditor } from "@/components/painel/product-options-editor";
@@ -14,12 +15,12 @@ import { createProductAction, updateProductAction } from "@/features/products/ac
 import { initialProductState, type ProductGalleryImage } from "@/features/products/schema";
 import type { ProductOptionWithValues, ProductVariantRow } from "@/features/products/variants-data";
 
-function SaveButton({ label }: { label: string }) {
+function SaveButton({ label, disabled }: { label: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       className="flex items-center gap-2 rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6] disabled:cursor-not-allowed disabled:opacity-60"
-      disabled={pending}
+      disabled={pending || disabled}
       type="submit"
     >
       <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -59,8 +60,29 @@ interface ProductFormProps {
 
 /** Página dedicada (não modal) — igual ao padrão de `vexo_adicionar_produto_desktop` (Stitch), que mostra "Adicionar Produto" como página própria com "Voltar", diferente de categorias (modal inline). */
 export function ProductForm({ categories, product, galleryImages, inventory, initialOptions, initialVariants }: ProductFormProps) {
+  const router = useRouter();
   const action = product ? updateProductAction : createProductAction;
   const [state, formAction] = useActionState(action, initialProductState);
+
+  // D20.7 — id do produto para o resto do formulário usar: o já existente
+  // (edição), ou o que `createProductAction` acabou de devolver (criação
+  // recém-concluída nesta mesma instância do componente — a Action não
+  // redireciona mais sozinha, ver features/products/actions.ts). Nenhuma
+  // navegação de página acontece só por causa disso — é o que permite
+  // `ProductGalleryUploader` continuar com os MESMOS `File` já selecionados
+  // (um `File` não sobrevive a uma navegação/redirect).
+  const effectiveProductId = product?.id ?? (state.status === "success" ? state.productId : undefined);
+  const justCreated = !product && state.status === "success" && Boolean(state.productId);
+  const hasNavigatedRef = useRef(false);
+  const [galleryUploadsHadFailure, setGalleryUploadsHadFailure] = useState(false);
+
+  /** D20.7 — só relevante logo após uma criação (justCreated): decide se já pode navegar para a tela de edição de verdade, ou se precisa ficar aqui mostrando o que falhou (com "Tentar novamente", dentro do próprio ProductGalleryUploader). */
+  function handleGalleryUploadsSettled({ hasPending }: { hasPending: boolean }) {
+    setGalleryUploadsHadFailure(hasPending);
+    if (hasPending || hasNavigatedRef.current || !effectiveProductId) return;
+    hasNavigatedRef.current = true;
+    router.push(`/painel/produtos/${effectiveProductId}/editar`);
+  }
 
   // D20.6 Fase 3.3 — estado "levantado" para ProductForm: ProductOptionsEditor
   // e VariantsTable são dois componentes independentes (cada um com seu
@@ -89,7 +111,8 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
             {product ? "Editar produto" : "Adicionar produto"}
           </h1>
         </div>
-        <SaveButton label={product ? "Salvar alterações" : "Salvar produto"} />
+        {/* D20.7 — depois de criado, o form continua montado (mesma instância, sem navegar) só para terminar o upload das imagens já selecionadas: reenviar o form chamaria createProductAction de novo, criando um SEGUNDO produto. O botão fica desabilitado até a navegação para a tela de edição de verdade acontecer. */}
+        <SaveButton disabled={justCreated} label={product ? "Salvar alterações" : justCreated ? "Produto salvo" : "Salvar produto"} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -134,13 +157,25 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
               <span className="material-symbols-outlined text-primary">image</span>
               Mídia
             </h2>
-            {product ? (
-              <ProductGalleryUploader initialImages={galleryImages ?? []} productId={product.id} />
-            ) : (
-              <p className="font-body text-body-sm text-on-surface-variant">
-                Salve o produto primeiro para adicionar uma imagem — a próxima tela já abre pronta para isso.
+            {/*
+              D20.7 — antes só disponível na edição (o path do Storage
+              dependia de um product_id real). Agora sempre renderizado:
+              sem produto ainda, `ProductGalleryUploader` guarda os
+              arquivos localmente (preview, reorder, principal, tudo sem
+              rede); assim que `effectiveProductId` existir (produto
+              criado nesta mesma instância do formulário, sem navegar), o
+              próprio componente envia o que foi selecionado.
+            */}
+            <ProductGalleryUploader
+              initialImages={galleryImages ?? []}
+              onUploadsSettled={!product ? handleGalleryUploadsSettled : undefined}
+              productId={effectiveProductId}
+            />
+            {justCreated && galleryUploadsHadFailure ? (
+              <p className="mt-3 font-body text-body-sm text-on-surface-variant" role="status">
+                Produto criado, mas algumas imagens não foram enviadas — veja acima.
               </p>
-            )}
+            ) : null}
           </section>
         </div>
 

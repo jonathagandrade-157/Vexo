@@ -7,6 +7,7 @@ import {
   PRODUCT_GALLERY_MAX_IMAGES,
   PRODUCT_IMAGE_MAX_BYTES,
   sniffImageMime,
+  validateClientSideImageFile,
   validateProductImageUploadRequest,
 } from "@/features/products/image-storage";
 
@@ -346,6 +347,48 @@ describe("isValidProductGalleryImagePath", () => {
   it("rejeita path arbitrário/malformado", () => {
     expect(isValidProductGalleryImagePath("../t/products/p/gallery/i.jpg", "t", "p", "i")).toBe(false);
     expect(isValidProductGalleryImagePath("", "t", "p", "i")).toBe(false);
+  });
+});
+
+/**
+ * D20.7 — validação client-side RÁPIDA (UX) de um arquivo selecionado
+ * localmente, antes do produto existir — nunca a autoridade real (que
+ * continua sendo `validateProductImageUploadRequest`, com os bytes reais,
+ * já testada acima). Cobre "arquivo inválido é rejeitado" e "arquivo
+ * acima do limite é rejeitado" do checklist da Etapa 20.7.
+ */
+describe("validateClientSideImageFile (D20.7)", () => {
+  it("aceita um JPEG/PNG/WebP dentro do limite de 5MB", () => {
+    expect(validateClientSideImageFile({ type: "image/jpeg", size: 1024 })).toEqual({ ok: true });
+    expect(validateClientSideImageFile({ type: "image/png", size: 1024 })).toEqual({ ok: true });
+    expect(validateClientSideImageFile({ type: "image/webp", size: 1024 })).toEqual({ ok: true });
+  });
+
+  it("rejeita um tipo não suportado (ex.: PDF, SVG)", () => {
+    expect(validateClientSideImageFile({ type: "application/pdf", size: 1024 })).toEqual({
+      ok: false,
+      error: "unsupported_type",
+    });
+    expect(validateClientSideImageFile({ type: "image/svg+xml", size: 1024 })).toEqual({
+      ok: false,
+      error: "unsupported_type",
+    });
+  });
+
+  it("rejeita um arquivo acima do limite de 5MB, mesmo com tipo válido", () => {
+    expect(validateClientSideImageFile({ type: "image/jpeg", size: 5 * 1024 * 1024 + 1 })).toEqual({
+      ok: false,
+      error: "too_large",
+    });
+  });
+
+  it("aceita exatamente 5MB (mesmo limite de PRODUCT_IMAGE_MAX_BYTES)", () => {
+    expect(validateClientSideImageFile({ type: "image/jpeg", size: PRODUCT_IMAGE_MAX_BYTES })).toEqual({ ok: true });
+  });
+
+  it("rejeita um arquivo de tamanho zero/negativo como vazio", () => {
+    expect(validateClientSideImageFile({ type: "image/jpeg", size: 0 })).toEqual({ ok: false, error: "empty" });
+    expect(validateClientSideImageFile({ type: "image/jpeg", size: -1 })).toEqual({ ok: false, error: "empty" });
   });
 });
 

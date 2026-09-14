@@ -184,11 +184,17 @@ export async function createProductAction(
   await applyProductStock(supabase, resolved.tenantId, created.id, parsed.data.stockQuantity, parsed.data.lowStockThreshold);
 
   revalidatePath("/painel/produtos");
-  // Etapa 8: vai direto para a edição em vez da lista — é lá que a
-  // imagem pode ser adicionada, já com um product_id real para compor o
-  // path do Storage (arquitetura §9.2: o path nunca é conhecido antes de
-  // o produto existir).
-  redirect(`/painel/produtos/${created.id}/editar`);
+  // D20.7 — nunca mais redireciona sozinha: `ProductGalleryUploader` pode
+  // ter arquivos selecionados ANTES do save (Etapa 20.7), que só podem
+  // ser enviados agora que um product_id real existe (arquitetura §9.2 —
+  // o path do Storage sempre dependeu disso). Um `redirect()` aqui
+  // interromperia a resposta antes do cliente poder terminar esses
+  // uploads, e um `File` selecionado no navegador não sobrevive a uma
+  // navegação de página de qualquer forma. `ProductForm` (única
+  // chamadora) decide quando navegar — imediatamente, se não havia
+  // nenhuma imagem selecionada (mesmo efeito prático de antes), ou só
+  // depois de tentar os uploads pendentes.
+  return { status: "success", productId: created.id };
 }
 
 export async function updateProductAction(

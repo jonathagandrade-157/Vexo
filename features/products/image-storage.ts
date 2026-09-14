@@ -105,6 +105,30 @@ export function validateProductImageUploadRequest(
 
 const ALL_PRODUCT_IMAGE_MIMES: readonly ProductImageMime[] = ["image/jpeg", "image/png", "image/webp"];
 
+export type ClientImageValidationError = "empty" | "too_large" | "unsupported_type";
+
+/**
+ * D20.7 — validação client-side RÁPIDA (só UX: feedback imediato antes de
+ * sequer tentar preparar o upload) de um arquivo selecionado localmente,
+ * antes do produto existir. NUNCA a autoridade real — `file.type` é só o
+ * que o navegador infere da extensão do nome, nunca os bytes reais do
+ * arquivo; a única validação que importa de verdade continua sendo
+ * `validateProductImageUploadRequest` (bytes mágicos via `sniffImageMime`),
+ * que roda no servidor em `prepareProductGalleryImageUploadAction` no
+ * momento do upload de cada imagem, exatamente como já acontecia antes
+ * desta etapa — esta função só evita uma viagem ao servidor para um
+ * arquivo obviamente inválido.
+ */
+export function validateClientSideImageFile(file: {
+  type: string;
+  size: number;
+}): { ok: true } | { ok: false; error: ClientImageValidationError } {
+  if (!Number.isFinite(file.size) || file.size <= 0) return { ok: false, error: "empty" };
+  if (file.size > PRODUCT_IMAGE_MAX_BYTES) return { ok: false, error: "too_large" };
+  if (!ALL_PRODUCT_IMAGE_MIMES.includes(file.type as ProductImageMime)) return { ok: false, error: "unsupported_type" };
+  return { ok: true };
+}
+
 /**
  * D11.8 — o cliente devolve o `path` recebido de `createSignedUploadUrl`
  * ao confirmar o upload, mas o servidor nunca confia nele: recomputa,
