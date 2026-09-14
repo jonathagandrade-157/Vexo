@@ -30,6 +30,23 @@ import type { ProductOptionValueRow, ProductOptionWithValues } from "@/features/
 
 type ActionResult = { status: string; message?: string };
 
+/**
+ * D20.8.1 — só apresentação (Melhoria 1): um ícone por preset, reaproveitando
+ * o MESMO sistema de ícones já usado em todo o painel (Material Symbols via
+ * `.material-symbols-outlined`, nenhuma biblioteca nova) — nunca emoji, para
+ * não conflitar com o design system existente. Fica aqui (não em
+ * option-presets.ts) porque é puramente visual — o arquivo de dados
+ * continua sem nenhuma dependência de apresentação.
+ */
+const PRESET_ICONS: Record<string, string> = {
+  cor: "palette",
+  tamanho: "straighten",
+  voltagem: "bolt",
+  capacidade: "database",
+  modelo: "smartphone",
+  material: "texture",
+};
+
 /** D20.8 — mesmo formato das 4 Server Actions de valores (create/update/delete/reorder): em modo staged, cada uma vira uma mutação puramente local (staged-options-logic.ts) em vez de uma chamada de rede — `OptionValuesEditor` chama sempre da mesma forma, sem saber qual dos dois é. */
 interface ValueActions {
   create: (optionId: string, value: string) => Promise<ProductOptionValueActionState>;
@@ -303,31 +320,38 @@ export function ProductOptionsEditor({
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
+        <div>
+          <p className="font-label text-label-md text-on-surface">Adicionar opção</p>
+          <p className="font-body text-body-sm text-on-surface-variant">Escolha uma opção sugerida ou crie uma personalizada.</p>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           {OPTION_PRESETS.map((preset) => (
             <button
-              className="rounded-lg border border-outline-variant/50 px-3 py-1.5 font-label text-label-sm text-on-surface transition-colors hover:border-primary/50 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg border border-outline-variant/50 px-3 py-2 font-label text-label-sm text-on-surface transition-colors hover:border-primary/50 hover:bg-surface-container-lowest disabled:opacity-50"
               disabled={isCreatingOption}
               key={preset.key}
               onClick={() => handleAddPresetOption(preset)}
               type="button"
             >
+              <span className="material-symbols-outlined text-[16px] text-primary">{PRESET_ICONS[preset.key] ?? "sell"}</span>
               {preset.label}
             </button>
           ))}
           <button
-            className="rounded-lg border border-dashed border-outline-variant/50 px-3 py-1.5 font-label text-label-sm text-on-surface-variant transition-colors hover:border-primary/50 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-outline-variant/50 px-3 py-2 font-label text-label-sm text-on-surface-variant transition-colors hover:border-primary/50 hover:text-on-surface disabled:opacity-50"
             disabled={isCreatingOption}
             onClick={() => setShowCustomInput((v) => !v)}
             type="button"
           >
-            <span className="material-symbols-outlined align-middle text-[16px]">add</span> Personalizada
+            <span className="material-symbols-outlined text-[16px]">add</span>
+            Personalizada
           </button>
         </div>
 
         {showCustomInput ? (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               className={`flex-1 ${INPUT_CLASS}`}
               disabled={isCreatingOption}
@@ -444,12 +468,16 @@ function OptionRow({
           />
         ) : (
           <button
-            className="flex-1 text-left font-label text-label-md text-on-surface disabled:opacity-60"
+            className="flex flex-1 items-baseline gap-2 text-left disabled:opacity-60"
             disabled={isPending}
             onClick={() => setIsEditing(true)}
             type="button"
           >
-            {option.name}
+            <span className="font-label text-label-md text-on-surface">{option.name}</span>
+            {/* D20.8.1 Melhoria 4 — contador discreto, sempre lido de option.values.length (a mesma prop que já rege os chips abaixo), nunca um estado próprio — atualiza sozinho a cada adição/remoção. */}
+            <span className="font-body text-body-sm text-on-surface-variant">
+              {option.values.length} valor{option.values.length === 1 ? "" : "es"}
+            </span>
           </button>
         )}
 
@@ -591,8 +619,10 @@ function OptionValuesEditor({
         <p className="font-body text-body-sm text-on-surface-variant">Nenhum valor cadastrado.</p>
       )}
 
-      <div className="flex items-center gap-2">
+      {/* D20.8.1 Melhoria 2 — "Digitar → Enter → adicionar valor" já funciona (onKeyDown abaixo, com preventDefault — nunca dispara o submit principal do formulário, mesmo antes do produto existir). Só o rótulo do botão mudou, de ícone isolado para texto + ícone ("+ Adicionar valor"), mais descobrível. */}
+      <div className="flex flex-wrap items-center gap-2">
         <input
+          aria-label="Novo valor"
           className={`w-40 ${INPUT_CLASS} py-1.5`}
           disabled={isCreating}
           onChange={(e) => setNewValue(e.target.value)}
@@ -607,13 +637,13 @@ function OptionValuesEditor({
           value={newValue}
         />
         <button
-          aria-label="Adicionar valor"
-          className="rounded-lg border border-outline-variant/50 p-1.5 text-on-surface-variant transition-colors hover:border-primary/50 hover:text-on-surface disabled:opacity-50"
+          className="flex items-center gap-1 rounded-lg border border-outline-variant/50 px-2.5 py-1.5 font-label text-label-sm text-on-surface-variant transition-colors hover:border-primary/50 hover:text-on-surface disabled:opacity-50"
           disabled={isCreating || newValue.trim().length === 0}
           onClick={handleCreate}
           type="button"
         >
-          <span className="material-symbols-outlined text-[18px]">add</span>
+          <span className="material-symbols-outlined text-[16px]">add</span>
+          Adicionar valor
         </button>
       </div>
 

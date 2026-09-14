@@ -76,6 +76,33 @@ export function VariantsTable({
     }
   }
 
+  /**
+   * D20.8.1 — Melhorias 5/6/7: prévia local da quantidade de combinações,
+   * calculada com as MESMAS funções puras que já regem a geração de
+   * verdade (`generateCombinations`/`checkVariantGenerationPreconditions`/
+   * `checkVariantCountLimit`, D20.6/D20.8 — nenhuma regra nova, nenhum
+   * segundo algoritmo). Só apresentação: nunca decide o que
+   * `handleGenerate` faz de fato, só informa o lojista ANTES do clique.
+   */
+  const combinationPreview = useMemo(() => {
+    if (initialOptions.length === 0) return null;
+
+    const precondition = checkVariantGenerationPreconditions(initialOptions);
+    if (!precondition.ok) return { ready: false as const, message: precondition.message };
+
+    const combinations = generateCombinations(
+      initialOptions.map((option) => ({ optionId: option.id, valueIds: option.values.map((value) => value.id) })),
+    );
+    const countCheck = checkVariantCountLimit(combinations.length);
+
+    return {
+      ready: true as const,
+      comboCount: combinations.length,
+      withinLimit: countCheck.ok,
+      limitMessage: countCheck.ok ? undefined : countCheck.message,
+    };
+  }, [initialOptions]);
+
   const valueLabels = useMemo(() => {
     const map = new Map<string, { optionPosition: number; value: string }>();
     for (const option of initialOptions) {
@@ -197,13 +224,25 @@ export function VariantsTable({
 
   const hasOptions = initialOptions.length > 0;
 
+  // D20.8.1 Melhoria 6 — só mostra uma contagem no rótulo do botão quando
+  // ela é segura/exata (dentro do limite); nas demais situações o rótulo
+  // genérico de sempre — o CLIQUE continua validando/gerando exatamente
+  // como antes (esta etiqueta nunca decide nada, só informa).
+  const generateLabel =
+    variants.length > 0
+      ? "Atualizar combinações"
+      : combinationPreview?.ready && combinationPreview.withinLimit
+        ? `Gerar ${combinationPreview.comboCount} variante${combinationPreview.comboCount === 1 ? "" : "s"}`
+        : "Gerar combinações";
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-label text-label-lg text-on-surface">Variantes</h3>
+          <h3 className="font-label text-label-lg text-on-surface">Variantes do produto</h3>
           <p className="font-body text-body-sm text-on-surface-variant">
-            Gere as combinações a partir das opções cadastradas — combinações já existentes nunca são duplicadas.
+            Combine as opções acima para criar automaticamente cada variação do produto — combinações já existentes nunca são
+            duplicadas.
           </p>
         </div>
         <button
@@ -213,12 +252,14 @@ export function VariantsTable({
           type="button"
         >
           <span className="material-symbols-outlined text-[18px]">{isGenerating ? "progress_activity" : "auto_awesome"}</span>
-          {variants.length > 0 ? "Atualizar combinações" : "Gerar combinações"}
+          {generateLabel}
         </button>
       </div>
 
       {!hasOptions ? (
-        <p className="font-body text-body-sm text-on-surface-variant">Cadastre opções e valores para poder gerar variantes.</p>
+        <p className="font-body text-body-sm text-on-surface-variant">
+          Este produto não possui opções. Produtos simples continuam funcionando normalmente.
+        </p>
       ) : null}
 
       {error ? (
@@ -235,10 +276,37 @@ export function VariantsTable({
         </p>
       ) : null}
 
-      {variants.length === 0 ? (
-        <p className="font-body text-body-sm text-on-surface-variant">Nenhuma variante gerada ainda.</p>
-      ) : (
+      {/* D20.8.1 Melhorias 5/7/8 — prévia local ("antes de gerar") ou contagem do que já existe ("depois de gerar"); nunca substitui o `error`/`notice` acima, que continuam sendo a fonte real do que aconteceu num clique. */}
+      {hasOptions && variants.length === 0 ? (
+        combinationPreview?.ready ? (
+          <div className="flex flex-col gap-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-3">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {initialOptions.map((option) => (
+                <span className="font-body text-body-sm text-on-surface-variant" key={option.id}>
+                  {option.name}: {option.values.length} valor{option.values.length === 1 ? "" : "es"}
+                </span>
+              ))}
+            </div>
+            <p className="font-label text-label-sm text-on-surface">
+              Total: {combinationPreview.comboCount} combinaç{combinationPreview.comboCount === 1 ? "ão" : "ões"}
+            </p>
+            {!combinationPreview.withinLimit ? (
+              <p className="font-body text-body-sm text-error" role="alert">
+                {combinationPreview.limitMessage}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="font-body text-body-sm text-on-surface-variant">Nenhuma variante criada ainda. {combinationPreview?.message}</p>
+        )
+      ) : null}
+
+      {variants.length > 0 ? (
         <>
+          <p className="font-label text-label-sm text-on-surface">
+            {variants.length} variante{variants.length === 1 ? "" : "s"} criada{variants.length === 1 ? "" : "s"}
+          </p>
+
           {/* Desktop: tabela */}
           <div className="hidden overflow-hidden rounded-xl border border-surface-container-highest bg-[#121212] md:block">
             <table className="w-full min-w-[720px] border-collapse text-left">
@@ -280,7 +348,7 @@ export function VariantsTable({
             ))}
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
