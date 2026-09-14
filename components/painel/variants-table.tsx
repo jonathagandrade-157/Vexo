@@ -3,37 +3,78 @@
 import { useMemo, useState } from "react";
 
 import { formatPrice } from "@/features/products/format-price";
+import { checkVariantCountLimit, checkVariantGenerationPreconditions, diffVariantCombinations, generateCombinations } from "@/features/products/variant-combinations";
 import {
   generateProductVariantsAction,
   toggleProductVariantStatusAction,
   updateProductVariantAction,
 } from "@/features/products/variants-actions";
 import type { ProductOptionWithValues, ProductVariantRow } from "@/features/products/variants-data";
+import { updateProductVariantSchema, type ProductVariantActionState } from "@/features/products/variants-schema";
 
 const INPUT_CLASS =
   "w-full rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-2.5 py-1.5 font-body text-body-sm text-on-surface placeholder:text-on-surface-variant focus:border-primary/50 focus:outline-none";
 
+/** D20.8 — mesmo formato de updateProductVariantAction/toggleProductVariantStatusAction: em modo staged, cada uma vira uma mutação puramente local em vez de uma chamada de rede — a linha/card de variante chama sempre da mesma forma, sem saber qual dos dois é. */
+interface VariantActions {
+  update: (variantId: string, input: { sku?: string; price: number; promotionalPrice?: number }) => Promise<ProductVariantActionState>;
+  toggleStatus: (variantId: string, isActive: boolean) => Promise<ProductVariantActionState>;
+}
+
 /**
- * D20.6 Fase 3.2 — geração e gerenciamento de product_variants. Recebe as
- * opções/valores e as variantes já carregadas pelo Server Component que o
- * renderizar (mesmo padrão de `ProductOptionsEditor`/`ProductGalleryUploader`:
- * o componente nunca busca dados sozinho) — ainda não integrado a nenhuma
- * página (fora do escopo desta fase, mesmo precedente da Fase 3.1).
+ * D20.6 Fase 3.2 — geração e gerenciamento de product_variants.
+ *
+ * D20.8 — `productId` passou a ser OPCIONAL: `undefined` significa
+ * "produto ainda não salvo". Nesse caso, `variants`/`onVariantsChange`
+ * (obrigatórios juntos quando `productId` está ausente) controlam a
+ * lista de fora (`ProductForm`, para a persistência depois que
+ * `createProductAction` devolve um `productId` real) — "Gerar
+ * combinações" reaproveita exatamente `generateCombinations`/
+ * `diffVariantCombinations`/`checkVariantGenerationPreconditions`/
+ * `checkVariantCountLimit` (as MESMAS funções puras que
+ * `generateProductVariantsAction` usa no servidor — nenhum segundo
+ * algoritmo) em vez de chamar a Action; editar SKU/preço/preço
+ * promocional/status reaproveita `updateProductVariantSchema` (mesma
+ * validação, nunca duplicada) para validar localmente antes de aplicar.
+ * `defaultPrice` semeia o preço de cada variante recém-gerada (staged) —
+ * em modo de edição a Action já lê o preço real do produto no banco,
+ * este valor é ignorado.
+ *
+ * Em modo de edição (`productId` já definido), o comportamento é
+ * idêntico ao de antes da Etapa 20.8.
  */
 export function VariantsTable({
   productId,
   initialOptions,
   initialVariants,
+  variants: stagedVariantsProp,
+  onVariantsChange,
+  defaultPrice,
 }: {
-  productId: string;
+  productId?: string;
   initialOptions: ProductOptionWithValues[];
-  initialVariants: ProductVariantRow[];
+  initialVariants?: ProductVariantRow[];
+  /** D20.8 — obrigatório junto com onVariantsChange quando productId é undefined. */
+  variants?: ProductVariantRow[];
+  onVariantsChange?: (variants: ProductVariantRow[]) => void;
+  defaultPrice?: number;
 }) {
-  const [variants, setVariants] = useState<ProductVariantRow[]>(initialVariants);
+  const isStaged = !productId;
+  const [internalVariants, setInternalVariants] = useState<ProductVariantRow[]>(initialVariants ?? []);
+  const variants = isStaged ? (stagedVariantsProp ?? []) : internalVariants;
+
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewVariantIds, setReviewVariantIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  function applyVariants(next: ProductVariantRow[]) {
+    if (isStaged) {
+      onVariantsChange?.(next);
+    } else {
+      setInternalVariants(next);
+    }
+  }
 
   const valueLabels = useMemo(() => {
     const map = new Map<string, { optionPosition: number; value: string }>();
@@ -59,12 +100,58 @@ export function VariantsTable({
     setNotice(null);
     setIsGenerating(true);
     try {
+      if (!productId) {
+        const precondition = checkVariantGenerationPreconditions(initialOptions);
+        if (!precondition.ok) {
+          setError(precondition.message);
+          return;
+        }
+
+        const combinations = generateCombinations(
+          initialOptions.map((option) => ({ optionId: option.id, valueIds: option.values.map((value) => value.id) })),
+        );
+        const countCheck = checkVariantCountLimit(combinations.length);
+        if (!countCheck.ok) {
+          setError(countCheck.message);
+          return;
+        }
+
+        const diff = diffVariantCombinations(
+          combinations,
+          variants.map((v) => ({ id: v.id, optionValueIds: v.optionValueIds })),
+        );
+
+        if (diff.toCreate.length === 0) {
+          setReviewVariantIds(diff.reviewVariantIds);
+          setNotice(
+            diff.reviewVariantIds.length > 0
+              ? "Nenhuma combinação nova para gerar. Algumas variantes existentes não correspondem mais às opções/valores atuais — revise-as."
+              : "Nenhuma combinação nova para gerar — todas já existem.",
+          );
+          return;
+        }
+
+        const created: ProductVariantRow[] = diff.toCreate.map((combination) => ({
+          id: crypto.randomUUID(),
+          sku: null,
+          price: defaultPrice ?? 0,
+          promotionalPrice: null,
+          isActive: true,
+          optionValueIds: combination,
+        }));
+
+        applyVariants([...variants, ...created]);
+        setReviewVariantIds(diff.reviewVariantIds);
+        setNotice(`${created.length} combinação(ões) gerada(s).`);
+        return;
+      }
+
       const result = await generateProductVariantsAction(productId);
       if (result.status === "error") {
         setError(result.message ?? "Não foi possível gerar as combinações.");
         return;
       }
-      if (result.variants) setVariants(result.variants);
+      if (result.variants) applyVariants(result.variants);
       setReviewVariantIds(result.reviewVariantIds ?? []);
       if (result.message) setNotice(result.message);
     } finally {
@@ -72,9 +159,41 @@ export function VariantsTable({
     }
   }
 
-  function handleVariantChange(updated: ProductVariantRow[]) {
-    setVariants(updated);
-  }
+  const variantActions: VariantActions = productId
+    ? { update: updateProductVariantAction, toggleStatus: toggleProductVariantStatusAction }
+    : {
+        update: async (variantId, input) => {
+          const parsed = updateProductVariantSchema.safeParse({ variantId, ...input });
+          if (!parsed.success) {
+            const fieldErrors: ProductVariantActionState["fieldErrors"] = {};
+            for (const issue of parsed.error.issues) {
+              const key = issue.path[0];
+              if (key === "sku" || key === "price" || key === "promotionalPrice") fieldErrors[key] ??= issue.message;
+            }
+            return { status: "error", fieldErrors, message: "Verifique os campos destacados." };
+          }
+          // D20.8 — só um best-effort de UX contra colisão DENTRO das variantes já staged deste produto (o servidor é a autoridade real, SKU é único por TENANT inteiro — checado de verdade quando a variante for persistida, Fase de persistência).
+          if (parsed.data.sku && variants.some((v) => v.id !== variantId && v.sku === parsed.data.sku)) {
+            return {
+              status: "error",
+              fieldErrors: { sku: "Já existe uma variante com esse SKU nesta loja." },
+              message: "Verifique os campos destacados.",
+            };
+          }
+          const next = variants.map((v) =>
+            v.id === variantId
+              ? { ...v, sku: parsed.data.sku ?? null, price: parsed.data.price, promotionalPrice: parsed.data.promotionalPrice ?? null }
+              : v,
+          );
+          applyVariants(next);
+          return { status: "success", variants: next };
+        },
+        toggleStatus: async (variantId, isActive) => {
+          const next = variants.map((v) => (v.id === variantId ? { ...v, isActive } : v));
+          applyVariants(next);
+          return { status: "success", variants: next };
+        },
+      };
 
   const hasOptions = initialOptions.length > 0;
 
@@ -135,10 +254,11 @@ export function VariantsTable({
               <tbody className="divide-y divide-surface-container-highest">
                 {variants.map((variant) => (
                   <VariantRow
+                    actions={variantActions}
                     key={variant.id}
                     label={combinationLabel(variant.optionValueIds)}
                     needsReview={reviewVariantIds.includes(variant.id)}
-                    onChange={handleVariantChange}
+                    onChange={applyVariants}
                     variant={variant}
                   />
                 ))}
@@ -150,10 +270,11 @@ export function VariantsTable({
           <div className="flex flex-col gap-3 md:hidden">
             {variants.map((variant) => (
               <VariantCard
+                actions={variantActions}
                 key={variant.id}
                 label={combinationLabel(variant.optionValueIds)}
                 needsReview={reviewVariantIds.includes(variant.id)}
-                onChange={handleVariantChange}
+                onChange={applyVariants}
                 variant={variant}
               />
             ))}
@@ -165,7 +286,7 @@ export function VariantsTable({
 }
 
 /** Estado/lógica de edição compartilhado entre a linha (desktop) e o card (mobile) — nunca duplicado entre os dois. */
-function useVariantEditor(variant: ProductVariantRow, onChange: (variants: ProductVariantRow[]) => void) {
+function useVariantEditor(variant: ProductVariantRow, onChange: (variants: ProductVariantRow[]) => void, actions: VariantActions) {
   const [sku, setSku] = useState(variant.sku ?? "");
   const [price, setPrice] = useState(String(variant.price));
   const [promotionalPrice, setPromotionalPrice] = useState(variant.promotionalPrice !== null ? String(variant.promotionalPrice) : "");
@@ -181,7 +302,7 @@ function useVariantEditor(variant: ProductVariantRow, onChange: (variants: Produ
       const trimmedPromo = promotionalPrice.trim();
       const promoNumber = trimmedPromo === "" ? undefined : Number(trimmedPromo.replace(",", "."));
 
-      const result = await updateProductVariantAction(variant.id, {
+      const result = await actions.update(variant.id, {
         sku: sku.trim() || undefined,
         price: priceNumber,
         promotionalPrice: promoNumber,
@@ -200,7 +321,7 @@ function useVariantEditor(variant: ProductVariantRow, onChange: (variants: Produ
     setError(null);
     setIsTogglingStatus(true);
     try {
-      const result = await toggleProductVariantStatusAction(variant.id, !variant.isActive);
+      const result = await actions.toggleStatus(variant.id, !variant.isActive);
       if (result.status === "error") {
         setError(result.message ?? "Não foi possível atualizar o status.");
         return;
@@ -256,13 +377,15 @@ function VariantRow({
   label,
   needsReview,
   onChange,
+  actions,
 }: {
   variant: ProductVariantRow;
   label: string;
   needsReview: boolean;
   onChange: (variants: ProductVariantRow[]) => void;
+  actions: VariantActions;
 }) {
-  const editor = useVariantEditor(variant, onChange);
+  const editor = useVariantEditor(variant, onChange, actions);
 
   return (
     <tr className={needsReview ? "bg-amber-500/5" : undefined}>
@@ -316,13 +439,15 @@ function VariantCard({
   label,
   needsReview,
   onChange,
+  actions,
 }: {
   variant: ProductVariantRow;
   label: string;
   needsReview: boolean;
   onChange: (variants: ProductVariantRow[]) => void;
+  actions: VariantActions;
 }) {
-  const editor = useVariantEditor(variant, onChange);
+  const editor = useVariantEditor(variant, onChange, actions);
 
   return (
     <div

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,8 +12,15 @@ import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
 import { createProductAction, updateProductAction } from "@/features/products/actions";
+import {
+  emptyStagedConfigProgress,
+  persistStagedProductConfiguration,
+  type StagedConfigProgress,
+} from "@/features/products/persist-staged-configuration";
 import { initialProductState, type ProductGalleryImage } from "@/features/products/schema";
 import type { ProductOptionWithValues, ProductVariantRow } from "@/features/products/variants-data";
+
+type ConfigPersistStatus = "idle" | "pending" | "success" | "error";
 
 function SaveButton({ label, disabled }: { label: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
@@ -69,20 +76,13 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
   // recém-concluída nesta mesma instância do componente — a Action não
   // redireciona mais sozinha, ver features/products/actions.ts). Nenhuma
   // navegação de página acontece só por causa disso — é o que permite
-  // `ProductGalleryUploader` continuar com os MESMOS `File` já selecionados
-  // (um `File` não sobrevive a uma navegação/redirect).
+  // `ProductGalleryUploader`/`ProductOptionsEditor`/`VariantsTable`
+  // continuarem com os MESMOS dados staged (um `File` selecionado, ou
+  // opções/valores/variantes montados em memória) já preenchidos.
   const effectiveProductId = product?.id ?? (state.status === "success" ? state.productId : undefined);
   const justCreated = !product && state.status === "success" && Boolean(state.productId);
   const hasNavigatedRef = useRef(false);
   const [galleryUploadsHadFailure, setGalleryUploadsHadFailure] = useState(false);
-
-  /** D20.7 — só relevante logo após uma criação (justCreated): decide se já pode navegar para a tela de edição de verdade, ou se precisa ficar aqui mostrando o que falhou (com "Tentar novamente", dentro do próprio ProductGalleryUploader). */
-  function handleGalleryUploadsSettled({ hasPending }: { hasPending: boolean }) {
-    setGalleryUploadsHadFailure(hasPending);
-    if (hasPending || hasNavigatedRef.current || !effectiveProductId) return;
-    hasNavigatedRef.current = true;
-    router.push(`/painel/produtos/${effectiveProductId}/editar`);
-  }
 
   // D20.6 Fase 3.3 — estado "levantado" para ProductForm: ProductOptionsEditor
   // e VariantsTable são dois componentes independentes (cada um com seu
@@ -94,7 +94,102 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
   // servidor sempre lê o estado real do banco), só um rótulo desatualizado
   // na tela. `onOptionsChange` (Fase 3.3, prop opcional/aditiva) mantém as
   // duas visões sincronizadas sem precisar de contexto/store global.
+  //
+  // D20.8 — a MESMA lista `options` agora também serve de estado staged
+  // (opções/valores montados ANTES do primeiro save, quando `product` é
+  // undefined): `ProductOptionsEditor`/`VariantsTable` decidem sozinhos,
+  // por `productId`, se leem/escrevem via Server Action ou só localmente
+  // (nunca uma segunda árvore de estado paralela). `stagedVariants` é o
+  // equivalente para a tabela de variantes — só relevante antes do save,
+  // vazio depois (a edição usa `initialVariants`, sem mudança).
   const [options, setOptions] = useState<ProductOptionWithValues[]>(initialOptions ?? []);
+  const [stagedVariants, setStagedVariants] = useState<ProductVariantRow[]>([]);
+
+  // D20.8 — preço do produto precisa estar disponível em JS (não só no
+  // DOM) para semear o preço-padrão de uma variante staged recém-gerada
+  // (mesma regra de generateProductVariantsAction: preço da variante nova
+  // = preço do produto) — único campo do formulário que passa a ser
+  // controlado por esse motivo; todos os outros continuam `defaultValue`
+  // (não controlados), sem mudança de comportamento.
+  const [priceValue, setPriceValue] = useState(product?.price !== undefined ? String(product.price) : "");
+  const defaultVariantPrice = Number(priceValue.replace(",", ".")) || 0;
+
+  const [configPersistState, setConfigPersistState] = useState<{
+    status: ConfigPersistStatus;
+    message?: string;
+    progress: StagedConfigProgress;
+  }>({ status: "idle", progress: emptyStagedConfigProgress() });
+
+  // D20.8/D20.7 — refs (não state) para as duas condições de "pode
+  // navegar": lidas dentro de callbacks assíncronos que podem retomar
+  // depois de várias renderizações (mesmo motivo de hasNavigatedRef já
+  // existente) — um `useState` lido por uma closure antiga poderia ficar
+  // desatualizado; um ref lido a qualquer momento reflete sempre o valor
+  // mais recente.
+  const gallerySettledRef = useRef(false);
+  const galleryHasFailureRef = useRef(false);
+  const configStatusRef = useRef<ConfigPersistStatus>("idle");
+
+  /** D20.7/D20.8 — só navega quando TODO staging pendente (imagens E opções/valores/variantes) chegou a um estado terminal sem falha — nunca antes, nunca com uma falha pendente (o lojista precisa ver o que falhou e poder tentar de novo, ainda nesta tela). */
+  function attemptNavigate() {
+    if (hasNavigatedRef.current || !effectiveProductId) return;
+    if (!gallerySettledRef.current || galleryHasFailureRef.current) return;
+    if (configStatusRef.current === "pending" || configStatusRef.current === "error") return;
+    hasNavigatedRef.current = true;
+    router.push(`/painel/produtos/${effectiveProductId}/editar`);
+  }
+
+  /** D20.7 — chamado toda vez que uma rodada de envio dos arquivos pendentes de ProductGalleryUploader termina. */
+  function handleGalleryUploadsSettled({ hasPending }: { hasPending: boolean }) {
+    gallerySettledRef.current = true;
+    galleryHasFailureRef.current = hasPending;
+    setGalleryUploadsHadFailure(hasPending);
+    attemptNavigate();
+  }
+
+  /**
+   * D20.8 — depois que `createProductAction` devolve um `productId` real,
+   * persiste as opções/valores/variantes staged usando as MESMAS Server
+   * Actions de D20.6 (persist-staged-configuration.ts). Nunca recria o
+   * produto (ele já existe); numa falha, o progresso já feito fica
+   * guardado em `configPersistState.progress` — uma nova chamada com o
+   * MESMO progress (retry, "Tentar novamente") pula tudo que já foi
+   * persistido, nunca duplica nada.
+   */
+  async function runConfigPersistence(pid: string) {
+    if (options.length === 0) {
+      configStatusRef.current = "success";
+      setConfigPersistState((s) => ({ ...s, status: "success", message: undefined }));
+      attemptNavigate();
+      return;
+    }
+
+    configStatusRef.current = "pending";
+    setConfigPersistState((s) => ({ ...s, status: "pending", message: undefined }));
+    const result = await persistStagedProductConfiguration({
+      productId: pid,
+      stagedOptions: options,
+      stagedVariants,
+      progress: configPersistState.progress,
+    });
+    configStatusRef.current = result.status;
+    setConfigPersistState({ status: result.status, message: result.message, progress: result.progress });
+    attemptNavigate();
+  }
+
+  function handleRetryConfigPersistence() {
+    if (!effectiveProductId) return;
+    void runConfigPersistence(effectiveProductId);
+  }
+
+  const previousProductIdForConfigRef = useRef(effectiveProductId);
+  useEffect(() => {
+    if (effectiveProductId && !previousProductIdForConfigRef.current) {
+      void runConfigPersistence(effectiveProductId);
+    }
+    previousProductIdForConfigRef.current = effectiveProductId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dispara só na transição undefined→definido (guardada por previousProductIdForConfigRef); `options`/`stagedVariants`/`runConfigPersistence` de propósito fora das deps, a leitura relevante é sempre a do render corrente (mesmo padrão do efeito de transição de productId em ProductGalleryUploader, D20.7).
+  }, [effectiveProductId]);
 
   return (
     <form action={formAction} noValidate>
@@ -196,14 +291,15 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
                   </span>
                   <input
                     className="input-focus-glow w-full rounded-lg border border-surface-container-highest bg-surface-container-lowest py-2.5 pl-10 pr-3 font-body text-body-sm text-on-surface focus:outline-none"
-                    defaultValue={product?.price}
                     id="price"
                     min="0"
                     name="price"
+                    onChange={(e) => setPriceValue(e.target.value)}
                     placeholder="0,00"
                     required
                     step="0.01"
                     type="number"
+                    value={priceValue}
                   />
                 </div>
                 {state.fieldErrors?.price ? (
@@ -398,11 +494,15 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
       </div>
 
       {/*
-        D20.6 Fase 3.3 — mesma regra da seção "Mídia" acima: opções e
-        variantes só fazem sentido depois que o produto existe de verdade
-        (o path de imagem e, aqui, as linhas de product_options/
-        product_variants dependem de um product_id real) — nunca
-        disponível na criação, o fluxo de criação em si não muda em nada.
+        D20.8 — antes só disponível na edição (as linhas de
+        product_options/product_variants dependiam de um product_id
+        real). Agora sempre renderizado: sem produto ainda,
+        `ProductOptionsEditor`/`VariantsTable` guardam opções/valores/
+        variantes localmente (`options`/`stagedVariants` acima); assim
+        que `effectiveProductId` existir (produto criado nesta mesma
+        instância do formulário, sem navegar), a persistência roda
+        automaticamente (`runConfigPersistence`) usando as mesmas Server
+        Actions de sempre.
       */}
       <section className="mt-6 rounded-lg border border-surface-container-highest bg-[#121212] p-6">
         <h2 className="mb-2 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
@@ -410,22 +510,48 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
           Opções do produto
         </h2>
         <p className="mb-6 font-body text-body-sm text-on-surface-variant">
-          Opcional. Cadastre opções (ex.: Cor, Tamanho) e seus valores para depois gerar as variantes deste produto — produtos simples,
-          sem nenhuma opção, continuam funcionando exatamente como antes.
+          Opcional. Adicione opções e valores para gerar automaticamente as variações deste produto — produtos simples, sem nenhuma
+          opção, continuam funcionando exatamente como antes.
         </p>
-        {product ? (
-          <ProductOptionsEditor initialOptions={options} onOptionsChange={setOptions} productId={product.id} />
-        ) : (
-          <p className="font-body text-body-sm text-on-surface-variant">
-            Salve o produto primeiro para configurar opções — a próxima tela já abre pronta para isso.
-          </p>
-        )}
+        <ProductOptionsEditor
+          initialOptions={options}
+          onOptionsChange={setOptions}
+          onStagedOptionsChange={setOptions}
+          productId={product?.id}
+          stagedOptions={options}
+        />
       </section>
 
-      {product ? (
-        <section className="mt-6 rounded-lg border border-surface-container-highest bg-[#121212] p-6">
-          <VariantsTable initialOptions={options} initialVariants={initialVariants ?? []} productId={product.id} />
-        </section>
+      <section className="mt-6 rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+        <VariantsTable
+          defaultPrice={defaultVariantPrice}
+          initialOptions={options}
+          initialVariants={initialVariants ?? []}
+          onVariantsChange={setStagedVariants}
+          productId={product?.id}
+          variants={stagedVariants}
+        />
+      </section>
+
+      {/* D20.8 — só depois de uma criação (justCreated): o produto já existe (nunca é recriado/apagado por isto), mas a configuração de opções/valores/variantes staged ainda não foi concluída — nunca escondido, sempre com um jeito de tentar de novo ou seguir para a edição manualmente. */}
+      {justCreated && configPersistState.status === "error" ? (
+        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-lg border border-error/30 bg-error-container/10 px-4 py-2">
+          <p className="font-body text-body-sm text-error" role="alert">
+            Produto criado, mas a configuração de opções/variantes não foi concluída — {configPersistState.message ?? "tente novamente."}
+          </p>
+          <button
+            className="font-label text-label-sm text-error underline"
+            onClick={handleRetryConfigPersistence}
+            type="button"
+          >
+            Tentar novamente
+          </button>
+          {effectiveProductId ? (
+            <Link className="font-label text-label-sm text-primary underline" href={`/painel/produtos/${effectiveProductId}/editar`}>
+              Ir para edição agora
+            </Link>
+          ) : null}
+        </div>
       ) : null}
 
       {state.status === "error" && state.message ? (

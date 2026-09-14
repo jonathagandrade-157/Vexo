@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalizeCombination,
+  checkVariantCountLimit,
+  checkVariantGenerationPreconditions,
   diffVariantCombinations,
   generateCombinations,
   isCanonicalCombination,
@@ -199,5 +201,60 @@ describe("limites (arquitetura D20 §N, já documentada em 20260817220115_produc
     const result = generateCombinations(options);
     expect(result).toHaveLength(1000);
     expect(result.length).toBeGreaterThan(MAX_VARIANTS_PER_PRODUCT);
+  });
+});
+
+/**
+ * D20.8 — checkVariantGenerationPreconditions/checkVariantCountLimit são
+ * as MESMAS checagens que já existiam inline em generateProductVariantsAction
+ * (D20.6), só extraídas para pure functions reaproveitáveis pela geração
+ * LOCAL (staged, antes do primeiro save do produto). tests/unit/
+ * product-variant-actions.test.ts continua cobrindo que a Action de
+ * verdade usa exatamente estas funções (mesmas mensagens).
+ */
+describe("checkVariantGenerationPreconditions", () => {
+  it("nenhuma opção cadastrada", () => {
+    expect(checkVariantGenerationPreconditions([])).toEqual({
+      ok: false,
+      message: "Cadastre ao menos uma opção com valores antes de gerar combinações.",
+    });
+  });
+
+  it("mais de 3 opções", () => {
+    const options = Array.from({ length: 4 }, (_, i) => ({ name: `Opção ${i}`, values: [1] }));
+    const result = checkVariantGenerationPreconditions(options);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.message).toMatch(/limite é 3 opções/i);
+  });
+
+  it("uma opção sem nenhum valor", () => {
+    const result = checkVariantGenerationPreconditions([{ name: "Cor", values: [] }]);
+    expect(result).toEqual({ ok: false, message: 'A opção "Cor" não possui valores cadastrados.' });
+  });
+
+  it("uma opção com mais de 20 valores", () => {
+    const result = checkVariantGenerationPreconditions([{ name: "Cor", values: Array.from({ length: 21 }) }]);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.message).toMatch(/limite é 20 valores/i);
+  });
+
+  it("dentro dos limites → ok", () => {
+    expect(checkVariantGenerationPreconditions([{ name: "Cor", values: [1, 2] }])).toEqual({ ok: true });
+  });
+});
+
+describe("checkVariantCountLimit", () => {
+  it("acima de 100 combinações é rejeitado", () => {
+    const result = checkVariantCountLimit(125);
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.message).toMatch(/125 variantes.*limite é 100/i);
+  });
+
+  it("exatamente 100 combinações é aceito (limite inclusivo)", () => {
+    expect(checkVariantCountLimit(100)).toEqual({ ok: true });
+  });
+
+  it("abaixo do limite é aceito", () => {
+    expect(checkVariantCountLimit(9)).toEqual({ ok: true });
   });
 });

@@ -105,6 +105,60 @@ export interface VariantCombinationDiff {
   reviewVariantIds: string[];
 }
 
+export interface OptionWithValuesForPrecondition {
+  name: string;
+  values: readonly unknown[];
+}
+
+export type VariantGenerationPrecondition = { ok: true } | { ok: false; message: string };
+
+/**
+ * D20.8 — as MESMAS 3 checagens que já existiam inline em
+ * generateProductVariantsAction (D20.6 Fase 3.2, extraídas aqui sem mudar
+ * nenhuma mensagem/ordem/comportamento — os mesmos testes de
+ * tests/unit/product-variant-actions.test.ts continuam cobrindo isso) —
+ * reaproveitadas também pela geração LOCAL (staged, antes do primeiro save
+ * do produto, Etapa 20.8): "não implementar um segundo algoritmo" vale
+ * também para as checagens de limite, não só para o produto cartesiano em
+ * si.
+ */
+export function checkVariantGenerationPreconditions(
+  options: readonly OptionWithValuesForPrecondition[],
+): VariantGenerationPrecondition {
+  if (options.length === 0) {
+    return { ok: false, message: "Cadastre ao menos uma opção com valores antes de gerar combinações." };
+  }
+  if (options.length > MAX_OPTIONS_PER_PRODUCT) {
+    return {
+      ok: false,
+      message: `Este produto tem mais de ${MAX_OPTIONS_PER_PRODUCT} opções — o limite é ${MAX_OPTIONS_PER_PRODUCT} opções por produto.`,
+    };
+  }
+  const optionWithoutValues = options.find((option) => option.values.length === 0);
+  if (optionWithoutValues) {
+    return { ok: false, message: `A opção "${optionWithoutValues.name}" não possui valores cadastrados.` };
+  }
+  const oversizedOption = options.find((option) => option.values.length > MAX_VALUES_PER_OPTION);
+  if (oversizedOption) {
+    return {
+      ok: false,
+      message: `A opção "${oversizedOption.name}" tem mais de ${MAX_VALUES_PER_OPTION} valores — o limite é ${MAX_VALUES_PER_OPTION} valores por opção.`,
+    };
+  }
+  return { ok: true };
+}
+
+/** Mesma checagem do limite de MAX_VARIANTS_PER_PRODUCT que já existia inline em generateProductVariantsAction, extraída pelo mesmo motivo acima. */
+export function checkVariantCountLimit(combinationCount: number): VariantGenerationPrecondition {
+  if (combinationCount > MAX_VARIANTS_PER_PRODUCT) {
+    return {
+      ok: false,
+      message: `Essa combinação geraria ${combinationCount} variantes — o limite é ${MAX_VARIANTS_PER_PRODUCT} variantes por produto. Reduza o número de opções ou valores.`,
+    };
+  }
+  return { ok: true };
+}
+
 /** Compara o estado real do banco (existingVariants) contra as combinações válidas hoje — nunca o inverso (nunca confia em nada vindo do cliente). */
 export function diffVariantCombinations(
   validCombinations: readonly string[][],

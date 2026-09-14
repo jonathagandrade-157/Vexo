@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { computeGallerySortOrder, isValidGalleryReorder } from "./gallery-logic";
-import { diffVariantCombinations, generateCombinations, MAX_OPTIONS_PER_PRODUCT, MAX_VALUES_PER_OPTION, MAX_VARIANTS_PER_PRODUCT } from "./variant-combinations";
+import { checkVariantCountLimit, checkVariantGenerationPreconditions, diffVariantCombinations, generateCombinations } from "./variant-combinations";
 import {
   getOptionValues,
   getProductOptionsWithValues,
@@ -388,38 +388,18 @@ export async function generateProductVariantsAction(productId: string): Promise<
 
   const options = await getProductOptionsWithValues(supabase, resolved.tenantId, parsed.data.productId);
 
-  if (options.length === 0) {
-    return { status: "error", message: "Cadastre ao menos uma opção com valores antes de gerar combinações." };
-  }
-  if (options.length > MAX_OPTIONS_PER_PRODUCT) {
-    return {
-      status: "error",
-      message: `Este produto tem mais de ${MAX_OPTIONS_PER_PRODUCT} opções — o limite é ${MAX_OPTIONS_PER_PRODUCT} opções por produto.`,
-    };
-  }
-
-  const optionWithoutValues = options.find((option) => option.values.length === 0);
-  if (optionWithoutValues) {
-    return { status: "error", message: `A opção "${optionWithoutValues.name}" não possui valores cadastrados.` };
-  }
-
-  const oversizedOption = options.find((option) => option.values.length > MAX_VALUES_PER_OPTION);
-  if (oversizedOption) {
-    return {
-      status: "error",
-      message: `A opção "${oversizedOption.name}" tem mais de ${MAX_VALUES_PER_OPTION} valores — o limite é ${MAX_VALUES_PER_OPTION} valores por opção.`,
-    };
+  const precondition = checkVariantGenerationPreconditions(options);
+  if (!precondition.ok) {
+    return { status: "error", message: precondition.message };
   }
 
   const combinations = generateCombinations(
     options.map((option) => ({ optionId: option.id, valueIds: option.values.map((value) => value.id) })),
   );
 
-  if (combinations.length > MAX_VARIANTS_PER_PRODUCT) {
-    return {
-      status: "error",
-      message: `Essa combinação geraria ${combinations.length} variantes — o limite é ${MAX_VARIANTS_PER_PRODUCT} variantes por produto. Reduza o número de opções ou valores.`,
-    };
+  const countCheck = checkVariantCountLimit(combinations.length);
+  if (!countCheck.ok) {
+    return { status: "error", message: countCheck.message };
   }
 
   const existingVariants = await getProductVariants(supabase, resolved.tenantId, parsed.data.productId);
