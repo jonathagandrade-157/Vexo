@@ -17,6 +17,7 @@ import {
   persistStagedProductConfiguration,
   type StagedConfigProgress,
 } from "@/features/products/persist-staged-configuration";
+import { computeSaveStatus, isCriticalSaveInProgress, saveButtonLabel } from "@/features/products/save-status";
 import { initialProductState, type ProductGalleryImage } from "@/features/products/schema";
 import type { ProductOptionWithValues, ProductVariantRow } from "@/features/products/variants-data";
 
@@ -82,6 +83,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
   const effectiveProductId = product?.id ?? (state.status === "success" ? state.productId : undefined);
   const justCreated = !product && state.status === "success" && Boolean(state.productId);
   const hasNavigatedRef = useRef(false);
+  const [gallerySettled, setGallerySettled] = useState(false);
   const [galleryUploadsHadFailure, setGalleryUploadsHadFailure] = useState(false);
 
   // D20.6 Fase 3.3 — estado "levantado" para ProductForm: ProductOptionsEditor
@@ -143,6 +145,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
   function handleGalleryUploadsSettled({ hasPending }: { hasPending: boolean }) {
     gallerySettledRef.current = true;
     galleryHasFailureRef.current = hasPending;
+    setGallerySettled(true);
     setGalleryUploadsHadFailure(hasPending);
     attemptNavigate();
   }
@@ -191,13 +194,58 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dispara só na transição undefined→definido (guardada por previousProductIdForConfigRef); `options`/`stagedVariants`/`runConfigPersistence` de propósito fora das deps, a leitura relevante é sempre a do render corrente (mesmo padrão do efeito de transição de productId em ProductGalleryUploader, D20.7).
   }, [effectiveProductId]);
 
+  // D20.9.1 — B1: "Produto salvo" só é verdade depois que imagens (D20.7) E
+  // opções/valores/variantes (D20.8) terminam, nunca só porque
+  // createProductAction retornou sucesso — ver features/products/
+  // save-status.ts para a derivação em si (pura, testada isoladamente).
+  const saveStatus = computeSaveStatus({
+    isEditMode: Boolean(product),
+    justCreated,
+    gallerySettled,
+    galleryHasFailure: galleryUploadsHadFailure,
+    configStatus: configPersistState.status,
+  });
+  const isSavingCritically = isCriticalSaveInProgress(saveStatus);
+
+  // D20.9.1 — B2: enquanto a persistência crítica pós-criação estiver em
+  // andamento (opções/valores/variantes/imagens ainda salvando), um
+  // fechamento de aba/reload/navegação para outro site precisa de uma
+  // confirmação explícita do navegador — `beforeunload` nunca dispara para
+  // uma navegação client-side do próprio Next.js (router.push), só para
+  // sair do app de verdade, então nunca interfere no redirect automático
+  // de `attemptNavigate` quando tudo terminar com sucesso. Mensagem
+  // customizada não é garantida por nenhum navegador moderno (todos usam o
+  // texto padrão deles) — `event.preventDefault()`/`returnValue` é o
+  // suficiente para acionar esse prompt nativo.
+  useEffect(() => {
+    if (!isSavingCritically) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isSavingCritically]);
+
+  /** D20.9.1 — B2: navegação interna controlada pelo próprio app (o único link "Voltar" deste formulário) — intercepta e confirma com o lojista antes de sair, só enquanto `isSavingCritically`. Fora desse estado, o Link navega normalmente, sem nenhuma mudança de comportamento. */
+  function handleBackLinkClick(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (!isSavingCritically) return;
+    event.preventDefault();
+    const confirmed = window.confirm("Este produto ainda está sendo salvo. Deseja realmente sair?");
+    if (confirmed) router.push("/painel/produtos");
+  }
+
   return (
     <form action={formAction} noValidate>
       {product ? <input name="productId" type="hidden" value={product.id} /> : null}
 
       <div className="sticky top-16 z-10 -mx-margin-mobile mb-8 flex items-center justify-between gap-4 border-b border-outline-variant bg-surface/95 px-margin-mobile py-4 backdrop-blur-md md:-mx-margin-desktop md:px-margin-desktop">
         <div className="flex items-center gap-4">
-          <Link className="flex items-center gap-1 text-on-surface-variant transition-colors hover:text-primary" href="/painel/produtos">
+          <Link
+            className="flex items-center gap-1 text-on-surface-variant transition-colors hover:text-primary"
+            href="/painel/produtos"
+            onClick={handleBackLinkClick}
+          >
             <span className="material-symbols-outlined text-xl">arrow_back</span>
             <span className="font-label text-label-md">Voltar</span>
           </Link>
@@ -206,9 +254,19 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
             {product ? "Editar produto" : "Adicionar produto"}
           </h1>
         </div>
-        {/* D20.7 — depois de criado, o form continua montado (mesma instância, sem navegar) só para terminar o upload das imagens já selecionadas: reenviar o form chamaria createProductAction de novo, criando um SEGUNDO produto. O botão fica desabilitado até a navegação para a tela de edição de verdade acontecer. */}
-        <SaveButton disabled={justCreated} label={product ? "Salvar alterações" : justCreated ? "Produto salvo" : "Salvar produto"} />
+        {/* D20.7 — depois de criado, o form continua montado (mesma instância, sem navegar) só para terminar o upload das imagens já selecionadas/a persistência de opções/valores/variantes (D20.8): reenviar o form chamaria createProductAction de novo, criando um SEGUNDO produto. O botão fica desabilitado até a navegação para a tela de edição de verdade acontecer. D20.9.1 — o rótulo agora reflete os 3 estados possíveis pós-criação (salvando/falhou/salvo), nunca "Produto salvo" antes de tudo terminar de verdade. */}
+        <SaveButton disabled={justCreated} label={saveButtonLabel(saveStatus)} />
       </div>
+
+      {/* D20.9.1 — B1: feedback visual explícito, distinto do rótulo do botão, enquanto imagens/opções/valores/variantes ainda estão sendo persistidas depois da criação do produto. */}
+      {isSavingCritically ? (
+        <div className="-mt-4 mb-6 flex items-center gap-2 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-2" role="status">
+          <span className="material-symbols-outlined animate-spin text-[18px] text-primary">progress_activity</span>
+          <p className="font-body text-body-sm text-on-surface-variant">
+            Salvando produto — imagens, opções e variantes ainda estão sendo configuradas. Não feche nem saia desta página.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
