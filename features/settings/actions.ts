@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { checkBillingWriteAccess } from "@/features/billing/access-guard";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { storeProfileSchema, type StoreProfileInput } from "./schema";
@@ -74,6 +75,12 @@ export async function updateStoreProfileAction(
       status: "error",
       message: "Você não tem permissão para editar as configurações da loja.",
     };
+  }
+
+  // JON-17 — bloqueia escrita a partir do dia 4 de carência por inadimplência.
+  const billingCheck = await checkBillingWriteAccess(supabase, membership.tenant.id);
+  if (!billingCheck.allowed) {
+    return { status: "error", message: billingCheck.message! };
   }
 
   const { storeName, segment, description, instagram, email } = parsed.data;

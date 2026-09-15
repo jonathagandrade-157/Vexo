@@ -42,6 +42,7 @@ export interface PublicTenant {
 export type StorefrontResolution =
   | { status: "not_found" }
   | { status: "not_configured"; name: string }
+  | { status: "billing_blocked" }
   | { status: "ready"; tenant: PublicTenant };
 
 /**
@@ -78,6 +79,16 @@ export const resolveStorefrontTenant = cache(
     if (data.onboarding_completed_at === null) {
       return { status: "not_configured", name: data.name as string };
     }
+
+    // JON-17 — "Dia 10+: bloquear a loja pública". Chamado depois de
+    // confirmar que a loja existe/está configurada, nunca antes (um slug
+    // inexistente continua `not_found`, nunca vaza que existe uma loja
+    // ali só desativada por billing). `is_storefront_blocked` é
+    // deliberadamente anon-safe (nunca `tenant_access_status`, que
+    // exigiria ser membro do tenant) e devolve só um boolean — o
+    // visitante nunca aprende o motivo, só que a loja está indisponível.
+    const { data: blocked } = await supabase.rpc("is_storefront_blocked", { p_tenant_id: data.id as string });
+    if (blocked) return { status: "billing_blocked" };
 
     return {
       status: "ready",

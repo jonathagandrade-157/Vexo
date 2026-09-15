@@ -6,6 +6,7 @@ import { CartSummary } from "@/components/storefront/cart-summary";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
+import { StorefrontUnavailable } from "@/components/storefront/storefront-unavailable";
 import { getCart } from "@/features/cart/data";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 
@@ -28,6 +29,9 @@ export default async function CartPage({ params }: PageProps) {
   const resolution = await resolveStorefrontTenant(slug);
 
   if (resolution.status === "not_found") return <StorefrontNotFound />;
+
+  // JON-17 — Dia 10+ de carência: bloqueia a loja pública inteira.
+  if (resolution.status === "billing_blocked") return <StorefrontUnavailable />;
 
   if (resolution.status === "not_configured") {
     return (

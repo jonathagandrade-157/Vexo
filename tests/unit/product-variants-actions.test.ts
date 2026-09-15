@@ -74,7 +74,15 @@ function mockClient(opts: { hasPermission?: boolean; responses: FromResponse[] }
     return b;
   }
   return {
-    from: vi.fn(() => builder()),
+    from: vi.fn((table: string) => {
+      // JON-17 — checkBillingWriteAccess consulta subscriptions à parte da
+      // fila de respostas acima (não é o que estes testes exercitam);
+      // nenhuma linha (tenant sem subscription) nunca bloqueia a escrita.
+      if (table === "subscriptions") {
+        return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) };
+      }
+      return builder();
+    }),
     rpc: vi.fn().mockResolvedValue({ data: opts.hasPermission ?? true, error: null }),
   };
 }

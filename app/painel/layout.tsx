@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { BillingGraceBanner } from "@/components/painel/billing-grace-banner";
 import { Header } from "@/components/painel/header";
 import { MobileBottomNav } from "@/components/painel/mobile-bottom-nav";
 import { MAIN_NAV_ITEMS } from "@/components/painel/nav-items";
 import { Sidebar } from "@/components/painel/sidebar";
 import { getTenantCommercialContext } from "@/features/commercial/tenant-plan";
+import { billingGraceDaysElapsed, computeBillingGraceStatus } from "@/features/billing/grace-status";
 import { getBlockedTenantStatus } from "@/features/onboarding/resolve-tenant";
 import { getUnreadNotificationCount, listRecentNotifications } from "@/features/notifications/data";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
@@ -100,6 +102,21 @@ export default async function PainelLayout({ children }: { children: ReactNode }
   // por request, mesmo padrão de getCurrentMembership).
   const commercialContext = await getTenantCommercialContext(membership.tenant.id);
 
+  // JON-17 — mesmo princípio de commercialContext acima: uma leitura por
+  // request, reaproveitada só para exibir o aviso/bloqueio de carência
+  // (a autoridade real de bloqueio de escrita continua em cada Server
+  // Action, via checkBillingWriteAccess — este banner nunca bloqueia
+  // nada sozinho). Ausência de linha em subscriptions (tenant só em
+  // trial_records) é sempre "ok", igual à mesma checagem no servidor.
+  const { data: subscriptionRow } = await supabase
+    .from("subscriptions")
+    .select("status, past_due_since")
+    .eq("tenant_id", membership.tenant.id)
+    .maybeSingle();
+  const billingGraceInput = { status: subscriptionRow?.status ?? null, pastDueSince: subscriptionRow?.past_due_since ?? null };
+  const billingGraceStatus = computeBillingGraceStatus(billingGraceInput);
+  const billingGraceDays = billingGraceDaysElapsed(billingGraceInput);
+
   // D18.4 §11 — mesmo princípio: uma checagem por request para cada
   // permission que algum item de `MAIN_NAV_ITEMS` declare (hoje só
   // `settings.view`, de "Histórico") — nunca decidido dentro do Sidebar
@@ -139,7 +156,10 @@ export default async function PainelLayout({ children }: { children: ReactNode }
         userName={userName}
       />
       <main className="px-margin-mobile pb-24 pt-24 md:ml-[260px] md:px-margin-desktop md:pb-12">
-        <div className="mx-auto max-w-[1440px]">{children}</div>
+        <div className="mx-auto max-w-[1440px]">
+          <BillingGraceBanner daysElapsed={billingGraceDays} status={billingGraceStatus} />
+          {children}
+        </div>
       </main>
       <MobileBottomNav />
     </div>

@@ -39,6 +39,11 @@ function mockSession(hasTeamManage: boolean) {
   vi.mocked(createSupabaseServerClient).mockResolvedValue({
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: ACTOR_USER_ID } } }) },
     rpc: vi.fn().mockResolvedValue({ data: hasTeamManage, error: null }),
+    // JON-17 — checkBillingWriteAccess consulta subscriptions neste mesmo
+    // client; nenhuma linha (tenant sem subscription) nunca bloqueia.
+    from: vi.fn(() => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
+    })),
   } as never);
 }
 

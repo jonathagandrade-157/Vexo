@@ -37,6 +37,7 @@ interface SubscriptionRow {
   status: string;
   current_period_start: Date | null;
   current_period_end: Date | null;
+  past_due_since: Date | null;
 }
 
 // `pg` decodifica colunas timestamptz como `Date`, não como a string ISO
@@ -207,11 +208,33 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Billing — apply_billing_w
   async function loadSubscription(id: string): Promise<SubscriptionRow> {
     const { rows } = await withSuperuser((c) =>
       c.query<SubscriptionRow>(
-        "select id, status, current_period_start, current_period_end from public.subscriptions where id = $1",
+        "select id, status, current_period_start, current_period_end, past_due_since from public.subscriptions where id = $1",
         [id],
       ),
     );
     return rows[0]!;
+  }
+
+  /**
+   * JON-17 — segunda invoice (2º ciclo) para a mesma subscription/tenant de
+   * um `Scenario` já criado, usada pelos testes de carência para simular
+   * uma 2ª falha ou uma recuperação sem precisar de um novo tenant.
+   */
+  async function insertFollowUpInvoice(s: Scenario, tag: string): Promise<{ invoiceId: string; gatewayInvoiceId: string }> {
+    return withSuperuser(async (client) => {
+      const gatewayInvoiceId = `inv_${tag}-${runId}`;
+      const periodStart = new Date(new Date(s.periodEnd).getTime()).toISOString();
+      const periodEnd = new Date(new Date(s.periodEnd).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { rows } = await client.query<{ id: string }>(
+        `insert into public.billing_invoices
+           (tenant_id, subscription_id, gateway, gateway_invoice_id, plan_id, plan_name_snapshot,
+            amount, billing_cycle, status, period_start, period_end, due_at)
+         values ($1, $2, 'asaas', $3, $4, 'Basic', 49.9, 'monthly', 'PENDING', $5, $6, $5)
+         returning id`,
+        [s.tenantId, s.subscriptionId, gatewayInvoiceId, basicPlanId, periodStart, periodEnd],
+      );
+      return { invoiceId: rows[0]!.id, gatewayInvoiceId };
+    });
   }
 
   async function loadTrialStatus(tenantId: string): Promise<string | null> {
@@ -555,5 +578,76 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Billing — apply_billing_w
       false,
     );
     expect(okServiceRole.rows[0]!.apply_billing_webhook_event).toBe("payment_marked_failed");
+  });
+
+  it("21) JON-17 — PAYMENT_OVERDUE marca a subscription como past_due e grava past_due_since = gateway_event_at", async () => {
+    const s = await createScenario("grace-first-fail", { subscriptionStatus: "active" });
+    const eventAt = new Date().toISOString();
+    const evId = await withSuperuser((c) => insertWebhookEvent(c, "grace-first-fail", "PAYMENT_OVERDUE"));
+
+    const result = await applyEvent(
+      { role: "service_role" },
+      { eventType: "PAYMENT_OVERDUE", webhookEventId: evId, gatewayEventAt: eventAt, gatewayInvoiceId: s.gatewayInvoiceId },
+    );
+    expect(result.rows[0]!.apply_billing_webhook_event).toBe("payment_marked_failed");
+
+    const subscription = await loadSubscription(s.subscriptionId);
+    expect(subscription.status).toBe("past_due");
+    expect(toMillis(subscription.past_due_since)).toBe(toMillis(eventAt));
+  });
+
+  it("22) JON-17 — uma 2ª falha (2ª invoice) antes da recuperação não reseta past_due_since (âncora fica no 1º evento)", async () => {
+    const s = await createScenario("grace-second-fail", { subscriptionStatus: "active" });
+    const firstEventAt = new Date().toISOString();
+    const firstEvId = await withSuperuser((c) => insertWebhookEvent(c, "grace-second-fail-1", "PAYMENT_OVERDUE"));
+    await applyEvent(
+      { role: "service_role" },
+      { eventType: "PAYMENT_OVERDUE", webhookEventId: firstEvId, gatewayEventAt: firstEventAt, gatewayInvoiceId: s.gatewayInvoiceId },
+    );
+
+    const followUp = await insertFollowUpInvoice(s, "grace-second-fail-2nd");
+    const secondEventAt = new Date(Date.now() + 60_000).toISOString();
+    const secondEvId = await withSuperuser((c) => insertWebhookEvent(c, "grace-second-fail-2", "PAYMENT_OVERDUE"));
+    const secondResult = await applyEvent(
+      { role: "service_role" },
+      { eventType: "PAYMENT_OVERDUE", webhookEventId: secondEvId, gatewayEventAt: secondEventAt, gatewayInvoiceId: followUp.gatewayInvoiceId },
+    );
+    expect(secondResult.rows[0]!.apply_billing_webhook_event).toBe("payment_marked_failed");
+
+    const subscription = await loadSubscription(s.subscriptionId);
+    expect(subscription.status).toBe("past_due");
+    expect(toMillis(subscription.past_due_since)).toBe(toMillis(firstEventAt)); // âncora inalterada pelo 2º evento
+  });
+
+  it("23) JON-17 — PAYMENT_CONFIRMED reativa a subscription e limpa past_due_since (reativação automática)", async () => {
+    const s = await createScenario("grace-recover", { subscriptionStatus: "active" });
+    const failEventAt = new Date().toISOString();
+    const failEvId = await withSuperuser((c) => insertWebhookEvent(c, "grace-recover-fail", "PAYMENT_OVERDUE"));
+    await applyEvent(
+      { role: "service_role" },
+      { eventType: "PAYMENT_OVERDUE", webhookEventId: failEvId, gatewayEventAt: failEventAt, gatewayInvoiceId: s.gatewayInvoiceId },
+    );
+    const midway = await loadSubscription(s.subscriptionId);
+    expect(midway.status).toBe("past_due");
+    expect(midway.past_due_since).not.toBeNull();
+
+    const followUp = await insertFollowUpInvoice(s, "grace-recover-2nd");
+    const confirmEventAt = new Date(Date.now() + 60_000).toISOString();
+    const confirmEvId = await withSuperuser((c) => insertWebhookEvent(c, "grace-recover-confirm", "PAYMENT_CONFIRMED"));
+    const confirmResult = await applyEvent(
+      { role: "service_role" },
+      {
+        eventType: "PAYMENT_CONFIRMED",
+        webhookEventId: confirmEvId,
+        gatewayEventAt: confirmEventAt,
+        gatewayInvoiceId: followUp.gatewayInvoiceId,
+        gatewaySubscriptionId: s.gatewaySubscriptionId,
+      },
+    );
+    expect(confirmResult.rows[0]!.apply_billing_webhook_event).toBe("payment_confirmed");
+
+    const subscription = await loadSubscription(s.subscriptionId);
+    expect(subscription.status).toBe("active");
+    expect(subscription.past_due_since).toBeNull();
   });
 });

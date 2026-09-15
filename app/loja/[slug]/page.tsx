@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
+import { StorefrontUnavailable } from "@/components/storefront/storefront-unavailable";
 import { getCart } from "@/features/cart/data";
 import { getStorefrontBanners } from "@/features/storefront/banners";
 import { getStorefrontCategories, getStorefrontProducts } from "@/features/storefront/catalog";
@@ -36,6 +37,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Loja não encontrada — VEXO", robots: { index: false, follow: false } };
   }
 
+  // JON-17 — Dia 10+ de carência: bloqueia a loja pública inteira.
+  if (resolution.status === "billing_blocked") {
+    return { title: "Loja temporariamente indisponível — VEXO", robots: { index: false, follow: false } };
+  }
+
   if (resolution.status === "not_configured") {
     return {
       title: `${resolution.name} — VEXO`,
@@ -67,6 +73,11 @@ export default async function StorefrontPage({ params, searchParams }: PageProps
 
   if (resolution.status === "not_found") {
     return <StorefrontNotFound />;
+  }
+
+  // JON-17 — Dia 10+ de carência: bloqueia a loja pública inteira.
+  if (resolution.status === "billing_blocked") {
+    return <StorefrontUnavailable />;
   }
 
   if (resolution.status === "not_configured") {

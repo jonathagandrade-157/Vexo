@@ -62,6 +62,11 @@ function mockSession(allowed: boolean, tenantId: string = TENANT_A) {
   });
   vi.mocked(createSupabaseServerClient).mockResolvedValue({
     rpc: vi.fn().mockResolvedValue({ data: allowed, error: null }),
+    // JON-17 — checkBillingWriteAccess consulta subscriptions neste mesmo
+    // client; nenhuma linha (tenant sem subscription) nunca bloqueia.
+    from: vi.fn(() => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }),
+    })),
   } as never);
 }
 

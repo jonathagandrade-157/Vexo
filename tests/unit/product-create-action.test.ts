@@ -59,7 +59,15 @@ function mockClient(opts: { hasPermission?: boolean; accessStatus?: string; resp
     return b;
   }
   return {
-    from: vi.fn((_table: string) => builder()),
+    from: vi.fn((table: string) => {
+      // JON-17 — checkBillingWriteAccess consulta subscriptions à parte da
+      // fila de respostas acima (não é o que estes testes exercitam);
+      // nenhuma linha (tenant sem subscription) nunca bloqueia a escrita.
+      if (table === "subscriptions") {
+        return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) };
+      }
+      return builder();
+    }),
     rpc: vi.fn((name: string) => {
       if (name === "has_permission") return Promise.resolve({ data: opts.hasPermission ?? true, error: null });
       if (name === "tenant_access_status") return Promise.resolve({ data: opts.accessStatus ?? "ACTIVE", error: null });
@@ -171,7 +179,10 @@ describe("createProductAction (D20.7)", () => {
     const result = await createProductAction(initialProductState, validProductFormData());
 
     expect(result.status).toBe("error");
-    expect(client.from).not.toHaveBeenCalled();
+    // JON-17: checkBillingWriteAccess já consulta subscriptions antes da
+    // checagem de tenant_access_status — a garantia real desta prova é
+    // "nenhum produto é inserido", não "nenhum .from() é chamado".
+    expect(client.from).not.toHaveBeenCalledWith("products");
   });
 
   it("nome duplicado (23505) retorna erro amigável de campo, sem productId", async () => {

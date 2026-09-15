@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { checkBillingWriteAccess } from "@/features/billing/access-guard";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { getMelhorEnvioEnv, getPublicEnv } from "@/lib/env";
 import { createOAuthState } from "@/lib/security/oauth-state";
@@ -29,6 +30,10 @@ async function resolveTenantAndPermission(permissionKey: string): Promise<{ tena
   if (!allowed) {
     return { error: "Você não tem permissão para esta ação." };
   }
+
+  // JON-17 — bloqueia escrita a partir do dia 4 de carência por inadimplência.
+  const billingCheck = await checkBillingWriteAccess(supabase, membership.tenant.id);
+  if (!billingCheck.allowed) return { error: billingCheck.message! };
 
   return { tenantId: membership.tenant.id };
 }

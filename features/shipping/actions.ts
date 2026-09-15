@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { checkBillingWriteAccess } from "@/features/billing/access-guard";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -56,6 +57,10 @@ async function resolveTenantAndPermission(permissionKey: string): Promise<{ tena
   if (!hasShipping) {
     return { error: "O recurso de frete e entrega não está disponível no seu plano atual." };
   }
+
+  // JON-17 — bloqueia escrita a partir do dia 4 de carência por inadimplência.
+  const billingCheck = await checkBillingWriteAccess(supabase, membership.tenant.id);
+  if (!billingCheck.allowed) return { error: billingCheck.message! };
 
   return { tenantId: membership.tenant.id };
 }

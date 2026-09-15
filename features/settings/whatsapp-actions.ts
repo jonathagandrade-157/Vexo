@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { checkBillingWriteAccess } from "@/features/billing/access-guard";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { whatsappSettingsSchema, type WhatsappSettingsActionState, type WhatsappSettingsInput } from "./whatsapp-schema";
@@ -23,6 +24,10 @@ async function resolveTenantAndPermission(): Promise<{ tenantId: string } | { er
   if (!allowed) {
     return { error: "Você não tem permissão para alterar o WhatsApp da loja." };
   }
+
+  // JON-17 — bloqueia escrita a partir do dia 4 de carência por inadimplência.
+  const billingCheck = await checkBillingWriteAccess(supabase, membership.tenant.id);
+  if (!billingCheck.allowed) return { error: billingCheck.message! };
 
   return { tenantId: membership.tenant.id };
 }

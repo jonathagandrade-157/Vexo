@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CheckoutForm } from "@/components/storefront/checkout-form";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
+import { StorefrontUnavailable } from "@/components/storefront/storefront-unavailable";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getCart } from "@/features/cart/data";
 import { effectivePrice, lineSubtotal } from "@/features/cart/pricing";
@@ -27,6 +28,9 @@ export default async function CheckoutPage({ params }: PageProps) {
   const resolution = await resolveStorefrontTenant(slug);
 
   if (resolution.status === "not_found") return <StorefrontNotFound />;
+
+  // JON-17 — Dia 10+ de carência: bloqueia a loja pública inteira.
+  if (resolution.status === "billing_blocked") return <StorefrontUnavailable />;
 
   if (resolution.status === "not_configured") {
     return (
