@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 // Foundation stage: no rewrites/redirects, no experimental flags.
 // Tenant-by-host routing and custom-domain handling (§3.4, §17 of the
@@ -112,4 +113,18 @@ function buildCspReportOnly(): string {
   return csp.replace(/\s{2,}/g, " ").trim();
 }
 
-export default nextConfig;
+// JON-14 — só o plugin de build (upload de source maps para o Sentry);
+// a inicialização em si (DSN, beforeSend, sampling) vive em
+// instrumentation-client.ts/sentry.server.config.ts/sentry.edge.config.ts,
+// nunca aqui. org/project/authToken também podem vir de
+// SENTRY_ORG/SENTRY_PROJECT/SENTRY_AUTH_TOKEN (lidos automaticamente pelo
+// plugin) — passados explicitamente só para deixar a origem óbvia neste
+// arquivo. Sem authToken (ambiente sem SENTRY_AUTH_TOKEN configurado), o
+// plugin pula o upload de source maps sem quebrar o build.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+});
