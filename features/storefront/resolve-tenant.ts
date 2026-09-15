@@ -42,7 +42,7 @@ export interface PublicTenant {
 export type StorefrontResolution =
   | { status: "not_found" }
   | { status: "not_configured"; name: string }
-  | { status: "billing_blocked" }
+  | { status: "billing_blocked"; tenant: PublicTenant }
   | { status: "ready"; tenant: PublicTenant };
 
 /**
@@ -80,6 +80,22 @@ export const resolveStorefrontTenant = cache(
       return { status: "not_configured", name: data.name as string };
     }
 
+    const tenant: PublicTenant = {
+      id: data.id as string,
+      name: data.name as string,
+      slug: data.slug as string,
+      segment: data.segment as string | null,
+      description: data.description as string | null,
+      instagram_handle: data.instagram_handle as string | null,
+      whatsapp_phone: data.whatsapp_phone as string | null,
+      contact_email: data.contact_email as string | null,
+      logo_url: data.logo_url as string | null,
+      primary_color: data.primary_color as string | null,
+      secondary_color: data.secondary_color as string | null,
+      storefront_template: data.storefront_template as StorefrontTemplate,
+      checkout_mode: isCheckoutMode(data.checkout_mode) ? data.checkout_mode : "vexo",
+    };
+
     // JON-17 — "Dia 10+: bloquear a loja pública". Chamado depois de
     // confirmar que a loja existe/está configurada, nunca antes (um slug
     // inexistente continua `not_found`, nunca vaza que existe uma loja
@@ -87,26 +103,13 @@ export const resolveStorefrontTenant = cache(
     // deliberadamente anon-safe (nunca `tenant_access_status`, que
     // exigiria ser membro do tenant) e devolve só um boolean — o
     // visitante nunca aprende o motivo, só que a loja está indisponível.
+    // `tenant` viaja junto mesmo bloqueada: a página de confirmação de
+    // pedido (app/loja/[slug]/pedido/[orderId]/page.tsx) precisa dela
+    // mesmo bloqueada — ver comentário lá sobre por que essa rota
+    // deliberadamente ignora este status.
     const { data: blocked } = await supabase.rpc("is_storefront_blocked", { p_tenant_id: data.id as string });
-    if (blocked) return { status: "billing_blocked" };
+    if (blocked) return { status: "billing_blocked", tenant };
 
-    return {
-      status: "ready",
-      tenant: {
-        id: data.id as string,
-        name: data.name as string,
-        slug: data.slug as string,
-        segment: data.segment as string | null,
-        description: data.description as string | null,
-        instagram_handle: data.instagram_handle as string | null,
-        whatsapp_phone: data.whatsapp_phone as string | null,
-        contact_email: data.contact_email as string | null,
-        logo_url: data.logo_url as string | null,
-        primary_color: data.primary_color as string | null,
-        secondary_color: data.secondary_color as string | null,
-        storefront_template: data.storefront_template as StorefrontTemplate,
-        checkout_mode: isCheckoutMode(data.checkout_mode) ? data.checkout_mode : "vexo",
-      },
-    };
+    return { status: "ready", tenant };
   },
 );

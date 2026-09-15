@@ -5,7 +5,6 @@ import { OrderSummary } from "@/components/storefront/order-summary";
 import { PixPaymentPanel } from "@/components/storefront/pix-payment-panel";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
-import { StorefrontUnavailable } from "@/components/storefront/storefront-unavailable";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
 import { getOrderConfirmation } from "@/features/checkout/order-confirmation";
 import { getPixPaymentDetails } from "@/features/checkout/pix-payment";
@@ -96,9 +95,14 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
 
   if (resolution.status === "not_found") return <StorefrontNotFound />;
 
-  // JON-17 — Dia 10+ de carência: bloqueia a loja pública inteira.
-  if (resolution.status === "billing_blocked") return <StorefrontUnavailable />;
-
+  // JON-17 — deliberadamente SEM o bloqueio de billing_blocked das outras
+  // rotas do storefront: esta é a página de confirmação de um pedido JÁ
+  // FEITO (inclusive o painel de PIX pendente) — mesmo princípio que já
+  // mantém updateOrderStatusAction/confirmExternalPaymentAction fora do
+  // bloqueio de escrita (proteger o cliente final tem prioridade). Aqui é
+  // ainda mais crítico: um PIX pendente nesta página é literalmente o
+  // pagamento que pode regularizar a inadimplência do lojista — bloquear
+  // o acesso a ela criaria um impasse que a própria página resolveria.
   if (resolution.status === "not_configured") {
     return (
       <StorefrontShell
