@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { getCart } from "@/features/cart/data";
 import { getCartId } from "@/features/cart/cart-cookie";
@@ -11,6 +12,7 @@ import { isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
 import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
+import { sendOrderConfirmationEmail } from "@/lib/email/send-order-confirmation";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 import { checkCheckoutRateLimit } from "./rate-limit";
 import { friendlyCheckoutError, isAddressComplete } from "./schema";
@@ -210,6 +212,20 @@ export async function createOrderForWhatsappAction(
   } else if (shippingMethodId !== undefined && shippingPrice !== undefined) {
     await applyShippingToOrder(resolution.tenant.id, orderId as string, shippingMethodId, shippingPrice);
   }
+
+  // JON-13 — mesmo princípio de createOrderAction (features/checkout/
+  // actions.ts): e-mail de "recebemos seu pedido" via after() (nunca
+  // atrasa o redirect abaixo), nunca "confirmado" — o pagamento deste
+  // fluxo é sempre combinado fora da VEXO (WhatsApp/PIX direto).
+  after(() =>
+    sendOrderConfirmationEmail({
+      tenantId: resolution.tenant.id,
+      orderId: orderId as string,
+      customerEmail,
+      storeName: resolution.tenant.name,
+      storeSlug,
+    }),
+  );
 
   // Nunca cria payment/gateway aqui: create_payment_for_order/
   // initiatePaymentForOrder simplesmente não são chamadas — o pedido já

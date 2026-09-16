@@ -109,6 +109,19 @@ const vercelServerSchema = z.object({
   VERCEL_TEAM_ID: z.string().min(1),
 });
 
+// JON-13: e-mail transacional (Resend) — schema separado pelo mesmo motivo
+// exato do Mercado Pago/Melhor Envio/Billing/Vercel acima: o checkout
+// nunca pode falhar só porque o Resend ainda não está configurado neste
+// ambiente (nem em dev, nem antes do domínio de e-mail estar verificado
+// em produção). EMAIL_FROM é opcional de propósito — ainda não temos
+// domínio verificado no Resend (decisão de marca pendente), então o
+// remetente cai para o sandbox `onboarding@resend.dev` até isso mudar;
+// nunca hardcoded fora daqui.
+const emailServerSchema = z.object({
+  RESEND_API_KEY: z.string().min(1),
+  EMAIL_FROM: z.string().min(1).optional(),
+});
+
 export type PublicEnv = z.infer<typeof publicSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
 export type MercadoPagoServerEnv = z.infer<typeof mercadoPagoServerSchema>;
@@ -120,6 +133,11 @@ export interface MelhorEnvioServerEnv {
   /** Derivado de MELHOR_ENVIO_SANDBOX — `true` a menos que a var esteja literalmente "false". */
   MELHOR_ENVIO_SANDBOX: boolean;
   OAUTH_STATE_SECRET: string;
+}
+export interface EmailServerEnv {
+  RESEND_API_KEY: string;
+  /** Derivado de EMAIL_FROM — nunca undefined no valor devolvido: cai para o sandbox do Resend quando a var não está setada. */
+  EMAIL_FROM: string;
 }
 
 function readSchema<T>(
@@ -146,6 +164,7 @@ let cachedMercadoPagoEnv: MercadoPagoServerEnv | undefined;
 let cachedBillingEnv: BillingServerEnv | undefined;
 let cachedMelhorEnvioEnv: MelhorEnvioServerEnv | undefined;
 let cachedVercelEnv: VercelServerEnv | undefined;
+let cachedEmailEnv: EmailServerEnv | undefined;
 
 /** Variables safe to read from client or server code (`NEXT_PUBLIC_*` only). */
 export function getPublicEnv(): PublicEnv {
@@ -295,4 +314,36 @@ export function getVercelEnv(): VercelServerEnv {
     }
   }
   return cachedVercelEnv;
+}
+
+/**
+ * JON-13 — segredos de e-mail transacional (Resend). Chamar SOMENTE de
+ * código que vai de fato enviar um e-mail (`lib/email/send-order-
+ * confirmation.ts`) — nunca de checkout/auth/cadastro/trial/onboarding
+ * diretamente, mesmo cuidado de `getMercadoPagoEnv()` acima: o pedido já
+ * foi criado e confirmado ao cliente quando este getter é chamado (dentro
+ * de `after()`), então uma falha aqui nunca pode voltar a afetar a
+ * resposta do checkout — só o próprio envio de e-mail é pulado.
+ *
+ * `EMAIL_FROM` ausente nunca é um erro (é o estado esperado até termos um
+ * domínio verificado no Resend) — o valor devolvido cai para o sandbox
+ * `onboarding@resend.dev` em vez de lançar.
+ */
+export function getEmailEnv(): EmailServerEnv {
+  if (typeof window !== "undefined") {
+    throw new Error("getEmailEnv() must never be called from the browser.");
+  }
+  if (!cachedEmailEnv) {
+    try {
+      const raw = readSchema(emailServerSchema, process.env, "Email");
+      cachedEmailEnv = { RESEND_API_KEY: raw.RESEND_API_KEY, EMAIL_FROM: raw.EMAIL_FROM ?? "onboarding@resend.dev" };
+    } catch (cause) {
+      throw new Error(
+        "A integração de e-mail (Resend) não está configurada neste ambiente (RESEND_API_KEY). " +
+          "Configure essa variável antes de enviar e-mails transacionais.",
+        { cause },
+      );
+    }
+  }
+  return cachedEmailEnv;
 }

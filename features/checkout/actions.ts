@@ -2,12 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { getCartId } from "@/features/cart/cart-cookie";
 import { initiatePaymentForOrder, isPaymentGatewayConnected } from "@/features/payments/checkout";
 import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
 import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
+import { sendOrderConfirmationEmail } from "@/lib/email/send-order-confirmation";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 import { checkCheckoutRateLimit } from "./rate-limit";
 import { checkoutSchema, friendlyCheckoutError, isAddressComplete, type CheckoutActionState, type CheckoutInput } from "./schema";
@@ -185,6 +187,23 @@ export async function createOrderAction(
   } else if (shippingMethodId !== undefined && shippingPrice !== undefined) {
     await applyShippingToOrder(resolution.tenant.id, orderId as string, shippingMethodId, shippingPrice);
   }
+
+  // JON-13 — e-mail de "recebemos seu pedido" (nunca "confirmado": o
+  // pagamento ainda nem foi iniciado neste ponto). `after()` (não um
+  // `await` direto) para nunca atrasar o redirect abaixo com a latência
+  // do Resend — roda depois da resposta ser enviada, mesmo quando
+  // `redirect()` é chamado (doc do Next.js), cobrindo tanto o redirect
+  // interno (confirmação própria) quanto o externo (checkout do Mercado
+  // Pago) sem precisar duplicar esta chamada em nenhum dos dois.
+  after(() =>
+    sendOrderConfirmationEmail({
+      tenantId: resolution.tenant.id,
+      orderId: orderId as string,
+      customerEmail,
+      storeName: resolution.tenant.name,
+      storeSlug,
+    }),
+  );
 
   // O pedido já existe e o carrinho já foi limpo (create_order_from_cart,
   // Etapa 10) — se o passo de pagamento falhar daqui pra frente, o
