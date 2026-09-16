@@ -56,6 +56,13 @@ export const initialDomainActionState: DomainActionState = { status: "idle" };
  *   valor, e qualquer subdomínio dele, nunca pode virar "domínio
  *   personalizado" de um tenant (colidiria com o próprio namespace da
  *   VEXO).
+ *
+ * JON-30 — nunca chamar isto de um Client Component: `getPublicEnv()` agora
+ * lança explicitamente se chamada do browser (lib/env.ts). Hoje só
+ * `domain-actions.ts` (Server Action) chama esta função — se algum dia um
+ * Client Component precisar do mesmo resultado, leia `NEXT_PUBLIC_SITE_URL`/
+ * `NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX` por acesso literal e duplique a
+ * lógica, nunca reaproveite `getPublicEnv()` daqui.
  */
 export function isReservedDomain(domain: string): boolean {
   const { NEXT_PUBLIC_SITE_URL, NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX } = getPublicEnv();

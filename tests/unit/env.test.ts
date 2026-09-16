@@ -56,6 +56,18 @@ describe("lib/env", () => {
     expect(() => getPublicEnv()).toThrow();
   });
 
+  it("refuses to read public env vars when called from the browser (JON-30 — regression: process.env dinâmico nunca é inlinado no bundle do client)", async () => {
+    Object.assign(process.env, VALID_ENV);
+    const { getPublicEnv } = await import("@/lib/env");
+
+    vi.stubGlobal("window", {});
+    try {
+      expect(() => getPublicEnv()).toThrow(/must never be called from the browser/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("parses valid server env vars — core only, no Mercado Pago fields", async () => {
     Object.assign(process.env, VALID_ENV);
     const { getServerEnv } = await import("@/lib/env");

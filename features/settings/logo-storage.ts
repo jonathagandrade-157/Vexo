@@ -1,5 +1,3 @@
-import { getPublicEnv } from "@/lib/env";
-
 /**
  * Sprint 1 — Fase A. Bucket dedicado à mídia de identidade visual do
  * tenant (`tenant-media`, migration 20260817220076) — nunca reaproveita
@@ -72,8 +70,17 @@ export function buildLogoPath(tenantId: string, mime: LogoImageMime): string {
   return `${tenantId}/logo/logo.${EXTENSION_BY_MIME[mime]}`;
 }
 
-/** Bucket é público por design (aparece na vitrine do storefront) — URL determinística, sem round-trip. */
+/**
+ * Bucket é público por design (aparece na vitrine do storefront) — URL
+ * determinística, sem round-trip. Chamada tanto do server quanto de Client
+ * Components (preview de logo/banner no painel, carrossel do storefront) —
+ * por isso lê `NEXT_PUBLIC_SUPABASE_URL` por acesso LITERAL, nunca via
+ * `getPublicEnv()` (JON-30: só a expressão literal `process.env.NEXT_PUBLIC_X`
+ * é inlinada no bundle do client pelo Next.js; passar por `getPublicEnv()`
+ * deixava a variável sempre `undefined` no browser — Sentry VEXO-2).
+ */
 export function getTenantMediaPublicUrl(path: string): string {
-  const { NEXT_PUBLIC_SUPABASE_URL } = getPublicEnv();
-  return `${NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${TENANT_MEDIA_BUCKET}/${path}`;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL ausente");
+  return `${url}/storage/v1/object/public/${TENANT_MEDIA_BUCKET}/${path}`;
 }

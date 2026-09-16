@@ -1,5 +1,3 @@
-import { getPublicEnv } from "@/lib/env";
-
 /**
  * Foundation puramente funcional (sem I/O) para upload de imagem de
  * produto — Etapa 8. Bucket/limite/allow-list já estavam documentados na
@@ -72,10 +70,19 @@ export function buildProductImagePath(tenantId: string, productId: string, mime:
   return `${tenantId}/products/${productId}/main.${EXTENSION_BY_MIME[mime]}`;
 }
 
-/** Bucket é público por design (vitrine do storefront) — URL determinística, sem round-trip. */
+/**
+ * Bucket é público por design (vitrine do storefront) — URL determinística,
+ * sem round-trip. Chamada tanto do server quanto de Client Components
+ * (uploader de galeria no painel, carrinho do storefront) — por isso lê
+ * `NEXT_PUBLIC_SUPABASE_URL` por acesso LITERAL, nunca via `getPublicEnv()`
+ * (JON-30: só a expressão literal `process.env.NEXT_PUBLIC_X` é inlinada no
+ * bundle do client pelo Next.js; passar por `getPublicEnv()` deixava a
+ * variável sempre `undefined` no browser — Sentry VEXO-2).
+ */
 export function getProductImagePublicUrl(path: string): string {
-  const { NEXT_PUBLIC_SUPABASE_URL } = getPublicEnv();
-  return `${NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${path}`;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL ausente");
+  return `${url}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${path}`;
 }
 
 /**

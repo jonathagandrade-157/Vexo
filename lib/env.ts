@@ -166,8 +166,26 @@ let cachedMelhorEnvioEnv: MelhorEnvioServerEnv | undefined;
 let cachedVercelEnv: VercelServerEnv | undefined;
 let cachedEmailEnv: EmailServerEnv | undefined;
 
-/** Variables safe to read from client or server code (`NEXT_PUBLIC_*` only). */
+/**
+ * Server-only, apesar do nome: os VALORES são `NEXT_PUBLIC_*` (seguros de
+ * expor), mas esta FUNÇÃO nunca pode ser chamada do browser. `readSchema`
+ * recebe `process.env` inteiro e o Zod lê as chaves de dentro dele
+ * dinamicamente — o Next.js só inlina `NEXT_PUBLIC_*` no bundle do client
+ * quando a leitura é uma expressão literal (`process.env.NEXT_PUBLIC_X`
+ * escrita direto no código-fonte), nunca via acesso dinâmico como este.
+ * Um Client Component que chamasse isto via bundler sempre recebia
+ * `undefined` pra tudo, e o Zod falhava com "Invalid public environment
+ * variables" (JON-30, Sentry VEXO-2, causa raiz de o preview de logo em
+ * /painel/aparencia quebrar — e de outros Client Components afetados do
+ * mesmo jeito). Código que precisa de `NEXT_PUBLIC_*` no client lê
+ * `process.env.NEXT_PUBLIC_X` por acesso literal, direto onde é usado
+ * (ex.: lib/supabase/client.ts, features/settings/logo-storage.ts,
+ * features/products/image-storage.ts) — nunca por aqui.
+ */
 export function getPublicEnv(): PublicEnv {
+  if (typeof window !== "undefined") {
+    throw new Error("getPublicEnv() must never be called from the browser.");
+  }
   cachedPublicEnv ??= readSchema(publicSchema, process.env, "public");
   return cachedPublicEnv;
 }
