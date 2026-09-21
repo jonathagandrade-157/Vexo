@@ -168,6 +168,50 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
       };
     },
 
+    async searchPaymentByExternalReference(accessToken, externalReference) {
+      const url = new URL(`${API_BASE}/v1/payments/search`);
+      url.searchParams.set("external_reference", externalReference);
+      // Mais recente primeiro — um pedido pode ter mais de uma tentativa de
+      // pagamento (ex.: cliente abandonou a primeira preference e reabriu o
+      // checkout); entre tentativas sem nenhuma aprovada, a mais nova é a
+      // que importa.
+      url.searchParams.set("sort", "date_created");
+      url.searchParams.set("criteria", "desc");
+
+      const response = await fetchWithTimeout(url.toString(), {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) {
+        throw new Error(`mercadopago: search payment failed (${response.status})`);
+      }
+      const data = (await response.json()) as {
+        results: Array<{
+          id: number | string;
+          status: string;
+          transaction_amount: number;
+          payment_method_id: string | null;
+          external_reference: string | null;
+        }>;
+      };
+      // JON-15 — se existir MAIS DE UMA tentativa de pagamento para o mesmo
+      // pedido, uma aprovada sempre vence, mesmo que não seja a mais recente
+      // (ex.: cliente pagou com sucesso numa tentativa mais antiga e tentou
+      // pagar de novo depois, gerando uma tentativa mais nova rejeitada —
+      // "mais recente" sozinho escolheria a rejeitada e mascararia o
+      // pagamento real). Só cai para "a mais recente por date_created"
+      // (results[0], já ordenado desc acima) quando nenhuma é aprovada.
+      const result = data.results?.find((r) => mapStatus(r.status) === "APPROVED") ?? data.results?.[0];
+      if (!result) return null;
+
+      return {
+        externalId: String(result.id),
+        status: mapStatus(result.status),
+        amount: result.transaction_amount,
+        method: result.payment_method_id,
+        externalReference: result.external_reference,
+      };
+    },
+
     verifyWebhookSignature(headers, rawBody) {
       const signatureHeader = headers.get("x-signature");
       const requestId = headers.get("x-request-id");

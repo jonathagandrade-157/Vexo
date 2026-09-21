@@ -65,6 +65,19 @@ export interface PaymentGateway {
   exchangeCodeForTokens(code: string, redirectUri: string): Promise<OAuthTokens>;
   createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult>;
   getPayment(accessToken: string, externalId: string): Promise<PaymentDetails>;
+  /**
+   * JON-15 — busca um pagamento pelo `external_reference` (sempre
+   * `order_id`, arquitetura §12.1), não pelo id do pagamento em si.
+   * Existe separada de `getPayment` porque, antes de QUALQUER webhook
+   * chegar, `payments.external_id` só guarda o preference_id da
+   * criação do checkout (`createPayment`) — nunca o id real do
+   * pagamento, que só o próprio Mercado Pago sabe até notificar.
+   * `getPayment` exige o id real; esta função existe exatamente para o
+   * caso em que ele ainda é desconhecido (reconciliação de webhook
+   * perdido). Devolve `null` quando nenhum pagamento foi encontrado
+   * pra esse pedido ainda.
+   */
+  searchPaymentByExternalReference(accessToken: string, externalReference: string): Promise<PaymentDetails | null>;
   verifyWebhookSignature(headers: Headers, rawBody: string): boolean;
   parseWebhookEvent(headers: Headers, payload: unknown): WebhookEvent | null;
   refundPayment(accessToken: string, externalId: string): Promise<void>;

@@ -134,6 +134,87 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
     expect((init!.headers as Record<string, string>).authorization).toBe("Bearer seller-token");
   });
 
+  it("searchPaymentByExternalReference queries by external_reference, sorted newest-first, and maps the first result", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          results: [
+            { id: 42, status: "approved", transaction_amount: 199.9, payment_method_id: "pix", external_reference: "order-abc" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const payment = await gateway.searchPaymentByExternalReference("seller-token", "order-abc");
+    expect(payment).toEqual({
+      externalId: "42",
+      status: "APPROVED",
+      amount: 199.9,
+      method: "pix",
+      externalReference: "order-abc",
+    });
+
+    const [calledUrl, init] = vi.mocked(global.fetch).mock.calls[0]!;
+    const url = new URL(calledUrl as string);
+    expect(url.origin + url.pathname).toBe("https://api.mercadopago.com/v1/payments/search");
+    expect(url.searchParams.get("external_reference")).toBe("order-abc");
+    expect(url.searchParams.get("sort")).toBe("date_created");
+    expect(url.searchParams.get("criteria")).toBe("desc");
+    expect((init!.headers as Record<string, string>).authorization).toBe("Bearer seller-token");
+  });
+
+  it("searchPaymentByExternalReference: with multiple results and none APPROVED, picks the newest by date_created (results[0], already sorted desc)", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          results: [
+            { id: 2, status: "rejected", transaction_amount: 100, payment_method_id: "pix", external_reference: "order-abc" },
+            { id: 1, status: "cancelled", transaction_amount: 100, payment_method_id: "pix", external_reference: "order-abc" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const payment = await gateway.searchPaymentByExternalReference("seller-token", "order-abc");
+    expect(payment).toMatchObject({ externalId: "2", status: "REJECTED" });
+  });
+
+  it("searchPaymentByExternalReference (JON-15): with multiple results, an APPROVED one always wins even if it's not the newest — a later rejected/cancelled retry never masks a real approved payment", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          results: [
+            // results[0] é o mais NOVO (sort=date_created,desc) — uma tentativa
+            // rejeitada, criada DEPOIS da aprovada. Sem a priorização por
+            // APPROVED, isto mascararia um pagamento real (ver migration
+            // 20260817220121: apply_payment_update "aprovado é grudento").
+            { id: 99, status: "rejected", transaction_amount: 100, payment_method_id: "credit_card", external_reference: "order-abc" },
+            { id: 42, status: "approved", transaction_amount: 100, payment_method_id: "pix", external_reference: "order-abc" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const payment = await gateway.searchPaymentByExternalReference("seller-token", "order-abc");
+    expect(payment).toEqual({
+      externalId: "42",
+      status: "APPROVED",
+      amount: 100,
+      method: "pix",
+      externalReference: "order-abc",
+    });
+  });
+
+  it("searchPaymentByExternalReference returns null when no payment was found yet (order still genuinely unpaid)", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    expect(await gateway.searchPaymentByExternalReference("seller-token", "order-abc")).toBeNull();
+  });
+
+  it("searchPaymentByExternalReference throws on a non-ok response, never treating an API error as 'no payment'", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(new Response("", { status: 500 }));
+    await expect(gateway.searchPaymentByExternalReference("seller-token", "order-abc")).rejects.toThrow(/search payment failed \(500\)/);
+  });
+
   it("getPayment maps Mercado Pago status strings to the normalized enum", async () => {
     const cases: [string, string][] = [
       ["approved", "APPROVED"],
@@ -222,6 +303,11 @@ describe("timeout / AbortController (D9.1)", () => {
   it("2d. timeout em refundPayment também produz erro tratado", async () => {
     vi.mocked(global.fetch).mockRejectedValueOnce(abortError());
     await expect(gateway.refundPayment("seller-token", "payment-1")).rejects.toThrow(/timed out/);
+  });
+
+  it("2e. timeout em searchPaymentByExternalReference também produz erro tratado (JON-15)", async () => {
+    vi.mocked(global.fetch).mockRejectedValueOnce(abortError());
+    await expect(gateway.searchPaymentByExternalReference("seller-token", "order-abc")).rejects.toThrow(/timed out/);
   });
 
   it("3. o AbortController é realmente conectado ao fetch (signal presente e é um AbortSignal)", async () => {

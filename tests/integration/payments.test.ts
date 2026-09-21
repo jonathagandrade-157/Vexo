@@ -324,6 +324,100 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
     expect(order.rows[0]!.status).toBe("PAID");
   });
 
+  // JON-15 (migration 20260817220121) — "aprovado é grudento" (a): um pagamento já
+  // APPROVED nunca pode ser revertido para REJECTED/CANCELLED por uma chamada
+  // fora de ordem (ex.: reconciliação escolhendo a tentativa errada, ou um
+  // segundo webhook atrasado referente a outra tentativa do mesmo pedido).
+  it("apply_payment_update: an already-APPROVED payment is never reverted to REJECTED (approved is sticky)", async () => {
+    const orderId = await insertOrder(fx.tenantA, 90);
+    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+      commit: true,
+    });
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-approved', 'APPROVED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+    // Tentativa fora de ordem: um resultado REJECTED chegando depois do aprovado.
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-rejected-later', 'REJECTED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+
+    const order = await withSuperuser((c) => c.query("select status, payment_status from public.orders where id = $1", [orderId]));
+    expect(order.rows[0]).toMatchObject({ status: "PAID", payment_status: "APPROVED" });
+    const payment = await withSuperuser((c) => c.query("select status, external_id from public.payments where order_id = $1", [orderId]));
+    expect(payment.rows[0]).toMatchObject({ status: "APPROVED", external_id: "mp-payment-approved" });
+  });
+
+  it("apply_payment_update: an already-APPROVED payment is also never reverted to CANCELLED", async () => {
+    const orderId = await insertOrder(fx.tenantA, 90);
+    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+      commit: true,
+    });
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-approved-2', 'APPROVED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-cancelled-later', 'CANCELLED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+
+    const order = await withSuperuser((c) => c.query("select status, payment_status from public.orders where id = $1", [orderId]));
+    expect(order.rows[0]).toMatchObject({ status: "PAID", payment_status: "APPROVED" });
+  });
+
+  // JON-15 — "aprovado é grudento" não bloqueia a transição legítima: REFUNDED
+  // depois de um APPROVED é um estorno real e deve continuar sendo aplicado.
+  it("apply_payment_update: APPROVED → REFUNDED still goes through (the one transition the sticky guard allows)", async () => {
+    const orderId = await insertOrder(fx.tenantA, 90);
+    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+      commit: true,
+    });
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-approved-3', 'APPROVED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-refunded', 'REFUNDED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+
+    const payment = await withSuperuser((c) => c.query("select status from public.payments where order_id = $1", [orderId]));
+    expect(payment.rows[0]!.status).toBe("REFUNDED");
+  });
+
+  // JON-15 (b) — a guarda "aprovado é grudento" nunca bloqueia o caso legítimo
+  // de retry bem-sucedido: REJECTED/CANCELLED → APPROVED continua permitido,
+  // porque o pagamento nunca esteve APPROVED antes desta chamada.
+  it("apply_payment_update: REJECTED → APPROVED (a legitimate retry after failure) is still allowed", async () => {
+    const orderId = await insertOrder(fx.tenantA, 90);
+    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+      commit: true,
+    });
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-attempt-1', 'REJECTED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+    await asActor(
+      { role: "service_role" },
+      (c) => c.query("select apply_payment_update($1, $2, 'mercadopago', 'mp-payment-attempt-2', 'APPROVED', 'pix', 90)", [fx.tenantA, orderId]),
+      { commit: true },
+    );
+
+    const order = await withSuperuser((c) => c.query("select status, payment_status from public.orders where id = $1", [orderId]));
+    expect(order.rows[0]).toMatchObject({ status: "PAID", payment_status: "APPROVED" });
+    const payment = await withSuperuser((c) => c.query("select status, external_id from public.payments where order_id = $1", [orderId]));
+    expect(payment.rows[0]).toMatchObject({ status: "APPROVED", external_id: "mp-payment-attempt-2" });
+  });
+
   // 17 — valor divergente do payload é ignorado (não aplica a atualização).
   it("apply_payment_update silently skips when the reported amount doesn't match orders.total", async () => {
     const orderId = await insertOrder(fx.tenantA, 200);

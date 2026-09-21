@@ -122,6 +122,17 @@ const emailServerSchema = z.object({
   EMAIL_FROM: z.string().min(1).optional(),
 });
 
+// JON-15 — segredo do cron de reconciliação de pagamento (Vercel Cron).
+// Schema separado pelo mesmo motivo de sempre: só o Route Handler do cron
+// (app/api/cron/reconcile-payments/route.ts) precisa disto, nenhum fluxo
+// essencial depende dele. Padrão oficial da Vercel para proteger um
+// endpoint de cron: comparar o header Authorization: Bearer <segredo>
+// contra esta env var — nunca IP allowlist (a Vercel não documenta um IP
+// fixo de origem para cron jobs).
+const cronServerSchema = z.object({
+  CRON_SECRET: z.string().min(16),
+});
+
 export type PublicEnv = z.infer<typeof publicSchema>;
 export type ServerEnv = z.infer<typeof serverSchema>;
 export type MercadoPagoServerEnv = z.infer<typeof mercadoPagoServerSchema>;
@@ -134,6 +145,7 @@ export interface MelhorEnvioServerEnv {
   MELHOR_ENVIO_SANDBOX: boolean;
   OAUTH_STATE_SECRET: string;
 }
+export type CronServerEnv = z.infer<typeof cronServerSchema>;
 export interface EmailServerEnv {
   RESEND_API_KEY: string;
   /** Derivado de EMAIL_FROM — nunca undefined no valor devolvido: cai para o sandbox do Resend quando a var não está setada. */
@@ -165,6 +177,7 @@ let cachedBillingEnv: BillingServerEnv | undefined;
 let cachedMelhorEnvioEnv: MelhorEnvioServerEnv | undefined;
 let cachedVercelEnv: VercelServerEnv | undefined;
 let cachedEmailEnv: EmailServerEnv | undefined;
+let cachedCronEnv: CronServerEnv | undefined;
 
 /**
  * Server-only, apesar do nome: os VALORES são `NEXT_PUBLIC_*` (seguros de
@@ -364,4 +377,28 @@ export function getEmailEnv(): EmailServerEnv {
     }
   }
   return cachedEmailEnv;
+}
+
+/**
+ * JON-15 — segredo do endpoint de cron de reconciliação de pagamento.
+ * Chamar SOMENTE de dentro de `app/api/cron/reconcile-payments/route.ts`,
+ * pra comparar contra o header `Authorization` da requisição — mesmo
+ * cuidado de todo `getXEnv()` acima: nunca de um fluxo essencial.
+ */
+export function getCronEnv(): CronServerEnv {
+  if (typeof window !== "undefined") {
+    throw new Error("getCronEnv() must never be called from the browser.");
+  }
+  if (!cachedCronEnv) {
+    try {
+      cachedCronEnv = readSchema(cronServerSchema, process.env, "Cron");
+    } catch (cause) {
+      throw new Error(
+        "O cron de reconciliação de pagamento não está configurado neste ambiente (CRON_SECRET). " +
+          "Configure essa variável antes de habilitar o cron na Vercel.",
+        { cause },
+      );
+    }
+  }
+  return cachedCronEnv;
 }

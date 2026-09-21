@@ -13,6 +13,7 @@ const VALID_ENV = {
   OAUTH_STATE_SECRET: "a-oauth-state-secret-thats-long-enough",
   MELHOR_ENVIO_CLIENT_ID: "test-me-client-id",
   MELHOR_ENVIO_CLIENT_SECRET: "test-me-client-secret",
+  CRON_SECRET: "a-cron-secret-thats-long-enough",
 };
 
 describe("lib/env", () => {
@@ -216,6 +217,50 @@ describe("lib/env", () => {
 
     const { getMelhorEnvioEnv } = await import("@/lib/env");
     expect(() => getMelhorEnvioEnv()).not.toThrow();
+  });
+
+  it("parses a valid CRON_SECRET (JON-15)", async () => {
+    Object.assign(process.env, VALID_ENV);
+    const { getCronEnv } = await import("@/lib/env");
+    expect(getCronEnv()).toEqual({ CRON_SECRET: VALID_ENV.CRON_SECRET });
+  });
+
+  it("getCronEnv() throws a clear, secret-free error when CRON_SECRET is missing", async () => {
+    Object.assign(process.env, VALID_ENV);
+    delete process.env.CRON_SECRET;
+
+    const { getCronEnv } = await import("@/lib/env");
+    let thrown: unknown;
+    try {
+      getCronEnv();
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toMatch(/CRON_SECRET/);
+    expect(message).toMatch(/não está configurado/);
+    for (const value of Object.values(VALID_ENV)) {
+      expect(message).not.toContain(value);
+    }
+  });
+
+  it("getCronEnv() throws when CRON_SECRET is shorter than 16 characters", async () => {
+    Object.assign(process.env, VALID_ENV, { CRON_SECRET: "too-short" });
+    const { getCronEnv } = await import("@/lib/env");
+    expect(() => getCronEnv()).toThrow();
+  });
+
+  it("refuses to read the cron env var when called from the browser", async () => {
+    Object.assign(process.env, VALID_ENV);
+    const { getCronEnv } = await import("@/lib/env");
+
+    vi.stubGlobal("window", {});
+    try {
+      expect(() => getCronEnv()).toThrow(/must never be called from the browser/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("memoizes the parsed value across calls", async () => {
