@@ -151,4 +151,3 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("check_rate_limit (D15-S.2)"
     expect(err2.message).toMatch(/must be positive/i);
   });
 });
-
