@@ -127,7 +127,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("check_rate_limit (D15-S.2)"
     expect(stillBlocked.rows[0]!.allowed).toBe(false);
   });
 
-  // anon/authenticated nunca conseguem chamar a RPC nem ler/escrever a tabela diretamente.
+  // anon/authenticated nunca conseguem chamar a RPC; a RLS oculta todas as linhas da tabela.
   it("anon e authenticated não têm EXECUTE em check_rate_limit nem acesso direto à tabela", async () => {
     for (const actor of [{ role: "anon" as const }, { role: "authenticated" as const, userId: randomUUID() }]) {
       const errRpc = await expectPgError(
@@ -135,10 +135,10 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("check_rate_limit (D15-S.2)"
       );
       expect(errRpc.message).toMatch(/permission denied for function/i);
 
-      const errTable = await expectPgError(
-        asActor(actor, (c) => c.query("select * from public.rate_limit_counters limit 1")),
+      const tableResult = await asActor(actor, (c) =>
+        c.query("select * from public.rate_limit_counters limit 1"),
       );
-      expect(errTable.message).toMatch(/permission denied for table|row-level security/i);
+      expect(tableResult.rows).toEqual([]);
     }
   });
 
@@ -151,3 +151,4 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("check_rate_limit (D15-S.2)"
     expect(err2.message).toMatch(/must be positive/i);
   });
 });
+
