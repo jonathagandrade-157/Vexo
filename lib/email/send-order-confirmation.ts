@@ -45,24 +45,24 @@ export async function sendOrderConfirmationEmail(input: SendOrderConfirmationEma
     return;
   }
 
-  const order = await getOrderConfirmation(input.tenantId, input.orderId);
-  if (!order) {
-    // Não deveria acontecer: o pedido acabou de ser criado com sucesso
-    // pela mesma requisição que agendou este after() — um null aqui é
-    // sinal de inconsistência real (nunca um estado esperado, diferente
-    // do RESEND_API_KEY ausente acima), então "error" (não "warning").
-    Sentry.captureMessage(
-      "JON-13: e-mail de confirmação de pedido não enviado — pedido não encontrado logo após ser criado.",
-      { level: "error", extra: { tenantId: input.tenantId, orderId: input.orderId } },
-    );
-    return;
-  }
-
-  const { NEXT_PUBLIC_SITE_URL } = getPublicEnv();
-  const orderUrl = `${NEXT_PUBLIC_SITE_URL}/loja/${input.storeSlug}/pedido/${input.orderId}`;
-  const { subject, html } = buildOrderConfirmationEmail(order, { storeName: input.storeName, orderUrl });
-
   try {
+    const order = await getOrderConfirmation(input.tenantId, input.orderId);
+    if (!order) {
+      // Não deveria acontecer: o pedido acabou de ser criado com sucesso
+      // pela mesma requisição que agendou este after() — um null aqui é
+      // sinal de inconsistência real (nunca um estado esperado, diferente
+      // do RESEND_API_KEY ausente acima), então "error" (não "warning").
+      Sentry.captureMessage(
+        "JON-13: e-mail de confirmação de pedido não enviado — pedido não encontrado logo após ser criado.",
+        { level: "error", extra: { tenantId: input.tenantId, orderId: input.orderId } },
+      );
+      return;
+    }
+
+    const { NEXT_PUBLIC_SITE_URL } = getPublicEnv();
+    const orderUrl = `${NEXT_PUBLIC_SITE_URL}/loja/${input.storeSlug}/pedido/${input.orderId}`;
+    const { subject, html } = buildOrderConfirmationEmail(order, { storeName: input.storeName, orderUrl });
+
     const resend = new Resend(env.RESEND_API_KEY);
     const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to: input.customerEmail, subject, html });
     if (error) {

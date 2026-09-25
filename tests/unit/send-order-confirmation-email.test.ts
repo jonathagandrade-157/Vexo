@@ -33,9 +33,10 @@ vi.mock("@sentry/nextjs", () => ({
 }));
 
 import * as Sentry from "@sentry/nextjs";
-import { getEmailEnv } from "@/lib/env";
+import { getEmailEnv, getPublicEnv } from "@/lib/env";
 import { getOrderConfirmation, type OrderConfirmation } from "@/features/checkout/order-confirmation";
 import { sendOrderConfirmationEmail } from "@/lib/email/send-order-confirmation";
+import * as OrderConfirmationTemplate from "@/lib/email/templates/order-confirmation";
 
 const INPUT = {
   tenantId: "11111111-1111-4111-8111-111111111111",
@@ -133,6 +134,45 @@ describe("sendOrderConfirmationEmail", () => {
     const [message, options] = vi.mocked(Sentry.captureMessage).mock.calls[0]!;
     expect(message).toMatch(/pedido não encontrado logo após ser criado/);
     expect(options).toMatchObject({ level: "error", extra: { tenantId: INPUT.tenantId, orderId: INPUT.orderId } });
+  });
+
+  it("consulta do pedido lança inesperadamente: captura via Sentry e nunca rejeita", async () => {
+    vi.mocked(getEmailEnv).mockReturnValue({ RESEND_API_KEY: "re_test", EMAIL_FROM: "onboarding@resend.dev" });
+    const queryError = new Error("database unavailable");
+    vi.mocked(getOrderConfirmation).mockRejectedValue(queryError);
+
+    await expect(sendOrderConfirmationEmail(INPUT)).resolves.toBeUndefined();
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(queryError, { extra: { tenantId: INPUT.tenantId, orderId: INPUT.orderId } });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("configuração da URL pública lança inesperadamente: captura via Sentry e nunca rejeita", async () => {
+    vi.mocked(getEmailEnv).mockReturnValue({ RESEND_API_KEY: "re_test", EMAIL_FROM: "onboarding@resend.dev" });
+    vi.mocked(getOrderConfirmation).mockResolvedValue(ORDER);
+    const configError = new Error("invalid public environment");
+    vi.mocked(getPublicEnv).mockImplementationOnce(() => {
+      throw configError;
+    });
+
+    await expect(sendOrderConfirmationEmail(INPUT)).resolves.toBeUndefined();
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(configError, { extra: { tenantId: INPUT.tenantId, orderId: INPUT.orderId } });
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it("montagem do template lança inesperadamente: captura via Sentry e nunca rejeita", async () => {
+    vi.mocked(getEmailEnv).mockReturnValue({ RESEND_API_KEY: "re_test", EMAIL_FROM: "onboarding@resend.dev" });
+    vi.mocked(getOrderConfirmation).mockResolvedValue(ORDER);
+    const templateError = new Error("template failed");
+    vi.spyOn(OrderConfirmationTemplate, "buildOrderConfirmationEmail").mockImplementationOnce(() => {
+      throw templateError;
+    });
+
+    await expect(sendOrderConfirmationEmail(INPUT)).resolves.toBeUndefined();
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(templateError, { extra: { tenantId: INPUT.tenantId, orderId: INPUT.orderId } });
+    expect(sendMock).not.toHaveBeenCalled();
   });
 
   it("envio bem-sucedido: chama resend.emails.send com from/to/subject/html corretos, sem Sentry", async () => {
