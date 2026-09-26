@@ -134,7 +134,7 @@ export default async function ProdutosPage() {
         </div>
         {canCreate ? (
           <Link
-            className="flex items-center justify-center gap-2 rounded-lg bg-primary-container px-5 py-2.5 font-label text-label-md text-on-primary-container shadow-[0_0_15px_rgba(124,58,237,0.2)] transition-colors hover:bg-[#8B5CF6]"
+            className="flex items-center justify-center gap-2 rounded-lg bg-primary-container px-5 py-2.5 font-label text-label-md text-on-primary-container shadow-[0_0_15px_rgba(124,58,237,0.2)] transition-colors hover:bg-primary-container/90"
             href="/painel/produtos/novo"
           >
             <span className="material-symbols-outlined text-[20px]">add</span>
@@ -164,7 +164,7 @@ export default async function ProdutosPage() {
       ) : (
         <>
           {/* Desktop: tabela */}
-          <div className="hidden overflow-hidden rounded-xl border border-surface-container-highest bg-[#121212] md:block">
+          <div className="hidden overflow-hidden rounded-xl border border-surface-container-highest bg-surface-container-lowest md:block">
             <table className="w-full min-w-[720px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-surface-container-highest bg-surface-container-low/50">
@@ -179,7 +179,7 @@ export default async function ProdutosPage() {
               </thead>
               <tbody className="divide-y divide-surface-container-highest">
                 {products.map((product) => (
-                  <tr className="transition-colors hover:bg-[#1E1E1E]/50" key={product.id}>
+                  <tr className="transition-colors hover:bg-surface-container/50" key={product.id}>
                     <td className="p-4">
                       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-surface-container-highest bg-surface-container-highest">
                         <ProductThumbnail mainImage={product.main_image} name={product.name} size={48} />
@@ -233,7 +233,7 @@ export default async function ProdutosPage() {
           <div className="flex flex-col gap-3 md:hidden">
             {products.map((product) => (
               <div
-                className="flex items-center gap-4 rounded-xl border border-surface-container-highest bg-[#121212] p-3"
+                className="flex items-center gap-4 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-3"
                 key={product.id}
               >
                 <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-container-highest">

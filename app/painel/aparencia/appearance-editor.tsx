@@ -30,7 +30,7 @@ function SaveButton({ canEdit, onClick, saving }: { canEdit: boolean; onClick: (
   if (!canEdit) return null;
   return (
     <button
-      className="rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6] disabled:cursor-not-allowed disabled:opacity-60"
+      className="rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-primary-container/90 disabled:cursor-not-allowed disabled:opacity-60"
       disabled={saving}
       onClick={onClick}
       type="button"
@@ -148,7 +148,7 @@ export function AppearanceEditor({
     // esquerda e o teto explícito de 0 na direita eliminam essa disputa.
     <div className="grid min-w-0 grid-cols-1 gap-6 xl:h-[calc(100vh-200px)] xl:grid-cols-[minmax(360px,2fr)_minmax(0,3fr)]">
       <div className="flex min-w-0 flex-col gap-6 xl:overflow-y-auto xl:pr-2">
-        <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
+        <section className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6">
           <h2 className="mb-1 font-headline text-headline-sm text-on-surface">Identidade visual</h2>
           <p className="mb-4 border-b border-surface-container-highest pb-4 font-body text-body-sm text-on-surface-variant">
             Nome e descrição são editados em Configurações — aqui você cuida só da logo.
@@ -156,7 +156,7 @@ export function AppearanceEditor({
           <LogoUploader initialLogoPath={initialLogoPath} onDisplayUrlChange={setLogoUrl} onPaletteExtracted={setSuggestedPalette} />
         </section>
 
-        <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
+        <section className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6">
           <h2 className="mb-4 border-b border-surface-container-highest pb-4 font-headline text-headline-sm text-on-surface">
             Cores
           </h2>
@@ -176,7 +176,7 @@ export function AppearanceEditor({
                     ))}
                   </div>
                   <button
-                    className="rounded-lg bg-primary-container px-4 py-2 font-label text-label-sm text-on-primary-container transition-colors hover:bg-[#8B5CF6]"
+                    className="rounded-lg bg-primary-container px-4 py-2 font-label text-label-sm text-on-primary-container transition-colors hover:bg-primary-container/90"
                     disabled={!canEdit}
                     onClick={applyPalette}
                     type="button"
@@ -200,7 +200,7 @@ export function AppearanceEditor({
           </div>
         </section>
 
-        <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
+        <section className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6">
           <h2 className="mb-1 font-headline text-headline-sm text-on-surface">Modelos</h2>
           <p className="mb-4 border-b border-surface-container-highest pb-4 font-body text-body-sm text-on-surface-variant">
             Escolha o estilo que melhor representa sua marca.
@@ -208,7 +208,7 @@ export function AppearanceEditor({
           <TemplateSelector disabled={!canEdit} onChange={setTemplate} value={template} />
         </section>
 
-        <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
+        <section className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6">
           <h2 className="mb-1 font-headline text-headline-sm text-on-surface">Banners</h2>
           <p className="mb-4 border-b border-surface-container-highest pb-4 font-body text-body-sm text-on-surface-variant">
             Carrossel de imagens no topo da loja — até 5 banners.

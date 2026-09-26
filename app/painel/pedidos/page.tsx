@@ -229,7 +229,7 @@ export default async function PedidosPage({ searchParams }: PageProps) {
           </div>
           <div className="flex gap-3">
             <button
-              className="rounded-lg bg-primary-container px-5 py-2.5 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6]"
+              className="rounded-lg bg-primary-container px-5 py-2.5 font-label text-label-md text-on-primary-container transition-colors hover:bg-primary-container/90"
               type="submit"
             >
               Filtrar
@@ -255,7 +255,7 @@ export default async function PedidosPage({ searchParams }: PageProps) {
       ) : (
         <>
           {/* Desktop: tabela */}
-          <div className="hidden overflow-x-auto rounded-xl border border-surface-container-highest bg-[#121212] md:block">
+          <div className="hidden overflow-x-auto rounded-xl border border-surface-container-highest bg-surface-container-lowest md:block">
             <table className="w-full min-w-[960px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-surface-container-highest bg-surface-container-low/50">
@@ -271,7 +271,7 @@ export default async function PedidosPage({ searchParams }: PageProps) {
               </thead>
               <tbody className="divide-y divide-surface-container-highest">
                 {orders.map((order) => (
-                  <tr className="transition-colors hover:bg-[#1E1E1E]/50" key={order.id}>
+                  <tr className="transition-colors hover:bg-surface-container/50" key={order.id}>
                     <td className="p-4 font-label text-label-md text-on-surface">{order.order_number}</td>
                     <td className="p-4">
                       <div className="font-body text-body-sm text-on-surface">{order.customer_name}</div>
@@ -297,7 +297,7 @@ export default async function PedidosPage({ searchParams }: PageProps) {
                     </td>
                     <td className="p-4 text-right">
                       <Link
-                        className="font-label text-label-sm text-primary transition-colors hover:text-[#8B5CF6]"
+                        className="font-label text-label-sm text-primary transition-colors hover:text-primary-container"
                         href={`/painel/pedidos/${order.id}`}
                       >
                         Ver detalhe
@@ -313,7 +313,7 @@ export default async function PedidosPage({ searchParams }: PageProps) {
           <div className="flex flex-col gap-3 md:hidden">
             {orders.map((order) => (
               <Link
-                className="flex flex-col gap-2 rounded-xl border border-surface-container-highest bg-[#121212] p-4"
+                className="flex flex-col gap-2 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-4"
                 href={`/painel/pedidos/${order.id}`}
                 key={order.id}
               >

@@ -1,6 +1,113 @@
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
+:root,
+[data-theme="dark"] {
+  --color-surface: 19 19 22;
+  --color-surface-dim: 19 19 22;
+  --color-surface-bright: 57 57 60;
+  --color-surface-container-lowest: 14 14 17;
+  --color-surface-container-low: 27 27 30;
+  --color-surface-container: 31 31 34;
+  --color-surface-container-high: 42 42 45;
+  --color-surface-container-highest: 53 52 55;
+  --color-on-surface: 228 225 229;
+  --color-on-surface-variant: 204 195 216;
+  --color-inverse-surface: 228 225 229;
+  --color-inverse-on-surface: 48 48 51;
+  --color-outline: 149 141 161;
+  --color-outline-variant: 74 68 85;
+  --color-surface-tint: 210 187 255;
+  --color-primary: 210 187 255;
+  --color-on-primary: 63 0 142;
+  --color-primary-container: 124 58 237;
+  --color-on-primary-container: 237 224 255;
+  --color-inverse-primary: 115 46 228;
+  --color-secondary: 173 198 255;
+  --color-on-secondary: 0 46 106;
+  --color-secondary-container: 5 102 217;
+  --color-on-secondary-container: 230 236 255;
+  --color-tertiary: 255 183 132;
+  --color-on-tertiary: 79 37 0;
+  --color-tertiary-container: 161 81 0;
+  --color-on-tertiary-container: 255 224 205;
+  --color-error: 255 180 171;
+  --color-on-error: 105 0 5;
+  --color-error-container: 147 0 10;
+  --color-on-error-container: 255 218 214;
+  --color-primary-fixed: 234 221 255;
+  --color-primary-fixed-dim: 210 187 255;
+  --color-on-primary-fixed: 37 0 90;
+  --color-on-primary-fixed-variant: 90 0 198;
+  --color-secondary-fixed: 216 226 255;
+  --color-secondary-fixed-dim: 173 198 255;
+  --color-on-secondary-fixed: 0 26 66;
+  --color-on-secondary-fixed-variant: 0 67 149;
+  --color-tertiary-fixed: 255 220 198;
+  --color-tertiary-fixed-dim: 255 183 132;
+  --color-on-tertiary-fixed: 48 20 0;
+  --color-on-tertiary-fixed-variant: 113 55 0;
+  --color-background: 19 19 22;
+  --color-on-background: 228 225 229;
+  --color-surface-variant: 53 52 55;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --color-surface: 246 247 249;
+  --color-surface-dim: 225 226 230;
+  --color-surface-bright: 255 255 255;
+  --color-surface-container-lowest: 255 255 255;
+  --color-surface-container-low: 249 249 251;
+  --color-surface-container: 244 244 247;
+  --color-surface-container-high: 235 235 239;
+  --color-surface-container-highest: 226 226 230;
+  --color-on-surface: 24 24 27;
+  --color-on-surface-variant: 82 82 91;
+  --color-inverse-surface: 39 39 42;
+  --color-inverse-on-surface: 244 244 245;
+  --color-outline: 113 113 122;
+  --color-outline-variant: 212 212 216;
+  --color-surface-tint: 109 59 232;
+  --color-primary: 109 59 232;
+  --color-on-primary: 255 255 255;
+  --color-primary-container: 109 59 232;
+  --color-on-primary-container: 255 255 255;
+  --color-inverse-primary: 196 181 253;
+  --color-secondary: 37 99 235;
+  --color-on-secondary: 255 255 255;
+  --color-secondary-container: 219 234 254;
+  --color-on-secondary-container: 30 64 175;
+  --color-tertiary: 180 83 9;
+  --color-on-tertiary: 255 255 255;
+  --color-tertiary-container: 255 237 213;
+  --color-on-tertiary-container: 124 45 18;
+  --color-error: 220 38 38;
+  --color-on-error: 255 255 255;
+  --color-error-container: 254 226 226;
+  --color-on-error-container: 153 27 27;
+  --color-primary-fixed: 237 233 254;
+  --color-primary-fixed-dim: 221 214 254;
+  --color-on-primary-fixed: 46 16 101;
+  --color-on-primary-fixed-variant: 91 33 182;
+  --color-secondary-fixed: 219 234 254;
+  --color-secondary-fixed-dim: 191 219 254;
+  --color-on-secondary-fixed: 23 37 84;
+  --color-on-secondary-fixed-variant: 30 64 175;
+  --color-tertiary-fixed: 255 237 213;
+  --color-tertiary-fixed-dim: 254 215 170;
+  --color-on-tertiary-fixed: 67 20 7;
+  --color-on-tertiary-fixed-variant: 124 45 18;
+  --color-background: 246 247 249;
+  --color-on-background: 24 24 27;
+  --color-surface-variant: 226 226 230;
+  color-scheme: light;
+}
+
+body {
+  transition: background-color 180ms cubic-bezier(0.23, 1, 0.32, 1), color 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 /* Matches the Stitch reference's own <style> block for icon rendering
    (e.g. criar_conta_e_elegibilidade_trial/code.html) — kept as plain CSS
    since font-variation-settings isn't something Tailwind utilities cover. */
@@ -21,4 +128,10 @@
 
 .ai-glow {
   box-shadow: 0 0 20px rgba(124, 58, 237, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
 }

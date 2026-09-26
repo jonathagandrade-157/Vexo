@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { BrandMark } from "@/components/ui/brand-mark";
+import { ThemeSwitcher } from "@/components/ui/theme-switcher";
 
 const NAV_LINKS = [
   { href: "#recursos", label: "Recursos" },
@@ -27,12 +28,21 @@ export function MarketingHeader() {
             </a>
           ))}
         </nav>
-        <Link
-          className="rounded-xl bg-primary-container px-6 py-2 font-label text-label-md text-on-primary-container transition-colors hover:bg-primary-container/90"
-          href="/cadastro"
-        >
-          Começar
-        </Link>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <ThemeSwitcher />
+          <Link
+            className="rounded-lg px-3 py-2 font-label text-label-md text-on-surface-variant transition-[background-color,color,transform] duration-150 hover:bg-surface-container hover:text-on-surface active:scale-[0.97] sm:px-4"
+            href="/login"
+          >
+            Entrar
+          </Link>
+          <Link
+            className="rounded-lg bg-primary-container px-4 py-2 font-label text-label-md text-on-primary-container transition-[background-color,transform] duration-150 hover:bg-primary-container/90 active:scale-[0.97] sm:px-6"
+            href="/cadastro"
+          >
+            Começar
+          </Link>
+        </div>
       </div>
     </header>
   );

@@ -424,7 +424,7 @@ function OptionRow({
   }
 
   return (
-    <div className="rounded-xl border border-surface-container-highest bg-[#121212] p-4">
+    <div className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-4">
       <div className="flex items-center gap-2">
         <div className="flex flex-col">
           <button

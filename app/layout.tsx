@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Hanken_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 
+import { ThemeProvider } from "@/components/ui/theme-provider";
+import { THEME_STORAGE_KEY } from "@/features/theme/theme";
+
+import "material-symbols/outlined.css";
 import "./globals.css";
 
 // next/font self-hosts these at build time (architecture §0.3) instead of
@@ -32,6 +36,18 @@ export const metadata: Metadata = {
   description: "VEXO — plataforma de criação e gerenciamento de lojas virtuais.",
 };
 
+const themeBootstrapScript = `(() => {
+  try {
+    const stored = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
+    const preference = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+    const resolved = preference === "system"
+      ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : preference;
+    document.documentElement.dataset.theme = resolved;
+    document.documentElement.style.colorScheme = resolved;
+  } catch {}
+})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -41,27 +57,13 @@ export default function RootLayout({
     <html
       lang="pt-BR"
       className={`${hankenGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      suppressHydrationWarning
     >
       <head>
-        {/*
-          Material Symbols Outlined is the icon font every Stitch screen
-          uses (e.g. criar_conta_e_elegibilidade_trial's field icons).
-          next/font/google doesn't catalog it (it's a variable, ligature-
-          based icon font, not a text typeface), so unlike the three fonts
-          above it stays a classic Google Fonts <link> rather than a
-          self-hosted one.
-        */}
-        {/* eslint-disable-next-line @next/next/no-page-custom-font --
-            that rule targets the Pages Router's pages/_document.js; the
-            App Router has no such file, and a <link> in the root layout's
-            <head> is the documented replacement. */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-          rel="stylesheet"
-        />
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
       <body className="bg-background font-body text-on-background antialiased">
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

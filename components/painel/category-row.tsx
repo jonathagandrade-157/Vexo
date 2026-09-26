@@ -19,7 +19,7 @@ export function CategoryRow({ category, canManage }: { category: CategoryRowData
   const active = category.status === "active";
 
   return (
-    <div className="grid grid-cols-12 items-center gap-4 px-6 py-4 transition-colors hover:bg-[#1E1E1E]">
+    <div className="grid grid-cols-12 items-center gap-4 px-6 py-4 transition-colors hover:bg-surface-container">
       <div className="col-span-5 flex items-center gap-3 md:col-span-6">
         <div className="flex h-8 w-8 items-center justify-center rounded border border-outline-variant bg-surface-container-highest">
           <span className="material-symbols-outlined text-[18px] text-primary">sell</span>

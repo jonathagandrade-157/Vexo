@@ -1,4 +1,5 @@
 import { NotificationBell } from "@/components/painel/notification-bell";
+import { ThemeSwitcher } from "@/components/ui/theme-switcher";
 import type { NotificationRow } from "@/features/notifications/schema";
 
 /**
@@ -28,6 +29,7 @@ export function Header({
       </span>
       <div className="hidden flex-1 md:block" />
       <div className="flex items-center gap-2">
+        <ThemeSwitcher />
         <NotificationBell initialNotifications={notifications} initialUnreadCount={unreadNotificationCount} />
         <div
           className="flex h-8 w-8 items-center justify-center rounded-full border border-surface-container-highest bg-surface-container-high font-label text-label-md text-on-surface"

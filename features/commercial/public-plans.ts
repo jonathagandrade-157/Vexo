@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 
+import { visiblePublicFeatureNames } from "@/features/commercial/public-feature-visibility";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 
 export interface PublicPlan {
@@ -23,7 +24,7 @@ interface PlanFeatureJoinRow {
   trial_days: number;
   is_featured: boolean;
   sort_order: number;
-  plan_features: { features: { name: string } | { name: string }[] | null }[];
+  plan_features: { features: { key: string; name: string } | { key: string; name: string }[] | null }[];
 }
 
 /**
@@ -42,7 +43,7 @@ export const listPublicPlans = cache(async (): Promise<PublicPlan[]> => {
   const { data } = await supabase
     .from("plans")
     .select(
-      "slug, name, description, monthly_price, trial_days, is_featured, sort_order, plan_features(features(name))",
+      "slug, name, description, monthly_price, trial_days, is_featured, sort_order, plan_features(features(key, name))",
     )
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
@@ -55,8 +56,10 @@ export const listPublicPlans = cache(async (): Promise<PublicPlan[]> => {
     monthly_price: plan.monthly_price,
     trial_days: plan.trial_days,
     is_featured: plan.is_featured,
-    featureNames: plan.plan_features
-      .map((pf) => (Array.isArray(pf.features) ? pf.features[0]?.name : pf.features?.name))
-      .filter((name): name is string => Boolean(name)),
+    featureNames: visiblePublicFeatureNames(
+      plan.plan_features
+        .map((pf) => (Array.isArray(pf.features) ? pf.features[0] : pf.features))
+        .filter((feature): feature is { key: string; name: string } => Boolean(feature)),
+    ),
   }));
 });

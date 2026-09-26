@@ -308,7 +308,7 @@ export function VariantsTable({
           </p>
 
           {/* Desktop: tabela */}
-          <div className="hidden overflow-hidden rounded-xl border border-surface-container-highest bg-[#121212] md:block">
+          <div className="hidden overflow-hidden rounded-xl border border-surface-container-highest bg-surface-container-lowest md:block">
             <table className="w-full min-w-[720px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-surface-container-highest bg-surface-container-low/50">
@@ -522,7 +522,7 @@ function VariantCard({
       className={
         needsReview
           ? "flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3"
-          : "flex flex-col gap-2 rounded-xl border border-surface-container-highest bg-[#121212] p-3"
+          : "flex flex-col gap-2 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-3"
       }
     >
       <div className="flex items-center justify-between gap-2">

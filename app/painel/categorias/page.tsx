@@ -76,7 +76,7 @@ export default async function CategoriasPage() {
         {canCreate ? (
           <CategoryFormDialog
             trigger={
-              <span className="flex items-center justify-center gap-2 rounded-lg bg-primary-container px-5 py-2.5 font-label text-label-md text-on-primary-container shadow-[0_0_15px_rgba(124,58,237,0.2)] transition-colors hover:bg-[#8B5CF6]">
+              <span className="flex items-center justify-center gap-2 rounded-lg bg-primary-container px-5 py-2.5 font-label text-label-md text-on-primary-container shadow-[0_0_15px_rgba(124,58,237,0.2)] transition-colors hover:bg-primary-container/90">
                 <span className="material-symbols-outlined text-[20px]">add</span>
                 Nova categoria
               </span>
@@ -105,7 +105,7 @@ export default async function CategoriasPage() {
           title="Nenhuma categoria cadastrada"
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-surface-container-highest bg-[#121212]">
+        <div className="overflow-hidden rounded-xl border border-surface-container-highest bg-surface-container-lowest">
           <div className="grid grid-cols-12 gap-4 border-b border-surface-container-highest bg-surface-container-low/50 px-6 py-4">
             <div className="col-span-5 font-label text-label-sm uppercase tracking-wider text-on-surface-variant md:col-span-6">
               Nome da categoria

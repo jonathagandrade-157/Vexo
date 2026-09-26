@@ -50,11 +50,9 @@ const nextConfig: NextConfig = {
           //  - 'unsafe-eval' só em desenvolvimento (React usa eval só em
           //    dev para reconstruir stack traces; nunca em produção —
           //    https://nextjs.org/docs/app/guides/content-security-policy).
-          //  - style-src/font-src incluem fonts.googleapis.com/
-          //    fonts.gstatic.com só por causa do Material Symbols
-          //    (app/layout.tsx) — as 3 fontes de texto (next/font/google)
-          //    são self-hosted em build time, servidas por /_next/static,
-          //    já cobertas por 'self'.
+          //  - style-src/font-src só precisam de 'self': as 3 fontes de
+          //    texto usam next/font e Material Symbols vem do pacote local
+          //    material-symbols; tudo é servido por /_next/static.
           //  - img-src inclui blob: (preview local antes do upload —
           //    URL.createObjectURL em app/painel/aparencia/logo-uploader.tsx,
           //    components/painel/product-image-uploader.tsx,
@@ -103,9 +101,9 @@ function buildCspReportOnly(): string {
     object-src 'none';
     frame-ancestors 'self';
     script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""};
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    style-src 'self' 'unsafe-inline';
     img-src 'self' blob:;
-    font-src 'self' https://fonts.gstatic.com;
+    font-src 'self';
     connect-src 'self' https://*.supabase.co${isDev ? " http://127.0.0.1:54321 http://localhost:54321" : ""};
     frame-src 'self';
     upgrade-insecure-requests;

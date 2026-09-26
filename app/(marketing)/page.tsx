@@ -4,12 +4,13 @@ import Link from "next/link";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { MarketingHeader } from "@/components/marketing/marketing-header";
 import { PricingSection } from "@/components/marketing/pricing-section";
+import { ProductPreview } from "@/components/marketing/product-preview";
 import { listPublicPlans } from "@/features/commercial/public-plans";
 
 export const metadata: Metadata = {
-  title: "VEXO — Crie sua loja online com IA",
+  title: "VEXO — Crie e gerencie sua loja online",
   description:
-    "Uma plataforma de e-commerce completa, impulsionada por IA, projetada para marcas que exigem excelência sem complexidade técnica.",
+    "Crie sua loja online, organize o catálogo, receba pedidos e acompanhe sua operação em um único painel.",
 };
 
 // Planos podem mudar a qualquer momento no Painel MASTER — mesma
@@ -19,30 +20,30 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const VALUE_CARDS = [
-  { icon: "storefront", title: "Crie sua loja", description: "Design de nível empresarial, adaptado à sua marca em minutos." },
-  { icon: "shopping_cart", title: "Venda online", description: "Carrinho otimizado para conversão com checkout fluido e seguro em qualquer dispositivo." },
-  { icon: "payments", title: "Receba pagamentos", description: "Integração nativa com os principais gateways. Receba via PIX, cartões e boletos." },
-  { icon: "local_shipping", title: "Gerencie pedidos", description: "Fluxo de fulfillment com cálculo de frete e acompanhamento de status." },
-  { icon: "inventory_2", title: "Controle produtos", description: "Gestão de catálogo com categorias, estoque e variações." },
-  { icon: "monitoring", title: "Entenda suas vendas", description: "Indicadores reais da sua loja, direto no painel." },
+  { icon: "storefront", title: "Publique sua loja", description: "Escolha um modelo, ajuste sua identidade e compartilhe sua vitrine." },
+  { icon: "shopping_cart", title: "Venda do seu jeito", description: "Ofereça checkout online, pedido pelo WhatsApp ou os dois caminhos." },
+  { icon: "payments", title: "Receba pagamentos", description: "Conecte o Mercado Pago ou combine o pagamento diretamente pelo WhatsApp." },
+  { icon: "local_shipping", title: "Acompanhe pedidos", description: "Organize o atendimento, o frete e cada mudança de status do pedido." },
+  { icon: "inventory_2", title: "Controle o catálogo", description: "Gerencie produtos, categorias, estoque, imagens e variações." },
+  { icon: "palette", title: "Mostre sua marca", description: "Personalize cores, logo, banners e o modelo visual da loja." },
 ];
 
 const HOW_IT_WORKS = [
   { step: "01", title: "Crie sua conta", description: "Cadastre-se rapidamente e acesse o painel da VEXO." },
-  { step: "02", title: "Configure sua loja", description: "Conte sobre sua marca, seus produtos e o estilo desejado." },
-  { step: "03", title: "A VEXO prepara tudo", description: "Loja, catálogo e formas de pagamento prontos para publicar." },
-  { step: "04", title: "Comece a vender", description: "Sua loja está pronta para receber clientes e processar pedidos." },
+  { step: "02", title: "Defina sua identidade", description: "Escolha o visual da loja e configure os dados da sua operação." },
+  { step: "03", title: "Adicione o catálogo", description: "Cadastre produtos e conecte pagamento e entrega conforme sua necessidade." },
+  { step: "04", title: "Publique e venda", description: "Compartilhe sua loja e acompanhe os pedidos pelo painel." },
 ];
 
 const RESOURCES = [
-  { icon: "store", title: "Loja online", description: "Plataforma robusta e escalável." },
-  { icon: "inventory", title: "Produtos", description: "Gestão fácil de catálogos completos." },
-  { icon: "receipt_long", title: "Pedidos", description: "Controle total do fluxo de vendas." },
-  { icon: "credit_card", title: "Pagamentos", description: "Integração com os principais meios de pagamento." },
+  { icon: "store", title: "Loja online", description: "Vitrine publicada com catálogo, carrinho e checkout." },
+  { icon: "inventory", title: "Produtos", description: "Fotos, preços, variações e estoque no mesmo cadastro." },
+  { icon: "receipt_long", title: "Pedidos", description: "Lista de pedidos e atualização de status pelo painel." },
+  { icon: "credit_card", title: "Mercado Pago", description: "Pagamento online conectado à conta da sua loja." },
   { icon: "local_shipping", title: "Frete", description: "Cálculo automático na hora do checkout." },
   { icon: "palette", title: "Personalização", description: "Ajuste a identidade visual da sua loja." },
-  { icon: "bar_chart", title: "Relatórios", description: "Métricas reais sobre a sua operação." },
-  { icon: "auto_awesome", title: "Vexo AI", description: "Inteligência artificial para ajudar na sua loja." },
+  { icon: "inventory_2", title: "Estoque", description: "Controle por produto e por variação." },
+  { icon: "groups", title: "Equipe", description: "Acessos com papéis e permissões definidos." },
 ];
 
 const FAQ_ITEMS = [
@@ -93,31 +94,29 @@ export default async function MarketingHomePage() {
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,theme(colors.primary-container/15),transparent_70%)]" />
           <div className="z-10 mx-auto grid max-w-container-max grid-cols-1 items-center gap-12 lg:grid-cols-2">
             <div className="space-y-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary-container/30 bg-primary-container/10 px-4 py-2 font-label text-label-md text-primary">
-                <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                Sua loja criada com inteligência artificial
+              <div className="inline-flex items-center gap-2 rounded-full border border-outline-variant/50 bg-surface-container-low px-4 py-2 font-label text-label-md text-on-surface-variant">
+                <span className="h-2 w-2 rounded-full bg-primary-container" />
+                E-commerce para operar com clareza
               </div>
               <h1 className="font-display text-display-lg-mobile tracking-tight text-on-surface md:text-display-lg">
-                Crie sua loja online.
+                Sua loja online,
                 <br />
-                <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                  A VEXO cuida do resto.
-                </span>
+                <span className="text-primary">do seu jeito.</span>
               </h1>
               <p className="max-w-xl font-body text-body-lg text-on-surface-variant">
-                Uma plataforma de e-commerce completa, projetada para marcas que exigem excelência sem complexidade
-                técnica.
+                Catálogo, pedidos, pagamento, entrega e aparência reunidos em um painel simples para a rotina da sua
+                operação.
               </p>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <Link
-                  className="ai-glow flex items-center justify-center gap-2 rounded-xl bg-primary-container px-8 py-4 font-label text-label-md text-white transition-all hover:bg-primary-container/90"
+                  className="flex items-center justify-center gap-2 rounded-lg bg-primary-container px-8 py-4 font-label text-label-md text-on-primary-container shadow-lg shadow-primary-container/15 transition-[background-color,transform] duration-150 hover:bg-primary-container/90 active:scale-[0.97]"
                   href="/cadastro"
                 >
                   Começar teste grátis
                   <span className="material-symbols-outlined text-sm">arrow_forward</span>
                 </Link>
                 <a
-                  className="flex items-center justify-center rounded-xl border border-outline-variant/50 bg-surface-container px-8 py-4 font-label text-label-md text-on-surface transition-colors hover:bg-surface-container-high"
+                  className="flex items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-container-lowest px-8 py-4 font-label text-label-md text-on-surface transition-[background-color,transform] duration-150 hover:bg-surface-container active:scale-[0.97]"
                   href="#recursos"
                 >
                   Conhecer a VEXO
@@ -128,22 +127,8 @@ export default async function MarketingHomePage() {
               </div>
             </div>
 
-            <div className="relative">
-              <div className="absolute inset-0 z-0 rounded-full bg-primary-container/20 blur-[100px]" />
-              <div className="ai-glow relative z-10 flex aspect-[4/3] flex-col gap-4 rounded-xl border border-outline-variant/30 bg-surface-container-low p-6 shadow-2xl">
-                <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-error/60" />
-                  <span className="h-3 w-3 rounded-full bg-tertiary/60" />
-                  <span className="h-3 w-3 rounded-full bg-primary/60" />
-                </div>
-                <div className="grid flex-1 grid-cols-3 gap-3">
-                  <div className="col-span-2 rounded-lg bg-surface-container-high" />
-                  <div className="rounded-lg bg-primary-container/30" />
-                  <div className="rounded-lg bg-surface-container-high" />
-                  <div className="rounded-lg bg-surface-container-high" />
-                  <div className="rounded-lg bg-secondary/20" />
-                </div>
-              </div>
+            <div className="relative lg:pl-6">
+              <ProductPreview />
             </div>
           </div>
         </section>
@@ -152,18 +137,18 @@ export default async function MarketingHomePage() {
         <section className="bg-surface-container-lowest px-margin-mobile py-24 md:px-margin-desktop" id="recursos">
           <div className="mx-auto max-w-container-max">
             <div className="mb-16 space-y-4 text-center">
-              <h2 className="font-display text-headline-md text-on-surface">Tudo que você precisa em um só lugar</h2>
+              <h2 className="font-display text-headline-md text-on-surface">O básico da operação fica conectado</h2>
               <p className="mx-auto max-w-2xl font-body text-body-md text-on-surface-variant">
-                Da criação da loja à primeira venda, sem depender de várias ferramentas diferentes.
+                Catálogo, checkout e pedidos compartilham as mesmas informações no painel.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
               {VALUE_CARDS.map((card) => (
                 <div
-                  className="group rounded-xl border border-surface-container-highest bg-[#121212] p-8 transition-colors hover:border-primary/30"
+                  className="group rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-8 transition-colors duration-200 hover:border-primary/30"
                   key={card.title}
                 >
-                  <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-container/10 text-primary transition-transform group-hover:scale-110">
+                  <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-primary-container/10 text-primary">
                     <span className="material-symbols-outlined">{card.icon}</span>
                   </div>
                   <h3 className="mb-2 font-display text-lg text-on-surface">{card.title}</h3>
@@ -198,51 +183,18 @@ export default async function MarketingHomePage() {
           </div>
         </section>
 
-        {/* Vexo AI */}
-        <section className="relative overflow-hidden px-margin-mobile py-24 md:px-margin-desktop">
-          <div className="relative z-10 mx-auto max-w-container-max text-center">
-            <h2 className="mb-16 font-display text-headline-md text-on-surface">Sua loja começa com uma ideia</h2>
-            <div className="ai-glow relative mx-auto max-w-4xl rounded-xl border border-primary/40 bg-[#121212] p-8">
-              <div className="pointer-events-none absolute inset-0 rounded-xl bg-primary/5" />
-              <div className="relative z-10 flex flex-col items-center gap-8">
-                <div className="flex w-full max-w-2xl items-center gap-3 rounded-lg border border-surface-container-highest bg-surface-container p-4">
-                  <span className="material-symbols-outlined text-primary">edit_square</span>
-                  <p className="flex-1 text-left font-label text-label-md text-on-surface-variant">
-                    Quero uma loja de perfumes premium com design minimalista escuro e foco em fotografias de alta
-                    qualidade.
-                  </p>
-                </div>
-                <div className="ai-glow flex h-16 w-16 animate-pulse items-center justify-center rounded-full bg-gradient-to-b from-primary-container to-secondary-container">
-                  <span className="material-symbols-outlined text-2xl text-white">auto_awesome</span>
-                </div>
-                <div className="grid w-full grid-cols-3 gap-3">
-                  <div className="col-span-2 aspect-video rounded-lg border border-surface-container-highest bg-surface-container-high" />
-                  <div className="aspect-video rounded-lg border border-surface-container-highest bg-primary-container/20" />
-                </div>
-                <Link
-                  className="mt-2 flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary-container to-secondary-container px-8 py-3 font-label text-label-md text-white transition-opacity hover:opacity-90"
-                  href="/cadastro"
-                >
-                  <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                  Conhecer a Vexo AI
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* Resources */}
         <section className="bg-surface-container-lowest px-margin-mobile py-24 md:px-margin-desktop">
           <div className="mx-auto max-w-container-max">
             <div className="mb-16 space-y-4 text-center">
-              <h2 className="font-display text-headline-md text-on-surface">Recursos poderosos</h2>
+              <h2 className="font-display text-headline-md text-on-surface">O que você controla pelo painel</h2>
               <p className="mx-auto max-w-2xl font-body text-body-md text-on-surface-variant">
-                Tudo que sua operação precisa, de um lado só.
+                As áreas principais da loja ficam acessíveis sem trocar de ferramenta.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {RESOURCES.map((resource) => (
-                <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-6" key={resource.title}>
+                <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-6" key={resource.title}>
                   <span className="material-symbols-outlined mb-4 text-3xl text-primary">{resource.icon}</span>
                   <h3 className="mb-2 font-display text-lg text-on-surface">{resource.title}</h3>
                   <p className="font-body text-body-sm text-on-surface-variant">{resource.description}</p>
@@ -256,7 +208,7 @@ export default async function MarketingHomePage() {
         <section className="bg-surface px-margin-mobile py-24 md:px-margin-desktop">
           <div className="mx-auto max-w-container-max space-y-8 text-center">
             <span className="material-symbols-outlined text-5xl text-primary">security</span>
-            <h2 className="font-display text-headline-md text-on-surface">Seu negócio merece segurança.</h2>
+            <h2 className="font-display text-headline-md text-on-surface">Sua operação, protegida em cada camada.</h2>
             <p className="mx-auto max-w-2xl font-body text-body-md text-on-surface-variant">
               Cada loja é isolada por tenant, com autenticação e controle de acesso em cada camada da plataforma.
             </p>
@@ -296,7 +248,7 @@ export default async function MarketingHomePage() {
               Pronto para criar sua loja?
             </h2>
             <Link
-              className="ai-glow inline-flex items-center gap-2 rounded-full bg-primary px-10 py-5 font-label text-label-md text-on-primary transition-all hover:bg-primary/90"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-container px-10 py-5 font-label text-label-md text-on-primary-container shadow-lg shadow-primary-container/15 transition-[background-color,transform] duration-150 hover:bg-primary-container/90 active:scale-[0.97]"
               href="/cadastro"
             >
               Começar teste grátis

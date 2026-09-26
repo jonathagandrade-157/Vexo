@@ -110,7 +110,7 @@ export default async function PainelHomePage() {
 
       <StoreSetupChecklistCard checklist={setupChecklist} storefrontHref={storefrontHref(tenant.slug)} />
 
-      <div className="flex flex-col items-center rounded-xl border border-surface-container-highest bg-[#121212] px-6 py-16 text-center">
+      <div className="flex flex-col items-center rounded-xl border border-surface-container-highest bg-surface-container-lowest px-6 py-16 text-center">
         <div className="relative mb-6 flex h-24 w-24 items-center justify-center rounded-2xl border border-outline-variant bg-surface-container-low">
           <span className="material-symbols-outlined text-4xl text-on-surface-variant opacity-50">
             shopping_bag
@@ -142,7 +142,7 @@ export default async function PainelHomePage() {
 
 function IndicatorCard({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-surface-container-highest bg-[#121212] p-4 transition-colors hover:border-primary/30">
+    <div className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-4 transition-colors hover:border-primary/30">
       <div className="mb-2 flex items-center justify-between">
         <p className="font-label text-label-md uppercase tracking-wider text-on-surface-variant">
           {label}

@@ -23,7 +23,7 @@ export function StoreSetupChecklistCard({ checklist, storefrontHref }: { checkli
         </p>
         {storefrontHref ? (
           <Link
-            className="mt-2 rounded-lg bg-primary-container px-6 py-2.5 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6]"
+            className="mt-2 rounded-lg bg-primary-container px-6 py-2.5 font-label text-label-md text-on-primary-container transition-colors hover:bg-primary-container/90"
             href={storefrontHref}
             rel="noopener noreferrer"
             target="_blank"
@@ -36,7 +36,7 @@ export function StoreSetupChecklistCard({ checklist, storefrontHref }: { checkli
   }
 
   return (
-    <section className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
+    <section className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6">
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="font-headline text-headline-sm text-on-surface">Configure sua loja</h2>
@@ -79,7 +79,7 @@ export function StoreSetupChecklistCard({ checklist, storefrontHref }: { checkli
             </div>
             {!item.completed ? (
               <Link
-                className="w-full shrink-0 rounded-lg bg-primary-container px-4 py-2.5 text-center font-label text-label-sm text-on-primary-container transition-colors hover:bg-[#8B5CF6] sm:w-auto"
+                className="w-full shrink-0 rounded-lg bg-primary-container px-4 py-2.5 text-center font-label text-label-sm text-on-primary-container transition-colors hover:bg-primary-container/90 sm:w-auto"
                 href={item.href}
               >
                 {item.actionLabel}

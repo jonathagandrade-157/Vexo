@@ -3,6 +3,12 @@ import Link from "next/link";
 import type { PublicPlan } from "@/features/commercial/public-plans";
 import { formatPrice } from "@/features/products/format-price";
 
+const PUBLIC_PLAN_SUMMARIES: Record<string, string> = {
+  basic: "O essencial para publicar sua loja e começar a vender.",
+  intermediate: "Mais controle para catálogos e operações em crescimento.",
+  pro: "Mais recursos para uma operação completa.",
+};
+
 /**
  * Seção "Planos que crescem com você" de `vexo_landing_page_oficial_desktop`
  * — a única seção da landing page com dados reais (Etapa 14 preparou a RLS
@@ -29,40 +35,28 @@ export function PricingSection({ plans }: { plans: PublicPlan[] }) {
             <div
               className={
                 plan.is_featured
-                  ? "ai-glow relative z-10 flex scale-105 flex-col rounded-2xl border border-primary bg-primary-container p-8 shadow-xl"
-                  : "flex flex-col rounded-2xl border border-outline-variant/30 bg-surface p-8"
+                  ? "relative z-10 flex flex-col rounded-xl border-2 border-primary-container bg-surface-container-lowest p-8 shadow-xl shadow-primary-container/10"
+                  : "flex flex-col rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-8"
               }
               key={plan.slug}
             >
               {plan.is_featured ? (
-                <div className="absolute right-1/2 top-0 translate-x-1/2 -translate-y-1/2 rounded-full bg-primary px-3 py-1 font-label text-label-sm uppercase tracking-wider text-on-primary">
+                <div className="absolute right-1/2 top-0 translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-container px-3 py-1 font-label text-label-sm uppercase tracking-wider text-on-primary-container">
                   Recomendado
                 </div>
               ) : null}
               <h3
-                className={
-                  plan.is_featured
-                    ? "mb-2 font-display text-headline-sm text-on-primary-container"
-                    : "mb-2 font-display text-headline-sm text-on-surface"
-                }
+                className="mb-2 font-display text-headline-sm text-on-surface"
               >
                 {plan.name}
               </h3>
               <p
-                className={
-                  plan.is_featured
-                    ? "mb-6 font-body text-body-sm text-on-primary-container/80"
-                    : "mb-6 font-body text-body-sm text-on-surface-variant"
-                }
+                className="mb-6 font-body text-body-sm text-on-surface-variant"
               >
-                {plan.description ?? "Para o momento atual da sua loja."}
+                {PUBLIC_PLAN_SUMMARIES[plan.slug] ?? plan.description ?? "Para o momento atual da sua loja."}
               </p>
               <div
-                className={
-                  plan.is_featured
-                    ? "mb-6 font-display text-4xl font-bold text-on-primary-container"
-                    : "mb-6 font-display text-4xl font-bold text-on-surface"
-                }
+                className="mb-6 font-display text-4xl font-bold text-on-surface"
               >
                 {plan.monthly_price !== null ? (
                   <>
@@ -73,7 +67,7 @@ export function PricingSection({ plans }: { plans: PublicPlan[] }) {
                   <span className="text-2xl">A definir</span>
                 )}
               </div>
-              <ul className={plan.is_featured ? "mb-8 flex-1 space-y-3 text-on-primary-container" : "mb-8 flex-1 space-y-3"}>
+              <ul className="mb-8 flex-1 space-y-3 text-on-surface">
                 {(plan.featureNames.length > 0 ? plan.featureNames.slice(0, 5) : ["Loja online"]).map((name) => (
                   <li className="flex items-center gap-2 font-body text-body-sm" key={name}>
                     <span className="material-symbols-outlined text-sm text-primary">check</span>
@@ -84,12 +78,12 @@ export function PricingSection({ plans }: { plans: PublicPlan[] }) {
               <Link
                 className={
                   plan.is_featured
-                    ? "w-full rounded-xl bg-primary py-3 text-center font-label text-label-md text-on-primary transition-colors hover:bg-primary/90"
-                    : "w-full rounded-xl border border-primary py-3 text-center font-label text-label-md text-primary transition-colors hover:bg-primary/10"
+                    ? "w-full rounded-lg bg-primary-container py-3 text-center font-label text-label-md text-on-primary-container transition-[background-color,transform] duration-150 hover:bg-primary-container/90 active:scale-[0.97]"
+                    : "w-full rounded-lg border border-primary py-3 text-center font-label text-label-md text-primary transition-[background-color,transform] duration-150 hover:bg-primary/10 active:scale-[0.97]"
                 }
                 href="/cadastro"
               >
-                Assinar {plan.name}
+                Começar com {plan.name}
               </Link>
             </div>
           ))}

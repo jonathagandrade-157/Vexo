@@ -23,7 +23,7 @@ function SaveButton({ canEdit }: { canEdit: boolean }) {
   if (!canEdit) return null;
   return (
     <button
-      className="rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6] disabled:cursor-not-allowed disabled:opacity-60"
+      className="rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-primary-container/90 disabled:cursor-not-allowed disabled:opacity-60"
       disabled={pending}
       type="submit"
     >
@@ -43,7 +43,7 @@ export function StoreProfileForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6" noValidate>
-      <div className="rounded-xl border border-surface-container-highest bg-[#121212] p-6">
+      <div className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6">
         <div className="mb-6 flex items-center justify-between border-b border-surface-container-highest pb-4">
           <h2 className="font-headline text-headline-sm text-on-surface">Minha Loja</h2>
           {!canEdit ? (

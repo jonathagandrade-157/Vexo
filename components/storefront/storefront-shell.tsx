@@ -48,7 +48,7 @@ export function StorefrontShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-dvh flex-col" style={buildStoreThemeStyle(primaryColor, secondaryColor)}>
+    <div className="flex min-h-dvh flex-col" data-theme="dark" style={buildStoreThemeStyle(primaryColor, secondaryColor)}>
       <StorefrontHeader
         cartCount={cartCount}
         logoUrl={logoUrl}

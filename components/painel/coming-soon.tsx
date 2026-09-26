@@ -15,7 +15,7 @@ export function ComingSoon({
   description: string;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-6 rounded-xl border border-surface-container-highest bg-[#121212] px-6 py-20 text-center">
+    <div className="flex flex-col items-center justify-center gap-6 rounded-xl border border-surface-container-highest bg-surface-container-lowest px-6 py-20 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-outline-variant bg-surface-container-low">
         <span className="material-symbols-outlined text-3xl text-on-surface-variant opacity-60">
           {icon}

@@ -79,7 +79,7 @@ export default async function AparenciaPage() {
           nova nunca ganha acesso a `window.opener` do painel.
         */}
         <a
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary-container px-4 py-2.5 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6]"
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary-container px-4 py-2.5 font-label text-label-md text-on-primary-container transition-colors hover:bg-primary-container/90"
           href={`/loja/${tenant.slug}`}
           rel="noopener noreferrer"
           target="_blank"

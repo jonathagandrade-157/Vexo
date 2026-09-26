@@ -27,7 +27,7 @@ function SaveButton({ label, disabled }: { label: string; disabled?: boolean }) 
   const { pending } = useFormStatus();
   return (
     <button
-      className="flex items-center gap-2 rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6] disabled:cursor-not-allowed disabled:opacity-60"
+      className="flex items-center gap-2 rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-primary-container/90 disabled:cursor-not-allowed disabled:opacity-60"
       disabled={pending || disabled}
       type="submit"
     >
@@ -270,7 +270,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
-          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+          <section className="rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
             <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
               <span className="material-symbols-outlined text-primary">info</span>
               Informações básicas
@@ -305,7 +305,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
             </div>
           </section>
 
-          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+          <section className="rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
             <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
               <span className="material-symbols-outlined text-primary">image</span>
               Mídia
@@ -333,7 +333,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
         </div>
 
         <div className="flex flex-col gap-6">
-          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+          <section className="rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
             <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
               <span className="material-symbols-outlined text-primary">payments</span>
               Precificação
@@ -390,7 +390,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
             </div>
           </section>
 
-          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+          <section className="rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
             <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
               <span className="material-symbols-outlined text-primary">tag</span>
               SKU
@@ -414,7 +414,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
             preencher `stockQuantity` liga o controle real (checagem +
             decremento atômico no checkout).
           */}
-          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+          <section className="rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
             <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
               <span className="material-symbols-outlined text-primary">inventory</span>
               Estoque
@@ -473,7 +473,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
             0/negativo) é sempre do servidor (schema Zod + CHECK no banco), nunca
             só do navegador.
           */}
-          <section className="rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+          <section className="rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
             <h2 className="mb-6 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
               <span className="material-symbols-outlined text-primary">scale</span>
               Peso e dimensões
@@ -562,7 +562,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
         automaticamente (`runConfigPersistence`) usando as mesmas Server
         Actions de sempre.
       */}
-      <section className="mt-6 rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+      <section className="mt-6 rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
         <h2 className="mb-2 flex items-center gap-2 font-headline text-headline-sm text-on-surface">
           <span className="material-symbols-outlined text-primary">tune</span>
           Opções do produto
@@ -580,7 +580,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
         />
       </section>
 
-      <section className="mt-6 rounded-lg border border-surface-container-highest bg-[#121212] p-6">
+      <section className="mt-6 rounded-lg border border-surface-container-highest bg-surface-container-lowest p-6">
         <VariantsTable
           defaultPrice={defaultVariantPrice}
           initialOptions={options}
