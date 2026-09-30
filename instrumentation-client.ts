@@ -1,5 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 
+import { scrubSentryEvent } from "@/lib/sentry/scrub-event";
+
 /**
  * JON-14 — inicialização client-side do Sentry (convenção estável do
  * Next.js 15.3+/16, docs/file-conventions/instrumentation-client). Roda
@@ -14,7 +16,10 @@ import * as Sentry from "@sentry/nextjs";
  */
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  tracesSampleRate: 1,
+  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1,
   sendDefaultPii: false,
+  beforeSend: scrubSentryEvent,
   debug: false,
 });
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

@@ -10,7 +10,7 @@ import { scrubSentryEvent } from "@/lib/sentry/scrub-event";
  */
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  tracesSampleRate: 1,
+  tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1,
   sendDefaultPii: false,
   beforeSend: scrubSentryEvent,
   debug: false,

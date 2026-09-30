@@ -11,11 +11,10 @@ import { type StartBillingSubscriptionActionState } from "./schema";
  * permissão e delega toda a lógica para `startBillingSubscription`
  * (testável isoladamente, sem passar por este arquivo `"use server"`).
  *
- * PENDÊNCIA: `private.has_permission(tenantId, 'billing.manage')` só
- * retorna `true` depois que a permissão `billing.manage` existir no banco
- * (proposta no relatório da Etapa 20.2.6, ainda não criada/aplicada) — até
- * lá, esta Action nega todo mundo, propositalmente (fail-closed, nunca
- * fail-open).
+ * A permissão `billing.manage` é criada pela migration 003 e concedida ao
+ * OWNER. A interface self-service ainda não chama esta Action; por isso a
+ * existência desta camada não deve ser confundida com cobrança já
+ * disponibilizada ao lojista.
  */
 export async function startBillingSubscriptionAction(
   _prevState: StartBillingSubscriptionActionState,

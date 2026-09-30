@@ -18,7 +18,7 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
   );
 }
 
-/** Dashboard inicial do MASTER (prompt §16) — só dados reais, nenhum MRR inventado (cobrança não existe ainda nesta etapa). */
+/** Dashboard inicial do MASTER — só dados reais, sem estimar MRR a partir de cadastros ou cobranças pendentes. */
 export default async function MasterDashboardPage() {
   const stats = await getMasterDashboardStats();
 
@@ -40,7 +40,9 @@ export default async function MasterDashboardPage() {
 
       <div className="rounded-xl border border-outline-variant/20 bg-surface-container-low p-5">
         <p className="font-label text-label-sm uppercase tracking-wider text-on-surface-variant">Receita recorrente</p>
-        <p className="mt-1 font-body text-body-md text-on-surface-variant">Em breve — cobrança ainda não implementada.</p>
+        <p className="mt-1 font-body text-body-md text-on-surface-variant">
+          Em breve — infraestrutura preparada, painel financeiro e ativação comercial ainda pendentes.
+        </p>
       </div>
     </div>
   );

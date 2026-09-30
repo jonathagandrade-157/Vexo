@@ -18,19 +18,10 @@ import {
  * ser separado de `features/auth/actions.ts`: nenhum teste unitário deste
  * projeto importa um arquivo `"use server"` diretamente.
  *
- * IMPORTANTE — PENDÊNCIA DE MIGRATION (ver relatório final da Etapa
- * 20.2.6): as duas chamadas RPC abaixo (`set_billing_gateway_identifiers`,
- * `create_billing_invoice`) e a permissão `billing.manage` usada por elas
- * NÃO EXISTEM AINDA no banco — foram propostas nesta etapa e aguardam
- * autorização explícita antes de qualquer migration ser criada/aplicada
- * (Etapa 20.2.4 deixou `billing_invoices` e o UPDATE de
- * `subscriptions.gateway_*` sem nenhuma policy de escrita para
- * `authenticated` de propósito — "toda escrita real... será feita por
- * função(ões) SECURITY DEFINER futuras", exatamente o que esta etapa
- * precisa agora). Até a migration ser aplicada, esta função compila e é
- * unit-testável (com `supabase.rpc` mockado), mas falha em produção/no
- * banco de teste local ao tentar chamar uma RPC inexistente — comportamento
- * esperado e documentado, nunca escondido.
+ * As RPCs `set_billing_gateway_identifiers` e `create_billing_invoice`
+ * existem desde a migration 073. O fluxo continua sem interface pública:
+ * esta função é a camada de domínio pronta para ser ligada ao futuro
+ * checkout self-service da assinatura, não evidência de cobrança ativa.
  */
 
 export interface StartBillingSubscriptionDeps {
@@ -109,7 +100,7 @@ function invoiceView(row: BillingInvoiceRow, fallbackBillingType: string): Start
 }
 
 /**
- * PROPOSTA (RPC ainda não criada) — grava/atualiza os identificadores do
+ * Grava/atualiza os identificadores do
  * gateway em `subscriptions`, nunca `plan_id`/`status`/período (aqueles
  * só mudam via confirmação de webhook, etapa futura). Idempotente: pode
  * ser chamada de novo com os mesmos valores sem efeito colateral extra.
@@ -129,7 +120,7 @@ async function setBillingGatewayIdentifiers(
 }
 
 /**
- * PROPOSTA (RPC ainda não criada) — cria a linha de `billing_invoices`
+ * Cria a linha de `billing_invoices`
  * (sempre PENDING). O snapshot de `plan_name`/preço é decidido pelo
  * CHAMADOR (esta função), nunca recalculado a partir de `plans` dentro da
  * RPC no momento da leitura — mas a RPC proposta relê `plans.name` pelo

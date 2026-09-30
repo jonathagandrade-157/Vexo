@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
-// Foundation stage: no rewrites/redirects, no experimental flags.
-// Tenant-by-host routing and custom-domain handling (§3.4, §17 of the
-// architecture doc) are introduced starting Stage 6, not here.
+// Rewrites por host e domínios customizados vivem em proxy.ts; este
+// arquivo concentra apenas configuração global de build e headers.
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // D15-S.3.1 — não divulga a stack via header (baixo risco, sem impacto

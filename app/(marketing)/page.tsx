@@ -57,7 +57,8 @@ const FAQ_ITEMS = [
   },
   {
     question: "Posso usar meu próprio domínio?",
-    answer: "O suporte a domínio próprio está previsto na arquitetura da plataforma e chega em uma etapa futura do produto.",
+    answer:
+      "Sim. Você pode começar com o endereço da VEXO e, quando tiver um domínio próprio, configurá-lo no painel com validação de DNS.",
   },
   {
     question: "É fácil personalizar minha loja depois?",
