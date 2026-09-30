@@ -56,6 +56,7 @@ export async function signUpAction(
     phone: formData.get("phone"),
     document: formData.get("document"),
     password: formData.get("password"),
+    acceptTerms: formData.get("acceptTerms"),
   });
 
   if (!parsed.success) {

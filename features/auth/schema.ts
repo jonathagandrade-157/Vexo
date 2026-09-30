@@ -20,6 +20,9 @@ export const signUpSchema = z.object({
     .trim()
     .refine(isValidCpfOrCnpj, "CPF/CNPJ inválido"),
   password: z.string().min(8, "A senha precisa ter pelo menos 8 caracteres"),
+  acceptTerms: z.literal("on", {
+    error: "É necessário aceitar os termos para continuar.",
+  }),
 });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;

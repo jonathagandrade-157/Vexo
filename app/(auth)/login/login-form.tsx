@@ -119,7 +119,15 @@ export function LoginForm() {
       </Link>
 
       <p className="relative text-center font-label text-label-sm text-on-surface-variant">
-        Ao continuar, você concorda com nossos Termos de Uso e Política de Privacidade.
+        Ao continuar, você concorda com nossos{" "}
+        <Link className="text-primary underline-offset-4 hover:underline" href="/termos">
+          Termos de Uso
+        </Link>{" "}
+        e{" "}
+        <Link className="text-primary underline-offset-4 hover:underline" href="/privacidade">
+          Política de Privacidade
+        </Link>
+        .
       </p>
     </form>
   );

@@ -138,12 +138,20 @@ export function SignUpForm() {
             type="checkbox"
           />
           <span className="font-body text-body-sm text-on-surface-variant">
-            Li e aceito os termos de uso e a política de privacidade da VEXO.
+            Li e aceito os{" "}
+            <Link className="font-medium text-primary underline-offset-4 hover:underline" href="/termos">
+              Termos de Uso
+            </Link>{" "}
+            e a{" "}
+            <Link className="font-medium text-primary underline-offset-4 hover:underline" href="/privacidade">
+              Política de Privacidade
+            </Link>{" "}
+            da VEXO.
           </span>
         </label>
-        {termsError ? (
+        {termsError ?? state.fieldErrors?.acceptTerms ? (
           <p className="text-label-sm text-error" role="alert">
-            {termsError}
+            {termsError ?? state.fieldErrors?.acceptTerms}
           </p>
         ) : null}
       </div>

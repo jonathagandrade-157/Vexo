@@ -21,6 +21,11 @@ test.describe("jornada pública essencial", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Crie sua conta" })).toBeVisible();
     await expect(page.getByLabel("Nome da loja")).toBeVisible();
     await expect(page.getByRole("link", { name: "Entrar", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Termos de Uso" })).toHaveAttribute("href", "/termos");
+    await expect(page.getByRole("link", { name: "Política de Privacidade" })).toHaveAttribute(
+      "href",
+      "/privacidade",
+    );
   });
 
   test("preferência de tema é aplicada e persistida", async ({ page }, testInfo) => {
@@ -50,6 +55,17 @@ test.describe("jornada pública essencial", () => {
 
     const sitemap = await request.get("/sitemap.xml");
     expect(sitemap.ok()).toBeTruthy();
-    expect(await sitemap.text()).toContain("<loc>");
+    const sitemapText = await sitemap.text();
+    expect(sitemapText).toContain("<loc>");
+    expect(sitemapText).toContain("/termos");
+    expect(sitemapText).toContain("/privacidade");
+
+    const terms = await request.get("/termos");
+    expect(terms.ok()).toBeTruthy();
+    expect(await terms.text()).toContain("Termos de Uso");
+
+    const privacy = await request.get("/privacidade");
+    expect(privacy.ok()).toBeTruthy();
+    expect(await privacy.text()).toContain("Política de Privacidade");
   });
 });

@@ -287,6 +287,15 @@ export default async function MarketingHomePage() {
               Criar conta
             </Link>
           </div>
+          <div className="flex flex-col gap-3">
+            <h4 className="mb-2 font-label text-label-md text-on-surface">Legal</h4>
+            <Link className="font-body text-body-sm text-on-surface-variant transition-colors hover:text-primary" href="/termos">
+              Termos de Uso
+            </Link>
+            <Link className="font-body text-body-sm text-on-surface-variant transition-colors hover:text-primary" href="/privacidade">
+              Privacidade
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

@@ -8,12 +8,22 @@ import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 
 describe("rotas de descoberta pública", () => {
-  it("expõe a landing no sitemap sem indexar áreas privadas", () => {
+  it("expõe as páginas públicas no sitemap sem indexar áreas privadas", () => {
     expect(sitemap()).toEqual([
       {
         url: "https://vexo.test",
         changeFrequency: "weekly",
         priority: 1,
+      },
+      {
+        url: "https://vexo.test/termos",
+        changeFrequency: "monthly",
+        priority: 0.3,
+      },
+      {
+        url: "https://vexo.test/privacidade",
+        changeFrequency: "monthly",
+        priority: 0.3,
       },
     ]);
 
