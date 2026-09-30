@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Etapa 2 adds a real Postgres service so the RLS/multi-tenant isolation
 # suite (tests/integration/rls-isolation.test.ts) runs against an actual
 # database on every PR, not just statically-reviewed SQL — the same script
@@ -14,6 +18,7 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -68,6 +73,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
