@@ -6,12 +6,9 @@ import type { BusinessType } from "./step-definitions";
  * que decide o que é clicável) quanto pelo servidor
  * (`saveBusinessTypeAction`, `features/onboarding/actions.ts`, via
  * `isSelectableBusinessType` abaixo) — nunca duas fontes de verdade
- * separadas para "o que pode ser escolhido hoje". Os mesmos 3 valores de
- * `BUSINESS_TYPES` (migration 20260817220093); só `ecommerce` tem wizard
- * implementado (`ONBOARDING_STEPS`, `step-definitions.ts`), então é o
- * único `enabled: true` — restaurant/adega aparecem para comunicar a
- * visão multi-segmento sem oferecer uma opção que hoje deixaria o tenant
- * sem etapa seguinte nenhuma.
+ * separadas para "o que pode ser escolhido hoje". VEXO é exclusivamente
+ * e-commerce: os valores legados continuam reconhecidos pelo banco, mas
+ * não são opções deste produto e não aparecem nesta interface.
  */
 export interface BusinessTypeChoice {
   value: BusinessType;
@@ -22,8 +19,6 @@ export interface BusinessTypeChoice {
 
 export const BUSINESS_TYPE_CHOICES: readonly BusinessTypeChoice[] = [
   { value: "ecommerce", label: "Loja/E-commerce", icon: "🛍️", enabled: true },
-  { value: "restaurant", label: "Restaurante", icon: "🍔", enabled: false },
-  { value: "adega", label: "Adega", icon: "🍷", enabled: false },
 ];
 
 /**

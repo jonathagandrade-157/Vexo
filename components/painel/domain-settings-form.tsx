@@ -36,8 +36,8 @@ export function DomainSettingsForm({ canEdit, domains }: { canEdit: boolean; dom
       <div>
         <h2 className="font-headline text-headline-sm text-on-surface">Domínio personalizado</h2>
         <p className="mt-1 font-body text-body-sm text-on-surface-variant">
-          Cadastre um domínio próprio para sua loja. Depois de cadastrado, ele fica pendente de verificação — ainda não
-          substitui o endereço padrão da sua loja.
+          Cadastre um domínio próprio para sua loja. Depois, siga as instruções de DNS para verificar a propriedade e
+          conectar o domínio à publicação da VEXO.
         </p>
       </div>
 

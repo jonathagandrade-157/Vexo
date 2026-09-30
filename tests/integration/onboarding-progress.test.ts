@@ -215,8 +215,8 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Motor de onboarding multi-e
     expect(rows.rows[0]?.status).toBe("completed"); // a resolução mais recente vence
   });
 
-  // 6 — onboarding_completed_at preenchido com várias etapas skipped.
-  it("recomputeOnboardingCompletion (UPDATE condicional) fills onboarding_completed_at once required steps are resolved (mix of completed/skipped) and audits it", async () => {
+  // 6 — onboarding_completed_at preenchido depois das quatro etapas reais.
+  it("recomputeOnboardingCompletion (UPDATE condicional) fills onboarding_completed_at once the real flow is resolved and audits it", async () => {
     const tenantId = await createPendingTenant(fx.userBOwner, "Loja Progresso Conclusao");
 
     // Nunca marca antecipadamente: onboarding continua NULL sem nenhum progresso.
@@ -225,14 +225,10 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Motor de onboarding multi-e
     );
     expect(before.rows[0]?.onboarding_completed_at).toBeNull();
 
-    // Cenário real do D12.2.1: 'seu-negocio'/'revisar'/'publicar' completed, o resto skipped.
+    // Fluxo real atual: nenhuma etapa artificial/pulável entre os dados e a revisão.
     for (const [stepKey, status] of [
+      ["segmento", "completed"],
       ["seu-negocio", "completed"],
-      ["identidade", "skipped"],
-      ["produtos", "skipped"],
-      ["categorias", "skipped"],
-      ["pagamentos", "skipped"],
-      ["entrega", "skipped"],
       ["revisar", "completed"],
       ["publicar", "completed"],
     ] as const) {
@@ -356,18 +352,14 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Motor de onboarding multi-e
     );
   });
 
-  // 11. nenhum produto/pagamento/entrega é criado automaticamente pelo onboarding — completar/pular etapas nunca toca em outras tabelas de negócio.
-  it("resolving (completed or skipped) every step of the whole ecommerce flow never inserts a row in products/categories/store_payment_providers/shipping_methods", async () => {
+  // 11. o onboarding curto não cria configuração silenciosa em outras áreas.
+  it("completing the four-step ecommerce flow never inserts unrelated business rows", async () => {
     const tenantId = await createPendingTenant(fx.userAOwner, "Loja Progresso Sem Efeito Colateral");
     await withSuperuser((c) => c.query("update public.tenants set business_type = 'ecommerce' where id = $1", [tenantId]));
 
     for (const [stepKey, status] of [
+      ["segmento", "completed"],
       ["seu-negocio", "completed"],
-      ["identidade", "skipped"],
-      ["produtos", "skipped"],
-      ["categorias", "skipped"],
-      ["pagamentos", "skipped"],
-      ["entrega", "skipped"],
       ["revisar", "completed"],
       ["publicar", "completed"],
     ] as const) {

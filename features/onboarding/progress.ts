@@ -43,20 +43,18 @@ function isStepProgressStatus(value: unknown): value is StepProgressStatus {
  * rota ou FormData.
  */
 export async function resolveOnboardingState(supabase: SupabaseClient, tenantId: string): Promise<OnboardingState> {
-  const { data: tenantRow } = await supabase
-    .from("tenants")
-    .select("business_type")
-    .eq("id", tenantId)
-    .maybeSingle();
+  const [{ data: tenantRow, error: tenantError }, { data: progressRows, error: progressError }] = await Promise.all([
+    supabase.from("tenants").select("business_type").eq("id", tenantId).maybeSingle(),
+    supabase.from("onboarding_progress").select("step_key, completed_at, status").eq("tenant_id", tenantId),
+  ]);
+
+  if (tenantError || progressError) {
+    throw new Error("Não foi possível carregar o progresso do onboarding.");
+  }
 
   const rawBusinessType = tenantRow?.business_type as string | null | undefined;
   const businessType = isBusinessType(rawBusinessType) ? rawBusinessType : null;
   const steps = getStepsForBusinessType(businessType);
-
-  const { data: progressRows } = await supabase
-    .from("onboarding_progress")
-    .select("step_key, completed_at, status")
-    .eq("tenant_id", tenantId);
 
   const rawProgress: StepProgressEntry[] = ((progressRows ?? []) as ProgressRow[]).map((row) => ({
     stepKey: row.step_key,
@@ -84,8 +82,7 @@ export async function resolveOnboardingState(supabase: SupabaseClient, tenantId:
  * atual, que a etapa é alcançável (`isStepReachable`) e — quando
  * `status: "skipped"` — que a etapa é de fato `skippable`; este helper
  * em si não repete nenhuma dessas checagens porque ele nunca é exposto
- * como Server Action: `completeOnboardingStepAction`/
- * `skipOnboardingStepAction`/`saveBrandInfoAction`
+ * como Server Action: `completeOnboardingStepAction` e as actions de dados
  * (`features/onboarding/actions.ts`) são o único jeito de chegar aqui, e
  * todas validam antes.
  */
@@ -93,20 +90,25 @@ export async function markOnboardingStepProgress(
   tenantId: string,
   stepKey: string,
   status: StepProgressStatus,
-): Promise<void> {
-  const supabase = await createSupabaseServerClient();
-  await supabase.from("onboarding_progress").upsert(
-    { tenant_id: tenantId, step_key: stepKey, status, completed_at: new Date().toISOString() },
-    { onConflict: "tenant_id,step_key" },
-  );
+): Promise<boolean> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase.from("onboarding_progress").upsert(
+      { tenant_id: tenantId, step_key: stepKey, status, completed_at: new Date().toISOString() },
+      { onConflict: "tenant_id,step_key" },
+    );
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * D12.2/D12.2.1 — chamado ao final de cada Server Action de step
  * (`features/onboarding/actions.ts`). Nunca marca `onboarding_completed_at`
  * antecipadamente: só grava quando `isOnboardingComplete` (todo step
- * `required` satisfeito — "seu-negocio" especificamente `completed`, os
- * demais `completed` OU `skipped` quando `skippable`) é verdadeiro, e
+ * `required` satisfeito — `completed`, ou `skipped` quando `skippable`) é
+ * verdadeiro, e
  * o `UPDATE` só afeta a linha se `onboarding_completed_at` ainda for
  * `NULL` — mesma guarda de idempotência de sempre (D12.0 §H;
  * `saveBrandInfoAction` original já fazia um `UPDATE` sem essa cláusula
@@ -118,17 +120,23 @@ export async function markOnboardingStepProgress(
  * `onboarding_completed_at` — eles continuam lendo a mesma coluna, sem
  * saber (nem precisar saber) que agora é derivada de várias etapas.
  */
-export async function recomputeOnboardingCompletion(tenantId: string): Promise<void> {
-  const supabase = await createSupabaseServerClient();
-  const state = await resolveOnboardingState(supabase, tenantId);
+export async function recomputeOnboardingCompletion(tenantId: string): Promise<boolean> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const state = await resolveOnboardingState(supabase, tenantId);
 
-  if (!isOnboardingComplete(state.steps, state.progress)) return;
+    if (!isOnboardingComplete(state.steps, state.progress)) return true;
 
-  await supabase
-    .from("tenants")
-    .update({ onboarding_completed_at: new Date().toISOString() })
-    .eq("id", tenantId)
-    .is("onboarding_completed_at", null);
+    const { error } = await supabase
+      .from("tenants")
+      .update({ onboarding_completed_at: new Date().toISOString() })
+      .eq("id", tenantId)
+      .is("onboarding_completed_at", null);
+
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 /**

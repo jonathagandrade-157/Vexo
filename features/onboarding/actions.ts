@@ -21,8 +21,8 @@ import type { OnboardingStepDefinition } from "./step-definitions";
  * Etapa "seu-negocio" do wizard (D12.2). Grava os mesmos 6 campos de marca
  * de sempre (D12.0/arquitetura §24 Etapa 4; docs/architecture/etapa-4-
  * onboarding.md) — continua sendo um dos formulários de dados reais do
- * wizard nesta fase; as demais etapas são "orchestrated"/"review"/
- * "publish" e usam `completeOnboardingStepAction` abaixo.
+ * wizard nesta fase; revisão e publicação usam
+ * `completeOnboardingStepAction` abaixo.
  *
  * D15.1.1 — deixou de gravar `business_type`: essa escolha agora acontece
  * antes, na nova etapa "segmento" (`saveBusinessTypeAction` abaixo), que
@@ -35,7 +35,7 @@ import type { OnboardingStepDefinition } from "./step-definitions";
  *
  * D12.2 — NÃO grava `onboarding_completed_at` diretamente: essa
  * responsabilidade é inteira de `recomputeOnboardingCompletion`, chamado
- * ao final desta action como de qualquer outra etapa. Com 9 etapas na
+ * ao final desta action como de qualquer outra etapa. Com 4 etapas na
  * definição de `ecommerce`, salvar "seu-negocio" nunca é suficiente
  * sozinho para completar o onboarding — o `UPDATE` condicional em
  * `recomputeOnboardingCompletion` garante isso (só grava quando toda
@@ -120,8 +120,15 @@ export async function saveBrandInfoAction(
     };
   }
 
-  await markOnboardingStepProgress(tenant.id, "seu-negocio", "completed");
-  await recomputeOnboardingCompletion(tenant.id);
+  const progressSaved = await markOnboardingStepProgress(tenant.id, "seu-negocio", "completed");
+  if (!progressSaved) {
+    return { status: "error", message: "Os dados foram salvos, mas não foi possível avançar. Tente novamente." };
+  }
+
+  const completionRecomputed = await recomputeOnboardingCompletion(tenant.id);
+  if (!completionRecomputed) {
+    return { status: "error", message: "Os dados foram salvos, mas não foi possível atualizar o onboarding. Tente novamente." };
+  }
 
   // Nunca uma etapa fixa — /onboarding (Server Component) resolve de
   // novo qual é a etapa atual a partir do banco e redireciona para lá.
@@ -175,15 +182,22 @@ export async function saveBusinessTypeAction(
     };
   }
 
-  await markOnboardingStepProgress(tenant.id, "segmento", "completed");
-  await recomputeOnboardingCompletion(tenant.id);
+  const progressSaved = await markOnboardingStepProgress(tenant.id, "segmento", "completed");
+  if (!progressSaved) {
+    return { status: "error", message: "O tipo foi salvo, mas não foi possível avançar. Tente novamente." };
+  }
+
+  const completionRecomputed = await recomputeOnboardingCompletion(tenant.id);
+  if (!completionRecomputed) {
+    return { status: "error", message: "O tipo foi salvo, mas não foi possível atualizar o onboarding. Tente novamente." };
+  }
 
   redirect("/onboarding");
 }
 
 /**
- * D12.2.1 — validação comum a `completeOnboardingStepAction`/
- * `skipOnboardingStepAction`: 1) tenant resolvido pela sessão, restrito a
+ * D12.2.1 — validação de `completeOnboardingStepAction`: 1) tenant
+ * resolvido pela sessão, restrito a
  * OWNER com onboarding pendente (mesmo `resolveOnboardingTenant` da
  * etapa "seu-negocio" — quem não é OWNER, ou já concluiu onboarding, não
  * chega a marcar etapa nenhuma por aqui); 2) `stepKey` precisa pertencer
@@ -192,8 +206,7 @@ export async function saveBusinessTypeAction(
  * key de outra definição, ou inventada, é rejeitada; 3) `isStepReachable`
  * — toda etapa `required` ANTES desta já precisa estar satisfeita, senão
  * a etapa é rejeitada (fecha "pular etapas" / "acessar
- * /onboarding/publicar direto"). Nunca exportada como Server Action —
- * só usada pelas duas abaixo.
+ * /onboarding/publicar direto"). Nunca exportada como Server Action.
  */
 async function resolveStepForAction(
   stepKey: string,
@@ -205,7 +218,12 @@ async function resolveStepForAction(
     return { error: "Nenhuma loja pendente de configuração para esta conta." };
   }
 
-  const state = await resolveOnboardingState(supabase, tenant.id);
+  let state: OnboardingState;
+  try {
+    state = await resolveOnboardingState(supabase, tenant.id);
+  } catch {
+    return { error: "Não foi possível carregar o progresso do onboarding. Tente novamente." };
+  }
 
   const step = state.steps.find((s) => s.key === stepKey);
   if (!step) {
@@ -219,17 +237,16 @@ async function resolveStepForAction(
 }
 
 /**
- * D12.2.1 — confirma ("Continuar") uma etapa "orchestrated"/"review"/
- * "publish" (todas as etapas do wizard exceto "seu-negocio", que tem
+ * D12.2.1 — confirma ("Continuar") uma etapa "review"/"publish"
+ * (as etapas de dados têm
  * `saveBrandInfoAction` própria por gravar dado real). Chamada
  * diretamente do cliente (sem `useActionState`/`<form>`), mesmo padrão
  * de `removeProductImageAction`/`confirmProductImageUploadAction`
  * (features/products/actions.ts) — não há dado de formulário aqui, só a
  * confirmação de que o lojista concluiu aquela etapa.
  *
- * A etapa nunca pode ser do tipo "data" (só "seu-negocio" é, e tem sua
- * própria action — evita que esta action vire um atalho para "concluir"
- * uma etapa que na verdade precisa de dado real).
+ * A etapa nunca pode ser do tipo "data" — evita que esta action vire um
+ * atalho para "concluir" uma etapa que precisa salvar dado real.
  */
 export async function completeOnboardingStepAction(stepKey: string): Promise<OnboardingStepActionState> {
   const resolved = await resolveStepForAction(stepKey);
@@ -238,22 +255,23 @@ export async function completeOnboardingStepAction(stepKey: string): Promise<Onb
     return { status: "error", message: "Esta etapa precisa ser preenchida no próprio formulário." };
   }
 
-  await markOnboardingStepProgress(resolved.tenantId, stepKey, "completed");
-  await recomputeOnboardingCompletion(resolved.tenantId);
+  const progressSaved = await markOnboardingStepProgress(resolved.tenantId, stepKey, "completed");
+  if (!progressSaved) {
+    return { status: "error", message: "Não foi possível salvar esta etapa. Tente novamente." };
+  }
+
+  const completionRecomputed = await recomputeOnboardingCompletion(resolved.tenantId);
+  if (!completionRecomputed) {
+    return { status: "error", message: "Não foi possível atualizar o onboarding. Tente novamente." };
+  }
 
   return { status: "success" };
 }
 
 /**
- * D12.2.1 — "Pular por enquanto": marca a etapa como `skipped`, nunca
- * como `completed` — nunca confundir as duas (prompt: "'skipped' satisfaz
- * o requisito de progresso, mas NÃO significa que a feature foi
- * configurada"). Mesma validação de `completeOnboardingStepAction`
- * (via `resolveStepForAction`) mais uma checagem extra: só etapas
- * `skippable` aceitam ser puladas — "seu-negocio" (a única etapa
- * `skippable: false` desta definição) nunca chega a marcar progresso por
- * aqui, mesmo que um cliente malicioso chame esta action diretamente com
- * `stepKey: "seu-negocio"`.
+ * Deixa para depois somente uma etapa explicitamente marcada como
+ * `skippable`. O status continua distinto de `completed`, permitindo
+ * revisar e preencher a etapa posteriormente.
  */
 export async function skipOnboardingStepAction(stepKey: string): Promise<OnboardingStepActionState> {
   const resolved = await resolveStepForAction(stepKey);
@@ -262,8 +280,15 @@ export async function skipOnboardingStepAction(stepKey: string): Promise<Onboard
     return { status: "error", message: "Esta etapa não pode ser pulada." };
   }
 
-  await markOnboardingStepProgress(resolved.tenantId, stepKey, "skipped");
-  await recomputeOnboardingCompletion(resolved.tenantId);
+  const progressSaved = await markOnboardingStepProgress(resolved.tenantId, stepKey, "skipped");
+  if (!progressSaved) {
+    return { status: "error", message: "Não foi possível pular esta etapa. Tente novamente." };
+  }
+
+  const completionRecomputed = await recomputeOnboardingCompletion(resolved.tenantId);
+  if (!completionRecomputed) {
+    return { status: "error", message: "Não foi possível atualizar o onboarding. Tente novamente." };
+  }
 
   return { status: "success" };
 }

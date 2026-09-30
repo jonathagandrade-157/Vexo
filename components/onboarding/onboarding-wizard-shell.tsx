@@ -3,6 +3,13 @@ import type { ReactNode } from "react";
 
 import { BrandMark } from "@/components/ui/brand-mark";
 
+export interface OnboardingStepNavigationItem {
+  key: string;
+  title: string;
+  href?: string;
+  status: "current" | "completed" | "skipped" | "available" | "locked";
+}
+
 /**
  * D12.2 — chrome comum a toda etapa do wizard: barra de progresso,
  * "Etapa X de Y" e título/descrição da etapa. Server Component puro (sem
@@ -23,6 +30,7 @@ export function OnboardingWizardShell({
   totalSteps,
   percentage,
   backHref,
+  stepNavigation,
   children,
 }: {
   title: string;
@@ -31,6 +39,7 @@ export function OnboardingWizardShell({
   totalSteps: number;
   percentage: number;
   backHref?: string;
+  stepNavigation?: readonly OnboardingStepNavigationItem[];
   children: ReactNode;
 }) {
   return (
@@ -51,6 +60,53 @@ export function OnboardingWizardShell({
 
       <main className="flex flex-grow items-center justify-center px-margin-mobile py-12 md:px-margin-desktop">
         <div className="flex w-full max-w-[600px] flex-col gap-10">
+          {stepNavigation ? (
+            <nav aria-label="Etapas do onboarding" className="overflow-x-auto pb-1">
+              <ol className="grid min-w-[520px] grid-cols-4 gap-2">
+                {stepNavigation.map((item, index) => {
+                  const content = (
+                    <>
+                      <span
+                        className={
+                          item.status === "current"
+                            ? "flex h-7 w-7 items-center justify-center rounded-full bg-primary-container font-label text-label-sm text-on-primary-container"
+                            : item.status === "completed"
+                              ? "material-symbols-outlined text-xl text-[#10B981]"
+                              : item.status === "skipped"
+                                ? "material-symbols-outlined text-xl text-tertiary"
+                                : "flex h-7 w-7 items-center justify-center rounded-full border border-outline-variant font-label text-label-sm text-on-surface-variant"
+                        }
+                      >
+                        {item.status === "completed"
+                          ? "check_circle"
+                          : item.status === "skipped"
+                            ? "schedule"
+                            : index + 1}
+                      </span>
+                      <span className="mt-2 font-label text-label-sm text-on-surface-variant">{item.title}</span>
+                    </>
+                  );
+
+                  return (
+                    <li className="min-w-0" key={item.key}>
+                      {item.href ? (
+                        <Link
+                          className="flex min-h-[68px] flex-col items-center rounded-lg px-2 py-2 text-center transition-[transform,background-color] duration-150 hover:bg-surface-container-low active:scale-[0.98]"
+                          href={item.href}
+                        >
+                          {content}
+                        </Link>
+                      ) : (
+                        <div aria-disabled="true" className="flex min-h-[68px] flex-col items-center px-2 py-2 text-center opacity-50">
+                          {content}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            </nav>
+          ) : null}
           <div className="flex flex-col gap-3">
             {backHref ? (
               <Link

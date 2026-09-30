@@ -161,5 +161,5 @@ export async function addCustomDomainAction(_prevState: DomainActionState, formD
   }
 
   revalidatePath(CONFIGURACOES_PATH);
-  return { status: "success", message: "Domínio cadastrado. Ele fica pendente até a verificação (em uma etapa futura)." };
+  return { status: "success", message: "Domínio cadastrado. Siga as instruções de DNS para verificar e ativar." };
 }

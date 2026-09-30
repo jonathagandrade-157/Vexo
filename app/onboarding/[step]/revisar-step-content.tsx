@@ -30,7 +30,15 @@ interface AppearanceRow {
  * (`getCurrentMembership`), nunca onboarding concluído — funciona
  * durante o onboarding sem nenhuma alteração lá.
  */
-export async function RevisarStepContent({ tenant, nextHref }: { tenant: OnboardingTenant; nextHref: string }) {
+export async function RevisarStepContent({
+  tenant,
+  nextHref,
+  allowSkip,
+}: {
+  tenant: OnboardingTenant;
+  nextHref: string;
+  allowSkip: boolean;
+}) {
   const supabase = await createSupabaseServerClient();
 
   const [{ data: appearance }, categories, products, promotions, banners] = await Promise.all([
@@ -78,7 +86,7 @@ export async function RevisarStepContent({ tenant, nextHref }: { tenant: Onboard
       <div className="h-[480px] w-full overflow-hidden rounded-xl border border-outline-variant/30">
         <LivePreviewFrame payload={previewPayload} publicStoreHref={`/loja/${tenant.slug}`} />
       </div>
-      <OnboardingContinueButton nextHref={nextHref} stepKey="revisar" />
+      <OnboardingContinueButton allowSkip={allowSkip} nextHref={nextHref} stepKey="revisar" />
     </div>
   );
 }

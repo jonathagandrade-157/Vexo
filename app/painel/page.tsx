@@ -79,12 +79,9 @@ export default async function PainelHomePage() {
               </p>
             </div>
           </div>
-          <Link
-            className="rounded-lg bg-primary px-6 py-2 font-label text-label-md text-on-primary transition-opacity hover:opacity-90"
-            href="/painel/assinatura"
-          >
-            Escolher plano
-          </Link>
+          <span className="rounded-lg border border-primary/30 px-6 py-2 font-label text-label-md text-primary">
+            Planos em breve
+          </span>
         </div>
       ) : null}
 
@@ -127,13 +124,10 @@ export default async function PainelHomePage() {
           >
             Adicionar meu primeiro produto
           </Link>
-          <Link
-            className="ai-glow flex items-center gap-2 rounded-lg bg-gradient-to-r from-primary-container to-secondary-container px-6 py-3 font-label text-label-md font-bold text-on-primary-container transition-opacity hover:opacity-90"
-            href="/painel/vexo-ai"
-          >
+          <span className="flex items-center gap-2 rounded-lg border border-outline-variant/50 px-6 py-3 font-label text-label-md font-bold text-on-surface-variant">
             <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
-            Conhecer a Vexo AI
-          </Link>
+            Vexo AI em breve
+          </span>
         </div>
       </div>
     </div>

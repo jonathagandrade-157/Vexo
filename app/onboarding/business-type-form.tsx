@@ -22,12 +22,9 @@ function ContinueButton() {
 }
 
 /**
- * D15.1.1 — nova etapa "segmento", primeira do wizard. Só `ecommerce`
- * (`BUSINESS_TYPE_CHOICES`, features/onboarding/business-type-choices.ts)
- * é selecionável hoje; restaurant/adega aparecem visualmente como "Em
- * breve" — cartões desabilitados de verdade (`disabled` no `<input>`),
- * não só estilizados como se estivessem, então nem um clique consegue
- * marcá-los. `saveBusinessTypeAction` nunca confia só nisso e revalida no
+ * D15.1.1 — primeira etapa do wizard. Como VEXO é exclusivamente
+ * e-commerce, a tela confirma esse contexto sem misturar opções de
+ * outros produtos. `saveBusinessTypeAction` ainda revalida o valor no
  * servidor (`isSelectableBusinessType`).
  */
 export function BusinessTypeForm() {
@@ -35,7 +32,7 @@ export function BusinessTypeForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4">
         {BUSINESS_TYPE_CHOICES.map((choice) => (
           <label
             className={
@@ -55,6 +52,9 @@ export function BusinessTypeForm() {
             />
             <span className="text-4xl">{choice.icon}</span>
             <span>{choice.label}</span>
+            <span className="font-body text-body-sm text-on-surface-variant">
+              Catálogo, pedidos e checkout em uma única loja online.
+            </span>
             {!choice.enabled ? <span className="text-[10px] uppercase tracking-wider">Em breve</span> : null}
           </label>
         ))}

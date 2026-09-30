@@ -54,6 +54,13 @@ export function PublicarStepContent() {
           {error}
         </p>
       ) : null}
+      <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-5">
+        <p className="font-headline text-headline-sm text-on-surface">Sua base está pronta</p>
+        <p className="mt-2 font-body text-body-sm text-on-surface-variant">
+          Depois de publicar, o painel mostrará um checklist para adicionar logo, produtos, categorias, pagamentos e
+          entrega. Você poderá configurar cada item no seu ritmo.
+        </p>
+      </div>
       <div className="flex justify-end border-t border-outline-variant/20 pt-6">
         <button
           className="flex items-center gap-2 rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6] disabled:cursor-not-allowed disabled:opacity-60"

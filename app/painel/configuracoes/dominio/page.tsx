@@ -10,12 +10,9 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export const metadata: Metadata = { title: "Domínio — VEXO" };
 
 /**
- * D17.2 — primeira camada de gerenciamento de domínio próprio
- * (infraestrutura de banco: D17.1, `tenant_domains`). Só cadastro como
- * `pending` — nenhuma verificação DNS, nenhuma resolução de host por
- * domínio, nenhum domínio realmente ativo nesta etapa (isso é D17.3+, ver
- * relatório D17.0). Mesmo shell de `/pedidos`/`/pagamentos`/`/entrega`
- * (link "← Configurações", header, formulário).
+ * Gerenciamento de domínio próprio: cadastro, verificação por DNS TXT e
+ * acompanhamento do binding na Vercel. Mesmo shell de
+ * `/pedidos`/`/pagamentos`/`/entrega`.
  */
 export default async function DominioSettingsPage() {
   const supabase = await createSupabaseServerClient();
@@ -37,7 +34,7 @@ export default async function DominioSettingsPage() {
         </Link>
         <h1 className="font-headline text-headline-md text-on-surface">Domínio</h1>
         <p className="font-body text-body-sm text-on-surface-variant">
-          Cadastre um domínio próprio para sua loja. A verificação e ativação acontecem em uma etapa futura.
+          Cadastre seu domínio, confirme a propriedade por DNS e acompanhe a conexão com a Vercel.
         </p>
       </div>
 

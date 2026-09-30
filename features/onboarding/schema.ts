@@ -55,9 +55,9 @@ export interface BrandInfoActionState {
 export const initialBrandInfoState: BrandInfoActionState = { status: "idle" };
 
 /**
- * D12.2 — retorno de `completeOnboardingStepAction` (etapas
- * "orchestrated"/"review"/"publish" — não têm formulário próprio, só um
- * botão "Continuar"). Chamado diretamente (sem `useActionState`), mesmo
+ * D12.2 — retorno de `completeOnboardingStepAction` (revisão/publicação —
+ * não têm formulário próprio, só um botão "Continuar"). Chamado
+ * diretamente (sem `useActionState`), mesmo
  * padrão de `removeProductImageAction`/`confirmProductImageUploadAction`
  * (features/products/actions.ts) — não é dispatch de `<form>`.
  */

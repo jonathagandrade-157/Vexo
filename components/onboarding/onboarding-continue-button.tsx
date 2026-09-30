@@ -3,14 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { completeOnboardingStepAction } from "@/features/onboarding/actions";
+import { completeOnboardingStepAction, skipOnboardingStepAction } from "@/features/onboarding/actions";
 
 /**
- * D12.2 — botão "Continuar" para etapas SEM opção de pular (hoje só
- * "revisar" — nada para pular numa tela de revisão, ela funciona mesmo
- * vazia). Etapas `skippable` (identidade/produtos/categorias/pagamentos/
- * entrega) usam `OnboardingStepActions` (D12.2.1), que renderiza este
- * mesmo botão de "Continuar" ao lado de "Pular por enquanto". "publicar"
+ * D12.2 — botão "Continuar" da revisão, que funciona mesmo com a loja
+ * vazia. O fluxo atual só mantém etapas que executam uma ação real. "publicar"
  * usa seu próprio botão (texto final diferente + redireciona para
  * /painel em vez da próxima etapa) — ver `publicar-step-content.tsx`.
  *
@@ -25,26 +22,42 @@ export function OnboardingContinueButton({
   stepKey,
   nextHref,
   label = "Continuar",
+  allowSkip = false,
 }: {
   stepKey: string;
   nextHref: string;
   label?: string;
+  allowSkip?: boolean;
 }) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"continue" | "skip" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleContinue() {
-    setPending(true);
+    setPendingAction("continue");
     setError(null);
     const result = await completeOnboardingStepAction(stepKey);
     if (result.status === "error") {
       setError(result.message ?? "Não foi possível confirmar esta etapa. Tente novamente.");
-      setPending(false);
+      setPendingAction(null);
       return;
     }
     router.push(nextHref);
   }
+
+  async function handleSkip() {
+    setPendingAction("skip");
+    setError(null);
+    const result = await skipOnboardingStepAction(stepKey);
+    if (result.status === "error") {
+      setError(result.message ?? "Não foi possível pular esta etapa. Tente novamente.");
+      setPendingAction(null);
+      return;
+    }
+    router.push(nextHref);
+  }
+
+  const pending = pendingAction !== null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -53,15 +66,25 @@ export function OnboardingContinueButton({
           {error}
         </p>
       ) : null}
-      <div className="flex justify-end border-t border-outline-variant/20 pt-6">
+      <div className="flex flex-col-reverse justify-end gap-3 border-t border-outline-variant/20 pt-6 sm:flex-row sm:items-center">
+        {allowSkip ? (
+          <button
+            className="rounded-lg px-6 py-3 font-label text-label-md text-on-surface-variant transition-[transform,color] duration-150 hover:text-on-surface active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={pending}
+            onClick={handleSkip}
+            type="button"
+          >
+            {pendingAction === "skip" ? "Pulando…" : "Pular por enquanto"}
+          </button>
+        ) : null}
         <button
           className="flex items-center gap-2 rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6] disabled:cursor-not-allowed disabled:opacity-60"
           disabled={pending}
           onClick={handleContinue}
           type="button"
         >
-          {pending ? "Salvando…" : label}
-          {pending ? null : <span className="material-symbols-outlined text-[18px]">arrow_forward</span>}
+          {pendingAction === "continue" ? "Salvando…" : label}
+          {pendingAction === "continue" ? null : <span className="material-symbols-outlined text-[18px]">arrow_forward</span>}
         </button>
       </div>
     </div>

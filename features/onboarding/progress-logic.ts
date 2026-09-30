@@ -24,7 +24,7 @@ export interface StepProgressEntry {
 /**
  * D12.2.1 — "resolvida" (completed OU skipped) é o que basta para
  * alcançabilidade/retomada; "concluída de fato" (completed) é o que uma
- * etapa não-`skippable` (seu-negocio/revisar/publicar) precisa
+ * etapa não-`skippable` (segmento/publicar no fluxo atual) precisa
  * especificamente. As duas funções abaixo nunca se confundem: "skipped"
  * satisfaz progresso, nunca significa "a feature foi configurada".
  */
@@ -121,8 +121,8 @@ export function resolvePreviousStepKey(steps: readonly OnboardingStepDefinition[
 
 /**
  * D12.2.1 — todas as etapas `required` da definição estão satisfeitas:
- * "seu-negocio" (e qualquer outra etapa não-`skippable`, como
- * "revisar"/"publicar") precisa estar especificamente `completed`; as
+ * qualquer etapa não-`skippable` (segmento/publicar no fluxo atual)
+ * precisa estar especificamente `completed`; as
  * demais (`skippable: true`) aceitam `completed` OU `skipped`. `false`
  * (nunca `true` por omissão) quando a definição está vazia — um
  * `business_type` sem wizard implementado nunca é considerado

@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
 
+import { OnboardingFormActions } from "@/components/onboarding/onboarding-form-actions";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
@@ -19,21 +19,7 @@ interface DefaultValues {
   email: string;
 }
 
-function ContinueButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      className="flex items-center gap-2 rounded-lg bg-primary-container px-6 py-3 font-label text-label-md text-on-primary-container transition-colors hover:bg-[#8B5CF6] disabled:cursor-not-allowed disabled:opacity-60"
-      disabled={pending}
-      type="submit"
-    >
-      {pending ? "Salvando…" : "Continuar"}
-      {pending ? null : <span className="material-symbols-outlined text-[18px]">arrow_forward</span>}
-    </button>
-  );
-}
-
-export function BrandInfoForm({ defaultValues }: { defaultValues: DefaultValues }) {
+export function BrandInfoForm({ defaultValues, allowSkip }: { defaultValues: DefaultValues; allowSkip: boolean }) {
   const [state, formAction] = useActionState(saveBrandInfoAction, initialBrandInfoState);
 
   return (
@@ -102,9 +88,7 @@ export function BrandInfoForm({ defaultValues }: { defaultValues: DefaultValues 
         </p>
       ) : null}
 
-      <div className="mt-2 flex justify-end border-t border-outline-variant/20 pt-6">
-        <ContinueButton />
-      </div>
+      <OnboardingFormActions allowSkip={allowSkip} nextHref="/onboarding/revisar" stepKey="seu-negocio" />
     </form>
   );
 }
