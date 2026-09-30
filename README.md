@@ -35,6 +35,7 @@ O app fica disponível em `http://localhost:3000`.
 npm run lint
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 ```
 
@@ -46,6 +47,8 @@ RUN_INTEGRATION_TESTS=1 npm test
 ```
 
 No GitHub Actions, o Postgres de teste, todas as migrations e `RUN_INTEGRATION_TESTS=1` já são configurados automaticamente.
+
+Os smoke tests de navegador usam Chromium em desktop e mobile. Para testar um deploy já publicado em vez de iniciar o servidor local, informe `E2E_BASE_URL`.
 
 ## Áreas principais
 

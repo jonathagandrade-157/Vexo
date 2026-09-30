@@ -65,3 +65,29 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3100
+      NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX: vexo.local
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
+      TRIAL_HASH_SECRET: placeholder-trial-hash-secret-not-real
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Public smoke tests
+        run: npm run test:e2e

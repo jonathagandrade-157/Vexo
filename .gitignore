@@ -11,6 +11,8 @@ next-env.d.ts
 
 # Testing / coverage
 coverage/
+playwright-report/
+test-results/
 
 # Build artifacts
 *.tsbuildinfo
