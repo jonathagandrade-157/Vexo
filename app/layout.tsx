@@ -3,6 +3,7 @@ import { Hanken_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { THEME_STORAGE_KEY } from "@/features/theme/theme";
+import { getPublicEnv } from "@/lib/env";
 
 import "material-symbols/outlined.css";
 import "./globals.css";
@@ -32,8 +33,18 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VEXO",
+  metadataBase: new URL(getPublicEnv().NEXT_PUBLIC_SITE_URL),
+  title: "VEXO — Crie e gerencie sua loja online",
   description: "VEXO — plataforma de criação e gerenciamento de lojas virtuais.",
+  applicationName: "VEXO",
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: "VEXO",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 const themeBootstrapScript = `(() => {

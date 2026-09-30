@@ -67,5 +67,17 @@ test.describe("jornada pública essencial", () => {
     const privacy = await request.get("/privacidade");
     expect(privacy.ok()).toBeTruthy();
     expect(await privacy.text()).toContain("Política de Privacidade");
+
+    const manifest = await request.get("/manifest.webmanifest");
+    expect(manifest.ok()).toBeTruthy();
+    expect(manifest.headers()["content-type"]).toContain("application/manifest+json");
+
+    const icon = await request.get("/icon");
+    expect(icon.ok()).toBeTruthy();
+    expect(icon.headers()["content-type"]).toContain("image/png");
+
+    const openGraphImage = await request.get("/opengraph-image");
+    expect(openGraphImage.ok()).toBeTruthy();
+    expect(openGraphImage.headers()["content-type"]).toContain("image/png");
   });
 });
