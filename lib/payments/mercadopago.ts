@@ -121,6 +121,7 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${input.accessToken}`,
+          "x-idempotency-key": input.idempotencyKey,
         },
         body: JSON.stringify({
           items: [

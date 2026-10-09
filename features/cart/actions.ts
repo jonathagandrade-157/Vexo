@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { randomUUID } from "node:crypto";
 
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabasePublicClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
-import { getCartId, setCartId } from "./cart-cookie";
+import { setCartCredentials } from "./cart-cookie";
+import { getOwnedActiveCart } from "./ownership";
+import { createCartCredentials } from "./cart-session";
 import { addToCartSchema, type CartActionState, updateQuantitySchema } from "./schema";
 
 /** Sempre reresolve o tenant pelo slug (nunca aceita um tenant_id de fora) — arquitetura Etapa 9 §7. */
@@ -27,19 +28,18 @@ function revalidateCartViews(storeSlug: string, productSlug?: string) {
  * (id gerado no servidor, nunca aceito do cliente) e grava o cookie.
  */
 async function ensureCart(storeSlug: string, tenantId: string): Promise<string> {
-  const supabase = createSupabasePublicClient();
-  const existingId = await getCartId(storeSlug);
+  const existing = await getOwnedActiveCart(storeSlug, tenantId);
+  if (existing) return existing.id;
 
-  if (existingId) {
-    const { data } = await supabase.from("carts").select("id").eq("id", existingId).eq("tenant_id", tenantId).maybeSingle();
-    if (data) return data.id;
-  }
-
-  const newId = randomUUID();
-  const { error } = await supabase.from("carts").insert({ id: newId, tenant_id: tenantId });
+  const credentials = createCartCredentials();
+  const { error } = await createSupabaseServiceRoleClient().from("carts").insert({
+    id: credentials.cartId,
+    tenant_id: tenantId,
+    owner_token_hash: credentials.tokenHash,
+  });
   if (error) throw new Error("Não foi possível criar o carrinho.");
-  await setCartId(storeSlug, newId);
-  return newId;
+  await setCartCredentials(storeSlug, credentials);
+  return credentials.cartId;
 }
 
 export async function addToCartAction(
@@ -112,7 +112,7 @@ export async function addToCartAction(
     return { status: "error", message: "Não foi possível abrir o carrinho. Tente novamente." };
   }
 
-  const { error } = await supabase.rpc("add_to_cart", {
+  const { error } = await createSupabaseServiceRoleClient().rpc("add_to_cart", {
     p_tenant_id: tenant.id,
     p_cart_id: cartId,
     p_product_id: product.id,
@@ -138,17 +138,17 @@ export async function updateCartItemQuantityAction(
   const tenant = await resolveReadyTenant(storeSlug);
   if (!tenant) return { status: "error", message: "Loja não encontrada." };
 
-  const cartId = await getCartId(storeSlug);
-  if (!cartId) return { status: "error", message: "Carrinho não encontrado." };
+  const cart = await getOwnedActiveCart(storeSlug, tenant.id);
+  if (!cart) return { status: "error", message: "Carrinho não encontrado." };
 
-  const supabase = createSupabasePublicClient();
+  const supabase = createSupabaseServiceRoleClient();
 
   if (parsed.data.quantity < 1) {
     const { error } = await supabase
       .from("cart_items")
       .delete()
       .eq("id", parsed.data.cartItemId)
-      .eq("cart_id", cartId)
+      .eq("cart_id", cart.id)
       .eq("tenant_id", tenant.id);
     if (error) return { status: "error", message: "Não foi possível remover o item." };
     revalidateCartViews(storeSlug);
@@ -159,7 +159,7 @@ export async function updateCartItemQuantityAction(
     .from("cart_items")
     .update({ quantity: parsed.data.quantity }, { count: "exact" })
     .eq("id", parsed.data.cartItemId)
-    .eq("cart_id", cartId)
+    .eq("cart_id", cart.id)
     .eq("tenant_id", tenant.id);
   if (error) return { status: "error", message: "Não foi possível atualizar a quantidade." };
   if (!count) return { status: "error", message: "Item não encontrado no carrinho." };
@@ -172,15 +172,15 @@ export async function removeCartItemAction(storeSlug: string, cartItemId: string
   const tenant = await resolveReadyTenant(storeSlug);
   if (!tenant) return { status: "error", message: "Loja não encontrada." };
 
-  const cartId = await getCartId(storeSlug);
-  if (!cartId) return { status: "error", message: "Carrinho não encontrado." };
+  const cart = await getOwnedActiveCart(storeSlug, tenant.id);
+  if (!cart) return { status: "error", message: "Carrinho não encontrado." };
 
-  const supabase = createSupabasePublicClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { error, count } = await supabase
     .from("cart_items")
     .delete({ count: "exact" })
     .eq("id", cartItemId)
-    .eq("cart_id", cartId)
+    .eq("cart_id", cart.id)
     .eq("tenant_id", tenant.id);
   if (error) return { status: "error", message: "Não foi possível remover o item." };
   if (!count) return { status: "error", message: "Item não encontrado no carrinho." };
@@ -193,11 +193,11 @@ export async function clearCartAction(storeSlug: string): Promise<CartActionStat
   const tenant = await resolveReadyTenant(storeSlug);
   if (!tenant) return { status: "error", message: "Loja não encontrada." };
 
-  const cartId = await getCartId(storeSlug);
-  if (!cartId) return { status: "success" };
+  const cart = await getOwnedActiveCart(storeSlug, tenant.id);
+  if (!cart) return { status: "success" };
 
-  const supabase = createSupabasePublicClient();
-  const { error } = await supabase.from("cart_items").delete().eq("cart_id", cartId).eq("tenant_id", tenant.id);
+  const supabase = createSupabaseServiceRoleClient();
+  const { error } = await supabase.from("cart_items").delete().eq("cart_id", cart.id).eq("tenant_id", tenant.id);
   if (error) return { status: "error", message: "Não foi possível limpar o carrinho." };
 
   revalidateCartViews(storeSlug);

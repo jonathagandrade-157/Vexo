@@ -6,19 +6,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * product_variants) já é coberta exaustivamente por
  * `tests/integration/cart.test.ts` — este arquivo mocka o client do
  * Supabase e as duas dependências de resolução (`resolveStorefrontTenant`,
- * `getCartId`), mesmo padrão de `tests/unit/melhor-envio-cart-products.test.ts`,
+ * `getOwnedActiveCart`), mesmo padrão de `tests/unit/melhor-envio-cart-products.test.ts`,
  * e foca só na lógica de mapeamento que o Postgres sozinho não consegue
  * exercitar num teste de integração (a distinção "sem variante" vs.
  * "variante existe mas o embed da RLS retornou null" só é observável do
  * lado do código TypeScript que consome o resultado do PostgREST).
  */
-vi.mock("@/lib/supabase/server", () => ({ createSupabasePublicClient: vi.fn() }));
+vi.mock("@/lib/supabase/server", () => ({ createSupabaseServiceRoleClient: vi.fn() }));
 vi.mock("@/features/storefront/resolve-tenant", () => ({ resolveStorefrontTenant: vi.fn() }));
-vi.mock("@/features/cart/cart-cookie", () => ({ getCartId: vi.fn() }));
+vi.mock("@/features/cart/ownership", () => ({ getOwnedActiveCart: vi.fn() }));
 
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
-import { getCartId } from "@/features/cart/cart-cookie";
+import { getOwnedActiveCart } from "@/features/cart/ownership";
 import { getCart } from "@/features/cart/data";
 
 const TENANT_ID = "11111111-1111-1111-1111-111111111111";
@@ -75,16 +75,16 @@ function activeVariant(overrides: Partial<Record<string, unknown>> = {}) {
 
 describe("getCart", () => {
   afterEach(() => {
-    vi.mocked(createSupabasePublicClient).mockReset();
+    vi.mocked(createSupabaseServiceRoleClient).mockReset();
     vi.mocked(resolveStorefrontTenant).mockReset();
-    vi.mocked(getCartId).mockReset();
+    vi.mocked(getOwnedActiveCart).mockReset();
   });
 
   function setup(cartItemsRows: unknown[]) {
     vi.mocked(resolveStorefrontTenant).mockResolvedValue({ status: "ready", tenant: { id: TENANT_ID } } as never);
-    vi.mocked(getCartId).mockResolvedValue(CART_ID);
+    vi.mocked(getOwnedActiveCart).mockResolvedValue({ id: CART_ID, ownerTokenHash: "a".repeat(64), checkoutOrderId: null });
     const supabase = fakeSupabase({ cart_items: cartItemsRows });
-    vi.mocked(createSupabasePublicClient).mockReturnValue(supabase as never);
+    vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
     return supabase;
   }
 
@@ -151,7 +151,7 @@ describe("getCart", () => {
   // v_variant_label em create_order_from_cart (migration 20260817220118).
   it("an active variant's label is built from product_variant_options/product_option_values/product_options, ordered by option position", async () => {
     vi.mocked(resolveStorefrontTenant).mockResolvedValue({ status: "ready", tenant: { id: TENANT_ID } } as never);
-    vi.mocked(getCartId).mockResolvedValue(CART_ID);
+    vi.mocked(getOwnedActiveCart).mockResolvedValue({ id: CART_ID, ownerTokenHash: "a".repeat(64), checkoutOrderId: null });
     const supabase = fakeSupabase({
       cart_items: [
         { id: "item-1", quantity: 1, variant_id: "variant-1", product: product(), variant: activeVariant() },
@@ -172,7 +172,7 @@ describe("getCart", () => {
         { id: "option-tamanho", position: 1 },
       ],
     });
-    vi.mocked(createSupabasePublicClient).mockReturnValue(supabase as never);
+    vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
 
     const cart = await getCart(STORE_SLUG);
 

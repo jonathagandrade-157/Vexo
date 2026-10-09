@@ -11,9 +11,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * dado incompleto, mapear para `ShipmentQuoteProduct` usando o preço
  * efetivo já existente (`effectivePrice`).
  */
-vi.mock("@/lib/supabase/server", () => ({ createSupabasePublicClient: vi.fn() }));
+vi.mock("@/lib/supabase/server", () => ({ createSupabaseServiceRoleClient: vi.fn() }));
 
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient as createSupabasePublicClient } from "@/lib/supabase/server";
 import { buildMelhorEnvioProductsFromCart } from "@/features/shipping/melhor-envio-cart-products";
 
 const TENANT_ID = "11111111-1111-1111-1111-111111111111";

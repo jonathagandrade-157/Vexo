@@ -158,7 +158,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
     const orderId = await insertOrder(fx.tenantA, 100);
 
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select apply_shipping_to_order($1, $2, $3, 22.5)", [fx.tenantA, orderId, methodId]),
       { commit: true },
     );
@@ -184,7 +184,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
     const orderId = await insertOrder(fx.tenantA, 50);
 
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 999)", [fx.tenantA, orderId, methodId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 999)", [fx.tenantA, orderId, methodId])),
     );
     expect(err.message).toMatch(/shipping price has changed/i);
 
@@ -197,7 +197,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
     const methodId = await insertMethod(fx.tenantA, { price: 12, status: "inactive" });
     const orderId = await insertOrder(fx.tenantA, 50);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
     );
     expect(err.message).toMatch(/shipping method not available/i);
   });
@@ -207,7 +207,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
     const methodId = await insertMethod(fx.tenantB, { price: 12 });
     const orderId = await insertOrder(fx.tenantA, 50);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
     );
     expect(err.message).toMatch(/shipping method not available/i);
   });
@@ -217,7 +217,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
     const methodId = await insertMethod(fx.tenantA, { price: 12 });
     const orderId = await insertOrder(fx.tenantB, 50);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
     );
     expect(err.message).toMatch(/order not found/i);
   });
@@ -227,16 +227,16 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Frete/Entrega (Etapa 12)", 
     const methodId = await insertMethod(fx.tenantA, { price: 12 });
     const orderId = await insertOrder(fx.tenantA, 50, "PAID");
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
     );
     expect(err.message).toMatch(/order can no longer be changed/i);
   });
 
-  // apply_shipping_to_order é anon-only — authenticated/service_role sem grant.
-  it("apply_shipping_to_order is anon-only — authenticated and service_role have no execute grant", async () => {
+  // Etapa 2A — apply_shipping_to_order é BFF-only.
+  it("apply_shipping_to_order is service-role-only — anon/authenticated have no execute grant", async () => {
     const methodId = await insertMethod(fx.tenantA, { price: 12 });
     const orderId = await insertOrder(fx.tenantA, 50);
-    for (const actor of [{ role: "authenticated" as const, userId: fx.userAOwner }, { role: "service_role" as const }]) {
+    for (const actor of [{ role: "anon" as const }, { role: "authenticated" as const, userId: fx.userAOwner }]) {
       const err = await expectPgError(
         asActor(actor, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [fx.tenantA, orderId, methodId])),
       );
@@ -447,7 +447,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja +
     const orderId = await insertOrder(tenantId, 80); // criado com endereço do cliente, como no fluxo real (create_order_from_cart roda antes)
 
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select apply_shipping_to_order($1, $2, $3, 0)", [tenantId, orderId, pickupId]),
       { commit: true },
     );
@@ -475,7 +475,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja +
     const orderId = await insertOrder(tenantId, 80);
 
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [tenantId, orderId, ownDeliveryId]),
       { commit: true },
     );
@@ -494,7 +494,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja +
     const orderId = await insertOrder(tenantId, 50, "PENDING", null);
 
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [tenantId, orderId, ownDeliveryId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 12)", [tenantId, orderId, ownDeliveryId])),
     );
     expect(err.message).toMatch(/order has no shipping address for this method/i);
   });
@@ -508,7 +508,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja +
 
     for (const [methodId, price] of [[pickupB, 0], [ownDeliveryB, 12]] as const) {
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, $4)", [fx.tenantA, orderA, methodId, price])),
+        asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, $4)", [fx.tenantA, orderA, methodId, price])),
       );
       expect(err.message).toMatch(/shipping method not available/i);
     }
@@ -522,12 +522,12 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja +
     const orderId = await insertOrder(tenantId, 50);
 
     const errPickup = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 5)", [tenantId, orderId, pickupId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 5)", [tenantId, orderId, pickupId])),
     );
     expect(errPickup.message).toMatch(/shipping price has changed/i);
 
     const errOwnDelivery = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 999)", [tenantId, orderId, ownDeliveryId])),
+      asActor({ role: "service_role" }, (c) => c.query("select apply_shipping_to_order($1, $2, $3, 999)", [tenantId, orderId, ownDeliveryId])),
     );
     expect(errOwnDelivery.message).toMatch(/shipping price has changed/i);
   });
@@ -539,7 +539,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja +
     const orderId = await insertOrder(tenantId, 40);
 
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select apply_shipping_to_order($1, $2, $3, 0)", [tenantId, orderId, pickupId]),
       { commit: true },
     );

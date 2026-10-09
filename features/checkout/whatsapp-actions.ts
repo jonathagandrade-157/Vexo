@@ -5,16 +5,16 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { getCart } from "@/features/cart/data";
-import { getCartId } from "@/features/cart/cart-cookie";
+import { getOwnedCartForCheckout } from "@/features/cart/ownership";
 import { resolveCheckoutAvailability } from "@/features/checkout/checkout-availability";
 import { getStorePixSettings } from "@/features/checkout/pix-settings";
 import { isPaymentGatewayConnected } from "@/features/payments/checkout";
-import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
-import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
+import { isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
+import { verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { sendOrderConfirmationEmail } from "@/lib/email/send-order-confirmation";
-import { createSupabasePublicClient } from "@/lib/supabase/server";
 import { checkCheckoutRateLimit } from "./rate-limit";
+import { createOwnedOrder, type CheckoutShippingSelection } from "./create-owned-order";
 import { friendlyCheckoutError, isAddressComplete } from "./schema";
 import { whatsappCheckoutSchema, type CheckoutWhatsappActionState, type WhatsappCheckoutInput } from "./whatsapp-schema";
 
@@ -96,9 +96,12 @@ export async function createOrderForWhatsappAction(
     return { status: "error", message: "Esta loja não aceita pedidos pelo WhatsApp." };
   }
 
-  const cartId = await getCartId(storeSlug);
-  if (!cartId) {
+  const cartOwnership = await getOwnedCartForCheckout(storeSlug, resolution.tenant.id);
+  if (!cartOwnership) {
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
+  }
+  if (cartOwnership.checkoutOrderId) {
+    redirect(`/loja/${storeSlug}/pedido/${cartOwnership.checkoutOrderId}`);
   }
 
   const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, shippingProvider, paymentPreference, zip } = parsed.data;
@@ -132,7 +135,7 @@ export async function createOrderForWhatsappAction(
     if (shippingMethodId === undefined || shippingPrice === undefined || !zip) {
       return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
     }
-    const fresh = await verifyMelhorEnvioShippingFresh(resolution.tenant.id, cartId, zip, shippingMethodId, shippingPrice);
+    const fresh = await verifyMelhorEnvioShippingFresh(resolution.tenant.id, cartOwnership.id, zip, shippingMethodId, shippingPrice);
     if (!fresh.valid) {
       return {
         status: "error",
@@ -186,46 +189,50 @@ export async function createOrderForWhatsappAction(
     }
   }
 
-  const supabase = createSupabasePublicClient();
-  const { data: orderId, error } = await supabase.rpc("create_order_from_cart", {
-    p_tenant_id: resolution.tenant.id,
-    p_cart_id: cartId,
-    p_customer_name: customerName,
-    p_customer_email: customerEmail,
-    p_customer_phone: customerPhone,
-    p_shipping_address: shippingAddress,
-    p_order_source: "whatsapp",
-    p_payment_channel: "external",
-    p_requested_payment_method: paymentPreference,
-    p_cash_change_for: cashChangeFor,
+  const shipping: CheckoutShippingSelection = melhorEnvioShipping
+    ? { kind: "melhor_envio", ...melhorEnvioShipping }
+    : shippingMethodId !== undefined && shippingPrice !== undefined
+      ? { kind: "method", methodId: shippingMethodId, expectedPrice: shippingPrice }
+      : { kind: "none" };
+
+  const checkout = await createOwnedOrder({
+    tenantId: resolution.tenant.id,
+    cartId: cartOwnership.id,
+    ownerTokenHash: cartOwnership.ownerTokenHash,
+    customerName,
+    customerEmail,
+    customerPhone,
+    shippingAddress,
+    orderSource: "whatsapp",
+    paymentChannel: "external",
+    requestedPaymentMethod: paymentPreference,
+    cashChangeFor,
+    shipping,
   });
 
-  if (error || !orderId) {
-    return { status: "error", message: friendlyCheckoutError(error?.message ?? "") };
+  if (!checkout.ok) {
+    return { status: "error", message: friendlyCheckoutError(checkout.error) };
   }
+  const { orderId } = checkout;
 
   revalidatePath(`/loja/${storeSlug}`);
   revalidatePath(`/loja/${storeSlug}/carrinho`);
-
-  if (melhorEnvioShipping) {
-    await applyMelhorEnvioShippingToOrder(resolution.tenant.id, orderId as string, melhorEnvioShipping);
-  } else if (shippingMethodId !== undefined && shippingPrice !== undefined) {
-    await applyShippingToOrder(resolution.tenant.id, orderId as string, shippingMethodId, shippingPrice);
-  }
 
   // JON-13 — mesmo princípio de createOrderAction (features/checkout/
   // actions.ts): e-mail de "recebemos seu pedido" via after() (nunca
   // atrasa o redirect abaixo), nunca "confirmado" — o pagamento deste
   // fluxo é sempre combinado fora da VEXO (WhatsApp/PIX direto).
-  after(() =>
-    sendOrderConfirmationEmail({
-      tenantId: resolution.tenant.id,
-      orderId: orderId as string,
-      customerEmail,
-      storeName: resolution.tenant.name,
-      storeSlug,
-    }),
-  );
+  if (checkout.created) {
+    after(() =>
+      sendOrderConfirmationEmail({
+        tenantId: resolution.tenant.id,
+        orderId,
+        customerEmail,
+        storeName: resolution.tenant.name,
+        storeSlug,
+      }),
+    );
+  }
 
   // Nunca cria payment/gateway aqui: create_payment_for_order/
   // initiatePaymentForOrder simplesmente não são chamadas — o pedido já
@@ -233,5 +240,5 @@ export async function createOrderForWhatsappAction(
   // (decidido dentro da própria RPC). O link do WhatsApp é montado na
   // página de confirmação (features/checkout/whatsapp-link.ts), nunca
   // aqui, para nunca passar telefone/mensagem/total por querystring.
-  redirect(`/loja/${storeSlug}/pedido/${orderId as string}`);
+  redirect(`/loja/${storeSlug}/pedido/${orderId}`);
 }

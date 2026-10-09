@@ -92,8 +92,23 @@ export const initialCheckoutState: CheckoutActionState = { status: "idle" };
  * Nunca expõe o texto bruto do erro Postgres ao visitante.
  */
 export function friendlyCheckoutError(message: string): string {
+  if (message.includes("cart ownership could not be verified")) {
+    return "A sessão do seu carrinho expirou. Volte para a loja e adicione os produtos novamente.";
+  }
   if (message.includes("cart not found") || message.includes("cart is empty")) {
     return "Seu carrinho está vazio ou não foi encontrado. Volte para a loja e adicione produtos novamente.";
+  }
+  if (message.includes("shipping price has changed") || message.includes("shipping method not available")) {
+    return "O frete mudou ou não está mais disponível. Atualize a página e selecione a entrega novamente.";
+  }
+  if (message.includes("shipping method is required") || message.includes("invalid shipping selection")) {
+    return "Selecione uma opção de entrega válida antes de finalizar o pedido.";
+  }
+  if (message.includes("order has no shipping address for this method")) {
+    return "Informe um endereço válido para a opção de entrega selecionada.";
+  }
+  if (message.includes("cash change amount is less than the order total")) {
+    return "O valor para troco é menor que o total final do pedido.";
   }
   if (message.includes("store is not available")) {
     return "Esta loja não está disponível no momento.";

@@ -39,7 +39,7 @@ export async function isPaymentGatewayConnected(tenantId: string): Promise<boole
 }
 
 /**
- * Cria o registro de pagamento (RPC anon, valor sempre de orders.total)
+ * Cria o registro de pagamento (RPC service-role-only, valor sempre de orders.total)
  * → decifra o token do lojista (service_role, único uso extra desta
  * camada) → cria a preference no Mercado Pago → grava o preference_id.
  * Chamado depois de create_order_from_cart (Etapa 10, inalterada) — não
@@ -51,9 +51,9 @@ export async function initiatePaymentForOrder(
   customerEmail: string,
   storeSlug: string,
 ): Promise<{ checkoutUrl: string } | { error: string }> {
-  const anon = createSupabasePublicClient();
+  const server = createSupabaseServiceRoleClient();
 
-  const { error: createError } = await anon.rpc("create_payment_for_order", {
+  const { error: createError } = await server.rpc("create_payment_for_order", {
     p_tenant_id: tenantId,
     p_order_id: orderId,
     p_provider: PROVIDER,
@@ -102,6 +102,7 @@ export async function initiatePaymentForOrder(
       orderNumber: orderRow.order_number,
       amount: orderRow.total,
       customerEmail,
+      idempotencyKey: `vexo-order-${orderId}`,
       backUrl: `${NEXT_PUBLIC_SITE_URL}/loja/${storeSlug}/pedido/${orderId}`,
       notificationUrl: `${NEXT_PUBLIC_SITE_URL}/api/webhooks/mercadopago`,
     });
@@ -114,7 +115,7 @@ export async function initiatePaymentForOrder(
     return { error: "O Mercado Pago está indisponível no momento. Tente novamente em instantes." };
   }
 
-  const { error: attachError } = await anon.rpc("attach_payment_preference", {
+  const { error: attachError } = await server.rpc("attach_payment_preference", {
     p_tenant_id: tenantId,
     p_order_id: orderId,
     p_external_id: result.externalId,

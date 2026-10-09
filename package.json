@@ -16,7 +16,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:watch": "vitest",
-    "db:test:reset": "bash tests/integration/scripts/reset-test-db.sh"
+    "db:test:reset": "bash tests/integration/scripts/reset-test-db.sh",
+    "db:test:cart-rollout": "bash tests/integration/scripts/validate-cart-rollout.sh"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.74.0",

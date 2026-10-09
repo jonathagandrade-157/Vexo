@@ -1,15 +1,12 @@
 /**
- * Etapa 9 — carrinho (prompt Etapa 9 §17). RLS/trigger/RPC testados
- * diretamente via SQL (asActor com role "anon" — o carrinho é sempre
- * anônimo nesta etapa), mesmo padrão de sempre.
+ * Etapa 2A — carrinho anônimo atrás do BFF. Operações legítimas são
+ * exercitadas como service_role; anon/authenticated são testados apenas
+ * para confirmar que PostgREST e RPCs privilegiadas estão bloqueados.
  *
  * Nota sobre o modelo de segurança (documentada também no relatório
- * final): a RLS de `carts`/`cart_items` não é "por dono de linha" (não
- * há identidade de sessão para um visitante anônimo checar contra) — ela
- * garante só que o tenant referenciado é um tenant publicado de
- * verdade. A posse real do carrinho é o cookie httpOnly + o `cart_id`
- * ser um UUID não adivinhável (mesmo modelo de um token de sessão). O
- * que os testes abaixo garantem na camada de banco é: (a) um
+ * final): o navegador não possui grants nas tabelas. A posse real é um
+ * segredo aleatório em cookie HttpOnly cujo hash fica em carts. O que
+ * os testes abaixo garantem na camada de banco é: (a) um
  * cart_item nunca pode misturar tenant/produto/carrinho de tenants
  * diferentes (trigger prevent_cross_tenant_cart_item), e (b) preço nunca
  * é armazenado no carrinho (não há coluna para manipular).
@@ -127,17 +124,17 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
 
   async function createCart(tenantId: string): Promise<string> {
     const cartId = randomUUID();
-    await asActor({ role: "anon" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, tenantId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, tenantId]), {
       commit: true,
     });
     return cartId;
   }
 
   // 1 — adicionar produto válido.
-  it("anon can add a valid, active, same-tenant product to a cart", async () => {
+  it("BFF can add a valid, active, same-tenant product to a cart", async () => {
     const cartId = await createCart(fx.tenantA);
     const result = await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4) returning id", [
         cartId, fx.tenantA, productA, 2,
       ]),
@@ -149,7 +146,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("rejects a product_id that doesn't exist", async () => {
     const cartId = await createCart(fx.tenantA);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) =>
+      asActor({ role: "service_role" }, (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId, fx.tenantA, randomUUID(), 1,
         ]),
@@ -162,7 +159,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("rejects a product from a different tenant, even inside that tenant's own cart", async () => {
     const cartId = await createCart(fx.tenantA);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) =>
+      asActor({ role: "service_role" }, (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId, fx.tenantA, productB, 1,
         ]),
@@ -174,7 +171,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("rejects a cart_items row whose tenant_id doesn't match the parent cart's tenant", async () => {
     const cartId = await createCart(fx.tenantA);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) =>
+      asActor({ role: "service_role" }, (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId, fx.tenantB, productB, 1,
         ]),
@@ -187,7 +184,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("rejects adding an inactive product to the cart", async () => {
     const cartId = await createCart(fx.tenantA);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) =>
+      asActor({ role: "service_role" }, (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId, fx.tenantA, inactiveProductA, 1,
         ]),
@@ -200,17 +197,17 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("add_to_cart increments quantity on the same product instead of creating a duplicate row", async () => {
     const cartId = await createCart(fx.tenantA);
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 2]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 3]),
       { commit: true },
     );
 
-    const rows = await asActor({ role: "anon" }, (c) =>
+    const rows = await asActor({ role: "service_role" }, (c) =>
       c.query("select quantity from public.cart_items where cart_id = $1 and product_id = $2", [cartId, productA]),
     );
     expect(rows.rows).toHaveLength(1);
@@ -221,17 +218,17 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("add_to_cart clamps the accumulated quantity at 99", async () => {
     const cartId = await createCart(fx.tenantA);
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 90]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 90]),
       { commit: true },
     );
 
-    const rows = await asActor({ role: "anon" }, (c) =>
+    const rows = await asActor({ role: "service_role" }, (c) =>
       c.query("select quantity from public.cart_items where cart_id = $1 and product_id = $2", [cartId, productA]),
     );
     expect(rows.rows[0]?.quantity).toBe(99);
@@ -241,16 +238,16 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("two concurrent add_to_cart calls for the same product never duplicate the row", async () => {
     const cartId = await createCart(fx.tenantA);
     const results = await Promise.allSettled([
-      asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1]), {
+      asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1]), {
         commit: true,
       }),
-      asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1]), {
+      asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1]), {
         commit: true,
       }),
     ]);
     expect(results.every((r) => r.status === "fulfilled")).toBe(true);
 
-    const rows = await asActor({ role: "anon" }, (c) =>
+    const rows = await asActor({ role: "service_role" }, (c) =>
       c.query("select quantity from public.cart_items where cart_id = $1 and product_id = $2", [cartId, productA]),
     );
     expect(rows.rows).toHaveLength(1);
@@ -261,7 +258,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("quantity can be decreased, and invalid quantities (0, negative, over 99) are rejected", async () => {
     const cartId = await createCart(fx.tenantA);
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
         cartId, fx.tenantA, productA, 5,
       ]),
@@ -269,18 +266,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     );
 
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("update public.cart_items set quantity = 1 where cart_id = $1 and product_id = $2", [cartId, productA]),
       { commit: true },
     );
-    const afterDecrease = await asActor({ role: "anon" }, (c) =>
+    const afterDecrease = await asActor({ role: "service_role" }, (c) =>
       c.query("select quantity from public.cart_items where cart_id = $1 and product_id = $2", [cartId, productA]),
     );
     expect(afterDecrease.rows[0]?.quantity).toBe(1);
 
     for (const invalid of [0, -1, 100]) {
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) =>
+        asActor({ role: "service_role" }, (c) =>
           c.query("update public.cart_items set quantity = $3 where cart_id = $1 and product_id = $2", [cartId, productA, invalid]),
         ),
       );
@@ -292,18 +289,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("an item can be removed from the cart", async () => {
     const cartId = await createCart(fx.tenantA);
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
         cartId, fx.tenantA, productA, 1,
       ]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("delete from public.cart_items where cart_id = $1 and product_id = $2", [cartId, productA]),
       { commit: true },
     );
-    const rows = await asActor({ role: "anon" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
+    const rows = await asActor({ role: "service_role" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
     expect(rows.rows).toHaveLength(0);
   });
 
@@ -311,7 +308,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("multiple products can coexist in a cart, and clearing removes all of them", async () => {
     const cartId = await createCart(fx.tenantA);
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query(
           `insert into public.cart_items (cart_id, tenant_id, product_id, quantity)
@@ -320,18 +317,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
         ),
       { commit: true },
     );
-    const beforeClear = await asActor({ role: "anon" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
+    const beforeClear = await asActor({ role: "service_role" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
     expect(beforeClear.rows).toHaveLength(2);
 
-    await asActor({ role: "anon" }, (c) => c.query("delete from public.cart_items where cart_id = $1", [cartId]), { commit: true });
-    const afterClear = await asActor({ role: "anon" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
+    await asActor({ role: "service_role" }, (c) => c.query("delete from public.cart_items where cart_id = $1", [cartId]), { commit: true });
+    const afterClear = await asActor({ role: "service_role" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
     expect(afterClear.rows).toHaveLength(0);
   });
 
   // 9 — carrinho vazio (recém-criado, sem itens).
   it("a freshly created cart starts empty", async () => {
     const cartId = await createCart(fx.tenantA);
-    const rows = await asActor({ role: "anon" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
+    const rows = await asActor({ role: "service_role" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
     expect(rows.rows).toHaveLength(0);
   });
 
@@ -354,28 +351,54 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   it("a committed cart item is still there in a completely separate later read (survives 'refresh')", async () => {
     const cartId = await createCart(fx.tenantA);
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
         cartId, fx.tenantA, productA, 4,
       ]),
       { commit: true },
     );
 
-    const laterRead = await asActor({ role: "anon" }, (c) =>
+    const laterRead = await asActor({ role: "service_role" }, (c) =>
       c.query("select quantity from public.cart_items where cart_id = $1 and product_id = $2", [cartId, productA]),
     );
     expect(laterRead.rows[0]?.quantity).toBe(4);
   });
 
-  // 18 — só anon consegue usar o carrinho de fato (add_to_cart não é chamável por authenticated/service_role).
-  it("add_to_cart is anon-only — authenticated has no execute grant on it", async () => {
+  // 18 — somente o BFF com service_role usa add_to_cart; clientes diretos não têm EXECUTE.
+  it("add_to_cart is service-role-only — anon and authenticated have no execute grant", async () => {
     const cartId = await createCart(fx.tenantA);
-    const err = await expectPgError(
-      asActor({ role: "authenticated", userId: fx.userOutsider }, (c) =>
-        c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1]),
-      ),
+    for (const actor of [{ role: "anon" as const }, { role: "authenticated" as const, userId: fx.userOutsider }]) {
+      const err = await expectPgError(
+        asActor(actor, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1])),
+      );
+      expect(err.message).toMatch(/permission denied/i);
+    }
+  });
+
+  it("anon cannot enumerate, insert, alter or delete carts/cart_items through PostgREST privileges", async () => {
+    const cartId = await createCart(fx.tenantA);
+    await asActor(
+      { role: "service_role" },
+      (c) =>
+        c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 1)", [
+          cartId,
+          fx.tenantA,
+          productA,
+        ]),
+      { commit: true },
     );
-    expect(err.message).toMatch(/permission denied/i);
+
+    const attempts: Array<{ sql: string; values?: string[] }> = [
+      { sql: "select id from public.carts" },
+      { sql: "insert into public.carts (tenant_id) values ($1)", values: [fx.tenantA] },
+      { sql: "select id from public.cart_items where cart_id = $1", values: [cartId] },
+      { sql: "update public.cart_items set quantity = 2 where cart_id = $1", values: [cartId] },
+      { sql: "delete from public.cart_items where cart_id = $1", values: [cartId] },
+    ];
+    for (const attempt of attempts) {
+      const err = await expectPgError(asActor({ role: "anon" }, (c) => c.query(attempt.sql, attempt.values)));
+      expect(err.message).toMatch(/permission denied/i);
+    }
   });
 
   // 19 — carrinhos de lojas diferentes não se misturam: cada um funciona isoladamente, sem interferência.
@@ -384,18 +407,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     const cartB = await createCart(fx.tenantB);
 
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartA, productA, 1]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantB, cartB, productB, 2]),
       { commit: true },
     );
 
-    const itemsA = await asActor({ role: "anon" }, (c) => c.query("select product_id from public.cart_items where cart_id = $1", [cartA]));
-    const itemsB = await asActor({ role: "anon" }, (c) => c.query("select product_id from public.cart_items where cart_id = $1", [cartB]));
+    const itemsA = await asActor({ role: "service_role" }, (c) => c.query("select product_id from public.cart_items where cart_id = $1", [cartA]));
+    const itemsB = await asActor({ role: "service_role" }, (c) => c.query("select product_id from public.cart_items where cart_id = $1", [cartB]));
     expect(itemsA.rows).toEqual([{ product_id: productA }]);
     expect(itemsB.rows).toEqual([{ product_id: productB }]);
   });
@@ -404,14 +427,14 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
   // D20.4 — cart_items com product_variants.
   // ---------------------------------------------------------------------
   describe("D20.4 — variantes", () => {
-    it("anon can add a valid, active, same-product/tenant variant via add_to_cart", async () => {
+    it("BFF can add a valid, active, same-product/tenant variant via add_to_cart", async () => {
       const cartId = await createCart(fx.tenantA);
       await asActor(
-        { role: "anon" },
+        { role: "service_role" },
         (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 2, variantActiveA]),
         { commit: true },
       );
-      const rows = await asActor({ role: "anon" }, (c) =>
+      const rows = await asActor({ role: "service_role" }, (c) =>
         c.query("select variant_id, quantity from public.cart_items where cart_id = $1", [cartId]),
       );
       expect(rows.rows).toEqual([{ variant_id: variantActiveA, quantity: 2 }]);
@@ -419,9 +442,9 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
 
     it("add_to_cart with the same variant increments quantity instead of creating a duplicate row", async () => {
       const cartId = await createCart(fx.tenantA);
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 2, variantActiveA]), { commit: true });
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 3, variantActiveA]), { commit: true });
-      const rows = await asActor({ role: "anon" }, (c) =>
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 2, variantActiveA]), { commit: true });
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 3, variantActiveA]), { commit: true });
+      const rows = await asActor({ role: "service_role" }, (c) =>
         c.query("select quantity from public.cart_items where cart_id = $1 and variant_id = $2", [cartId, variantActiveA]),
       );
       expect(rows.rows).toHaveLength(1);
@@ -431,11 +454,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     it("two concurrent add_to_cart calls for the same variant never duplicate the row", async () => {
       const cartId = await createCart(fx.tenantA);
       const results = await Promise.allSettled([
-        asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 1, variantActiveA]), { commit: true }),
-        asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 1, variantActiveA]), { commit: true }),
+        asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 1, variantActiveA]), { commit: true }),
+        asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 1, variantActiveA]), { commit: true }),
       ]);
       expect(results.every((r) => r.status === "fulfilled")).toBe(true);
-      const rows = await asActor({ role: "anon" }, (c) =>
+      const rows = await asActor({ role: "service_role" }, (c) =>
         c.query("select quantity from public.cart_items where cart_id = $1 and variant_id = $2", [cartId, variantActiveA]),
       );
       expect(rows.rows).toHaveLength(1);
@@ -444,9 +467,9 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
 
     it("two different variants of the same product coexist as independent rows", async () => {
       const cartId = await createCart(fx.tenantA);
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 1, variantActiveA]), { commit: true });
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 4, variantActiveA2]), { commit: true });
-      const rows = await asActor({ role: "anon" }, (c) =>
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 1, variantActiveA]), { commit: true });
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 4, variantActiveA2]), { commit: true });
+      const rows = await asActor({ role: "service_role" }, (c) =>
         c.query("select variant_id, quantity from public.cart_items where cart_id = $1 order by variant_id", [cartId]),
       );
       expect(rows.rows).toEqual(
@@ -459,23 +482,23 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
 
     it("a simple product and a variant of a product-with-variants coexist independently in the same cart", async () => {
       const cartId = await createCart(fx.tenantA);
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1]), { commit: true });
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 2, variantActiveA]), { commit: true });
-      const rows = await asActor({ role: "anon" }, (c) => c.query("select product_id, variant_id from public.cart_items where cart_id = $1", [cartId]));
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 1]), { commit: true });
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartId, productWithVariantsA, 2, variantActiveA]), { commit: true });
+      const rows = await asActor({ role: "service_role" }, (c) => c.query("select product_id, variant_id from public.cart_items where cart_id = $1", [cartId]));
       expect(rows.rows).toHaveLength(2);
     });
 
     it("rejects duplicating the same variant in the same cart via direct INSERT (partial unique index)", async () => {
       const cartId = await createCart(fx.tenantA);
       await asActor(
-        { role: "anon" },
+        { role: "service_role" },
         (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, variant_id, quantity) values ($1, $2, $3, $4, $5)", [
           cartId, fx.tenantA, productWithVariantsA, variantActiveA, 1,
         ]),
         { commit: true },
       );
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) =>
+        asActor({ role: "service_role" }, (c) =>
           c.query("insert into public.cart_items (cart_id, tenant_id, product_id, variant_id, quantity) values ($1, $2, $3, $4, $5)", [
             cartId, fx.tenantA, productWithVariantsA, variantActiveA, 1,
           ]),
@@ -487,7 +510,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     it("rejects a variant that belongs to a DIFFERENT product (same tenant)", async () => {
       const cartId = await createCart(fx.tenantA);
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) =>
+        asActor({ role: "service_role" }, (c) =>
           c.query("insert into public.cart_items (cart_id, tenant_id, product_id, variant_id, quantity) values ($1, $2, $3, $4, $5)", [
             cartId, fx.tenantA, productWithVariantsA, otherProductOwnVariant, 1,
           ]),
@@ -499,7 +522,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     it("rejects a variant that belongs to a DIFFERENT tenant", async () => {
       const cartId = await createCart(fx.tenantA);
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) =>
+        asActor({ role: "service_role" }, (c) =>
           c.query("insert into public.cart_items (cart_id, tenant_id, product_id, variant_id, quantity) values ($1, $2, $3, $4, $5)", [
             cartId, fx.tenantA, productWithVariantsA, variantB, 1,
           ]),
@@ -511,7 +534,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     it("rejects adding an INACTIVE variant to the cart", async () => {
       const cartId = await createCart(fx.tenantA);
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) =>
+        asActor({ role: "service_role" }, (c) =>
           c.query("insert into public.cart_items (cart_id, tenant_id, product_id, variant_id, quantity) values ($1, $2, $3, $4, $5)", [
             cartId, fx.tenantA, productWithVariantsA, variantInactiveA, 1,
           ]),
@@ -523,7 +546,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     it("rejects adding a product-with-variants to the cart WITHOUT choosing a variant", async () => {
       const cartId = await createCart(fx.tenantA);
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) =>
+        asActor({ role: "service_role" }, (c) =>
           c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
             cartId, fx.tenantA, productWithVariantsA, 1,
           ]),
@@ -539,7 +562,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
       // (mesmo raciocínio já testado para "produto inativo", agora para
       // variante: item já no carrinho não é retroativamente invalidado).
       await asActor(
-        { role: "anon" },
+        { role: "service_role" },
         (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, variant_id, quantity) values ($1, $2, $3, $4, $5)", [
           cartId, fx.tenantA, otherProductWithVariantA, otherProductOwnVariant, 3,
         ]),
@@ -548,11 +571,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
       await withSuperuser((c) => c.query("update public.product_variants set is_active = false where id = $1", [otherProductOwnVariant]));
       try {
         await asActor(
-          { role: "anon" },
+          { role: "service_role" },
           (c) => c.query("update public.cart_items set quantity = 1 where cart_id = $1 and variant_id = $2", [cartId, otherProductOwnVariant]),
           { commit: true },
         );
-        const rows = await asActor({ role: "anon" }, (c) => c.query("select quantity from public.cart_items where cart_id = $1 and variant_id = $2", [cartId, otherProductOwnVariant]));
+        const rows = await asActor({ role: "service_role" }, (c) => c.query("select quantity from public.cart_items where cart_id = $1 and variant_id = $2", [cartId, otherProductOwnVariant]));
         expect(rows.rows[0]?.quantity).toBe(1);
       } finally {
         await withSuperuser((c) => c.query("update public.product_variants set is_active = true where id = $1", [otherProductOwnVariant]));
@@ -562,14 +585,14 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
     it("rejects a cart_items row whose variant tenant_id doesn't match via UPDATE too (not just INSERT)", async () => {
       const cartId = await createCart(fx.tenantA);
       await asActor(
-        { role: "anon" },
+        { role: "service_role" },
         (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, variant_id, quantity) values ($1, $2, $3, $4, $5)", [
           cartId, fx.tenantA, productWithVariantsA, variantActiveA, 1,
         ]),
         { commit: true },
       );
       const err = await expectPgError(
-        asActor({ role: "anon" }, (c) =>
+        asActor({ role: "service_role" }, (c) =>
           c.query("update public.cart_items set variant_id = $2 where cart_id = $1", [cartId, variantB]),
         ),
       );
@@ -578,18 +601,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Carrinho (Etapa 9)", () => 
 
     it("add_to_cart without p_variant_id still works exactly as before (4-argument call, simple product)", async () => {
       const cartId = await createCart(fx.tenantA);
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 2]), { commit: true });
-      const rows = await asActor({ role: "anon" }, (c) => c.query("select variant_id, quantity from public.cart_items where cart_id = $1", [cartId]));
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4)", [fx.tenantA, cartId, productA, 2]), { commit: true });
+      const rows = await asActor({ role: "service_role" }, (c) => c.query("select variant_id, quantity from public.cart_items where cart_id = $1", [cartId]));
       expect(rows.rows).toEqual([{ variant_id: null, quantity: 2 }]);
     });
 
     it("carts of different tenants with variants operate independently", async () => {
       const cartA = await createCart(fx.tenantA);
       const cartB = await createCart(fx.tenantB);
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartA, productWithVariantsA, 1, variantActiveA]), { commit: true });
-      await asActor({ role: "anon" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantB, cartB, productWithVariantB, 2, variantB]), { commit: true });
-      const itemsA = await asActor({ role: "anon" }, (c) => c.query("select variant_id from public.cart_items where cart_id = $1", [cartA]));
-      const itemsB = await asActor({ role: "anon" }, (c) => c.query("select variant_id from public.cart_items where cart_id = $1", [cartB]));
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantA, cartA, productWithVariantsA, 1, variantActiveA]), { commit: true });
+      await asActor({ role: "service_role" }, (c) => c.query("select add_to_cart($1, $2, $3, $4, $5)", [fx.tenantB, cartB, productWithVariantB, 2, variantB]), { commit: true });
+      const itemsA = await asActor({ role: "service_role" }, (c) => c.query("select variant_id from public.cart_items where cart_id = $1", [cartA]));
+      const itemsB = await asActor({ role: "service_role" }, (c) => c.query("select variant_id from public.cart_items where cart_id = $1", [cartB]));
       expect(itemsA.rows).toEqual([{ variant_id: variantActiveA }]);
       expect(itemsB.rows).toEqual([{ variant_id: variantB }]);
     });

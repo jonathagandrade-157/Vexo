@@ -197,7 +197,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   it("create_payment_for_order always uses orders.total for the amount", async () => {
     const orderId = await insertOrder(fx.tenantA, 249.9);
     const result = await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query<{ amount: string }>("select amount from create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]),
       { commit: true },
     );
@@ -210,7 +210,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
     await withSuperuser((c) => c.query("update public.orders set payment_status = 'APPROVED' where id = $1", [orderId]));
 
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId])),
+      asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId])),
     );
     expect(err.message).toMatch(/already paid/i);
   });
@@ -219,29 +219,29 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   it("create_payment_for_order rejects an order_id that doesn't belong to the given tenant", async () => {
     const orderId = await insertOrder(fx.tenantB, 50);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId])),
+      asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId])),
     );
     expect(err.message).toMatch(/order not found/i);
   });
 
-  // 15/32 — create_payment_for_order é anon-only.
-  it("create_payment_for_order is anon-only — authenticated has no execute grant", async () => {
+  // Etapa 2A — criação de pagamento é BFF-only.
+  it("create_payment_for_order is service-role-only — anon/authenticated have no execute grant", async () => {
     const orderId = await insertOrder(fx.tenantA, 30);
-    const err = await expectPgError(
-      asActor({ role: "authenticated", userId: fx.userOutsider }, (c) =>
-        c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]),
-      ),
-    );
-    expect(err.message).toMatch(/permission denied/i);
+    for (const actor of [{ role: "anon" as const }, { role: "authenticated" as const, userId: fx.userOutsider }]) {
+      const err = await expectPgError(
+        asActor(actor, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId])),
+      );
+      expect(err.message).toMatch(/permission denied/i);
+    }
   });
 
   // 19 — pagamento duplicado é bloqueado: unique(order_id) faz um retry atualizar a mesma linha, nunca criar uma segunda.
   it("payments has unique(order_id) — a retry updates the same row instead of creating a duplicate", async () => {
     const orderId = await insertOrder(fx.tenantA, 75);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     const rows = await withSuperuser((c) => c.query("select 1 from public.payments where order_id = $1", [orderId]));
@@ -251,11 +251,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // attach_payment_preference funciona e é escopado por tenant.
   it("attach_payment_preference records the preference id, scoped by tenant", async () => {
     const orderId = await insertOrder(fx.tenantA, 60);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("select attach_payment_preference($1, $2, 'pref-xyz')", [fx.tenantA, orderId]),
       { commit: true },
     );
@@ -266,7 +266,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // 20/24/25 — apply_payment_update: aprovado separa payment.status de orders.status, orders.status vira PAID só quando aprovado; frete/desconto continuam 0.
   it("apply_payment_update: approving sets payment_status=APPROVED and orders.status=PAID, keeping shipping/discount at 0", async () => {
     const orderId = await insertOrder(fx.tenantA, 150);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
 
@@ -293,7 +293,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // 25 — pagamento rejeitado mantém o pedido PENDING (nunca marca como pago).
   it("apply_payment_update: rejecting keeps orders.status PENDING (never marks it paid)", async () => {
     const orderId = await insertOrder(fx.tenantA, 80);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(
@@ -308,7 +308,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // 22 — webhook repetido é idempotente: reaplicar o MESMO evento produz o mesmo estado final, nunca duplica.
   it("apply_payment_update is idempotent — applying the same approval twice leaves a single consistent state", async () => {
     const orderId = await insertOrder(fx.tenantA, 90);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     for (let i = 0; i < 2; i++) {
@@ -330,7 +330,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // segundo webhook atrasado referente a outra tentativa do mesmo pedido).
   it("apply_payment_update: an already-APPROVED payment is never reverted to REJECTED (approved is sticky)", async () => {
     const orderId = await insertOrder(fx.tenantA, 90);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(
@@ -353,7 +353,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
 
   it("apply_payment_update: an already-APPROVED payment is also never reverted to CANCELLED", async () => {
     const orderId = await insertOrder(fx.tenantA, 90);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(
@@ -375,7 +375,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // depois de um APPROVED é um estorno real e deve continuar sendo aplicado.
   it("apply_payment_update: APPROVED → REFUNDED still goes through (the one transition the sticky guard allows)", async () => {
     const orderId = await insertOrder(fx.tenantA, 90);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(
@@ -398,7 +398,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // porque o pagamento nunca esteve APPROVED antes desta chamada.
   it("apply_payment_update: REJECTED → APPROVED (a legitimate retry after failure) is still allowed", async () => {
     const orderId = await insertOrder(fx.tenantA, 90);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(
@@ -421,7 +421,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // 17 — valor divergente do payload é ignorado (não aplica a atualização).
   it("apply_payment_update silently skips when the reported amount doesn't match orders.total", async () => {
     const orderId = await insertOrder(fx.tenantA, 200);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(
@@ -473,7 +473,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
   // 28/32 — auditoria: PAYMENT_CREATED (anon) e PAYMENT_APPROVED/REJECTED (service_role) são registrados, nunca com token/segredo.
   it("audit log records PAYMENT_CREATED and PAYMENT_APPROVED with no token/secret in the payload", async () => {
     const orderId = await insertOrder(fx.tenantA, 65);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [fx.tenantA, orderId]), {
       commit: true,
     });
     await asActor(

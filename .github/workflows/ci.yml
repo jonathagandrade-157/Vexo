@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, validation/vexo-2a-postgres]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -62,11 +62,17 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Validate cart security migration rollout
+        run: npm run db:test:cart-rollout
+
       - name: Reset test database (apply migrations)
         run: npm run db:test:reset
 
-      - name: Test
-        run: npm test
+      - name: PostgreSQL integration tests
+        run: npx vitest run tests/integration
+
+      - name: Unit tests
+        run: npx vitest run tests/unit
 
       - name: Build
         run: npm run build

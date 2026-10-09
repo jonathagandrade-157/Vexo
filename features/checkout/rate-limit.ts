@@ -26,19 +26,10 @@ const CHECKOUT_MAX_REQUESTS = 5;
  * por uma indisponibilidade momentânea do limiter trocaria um risco de
  * abuso por uma perda de venda real garantida, um trade-off pior aqui.
  *
- * LIMITAÇÃO CONHECIDA (Security Review D19.1.3.1 §D): isto protege 100%
- * do tráfego que passa pelo storefront/Server Action, mas NÃO fecha a
- * chamada direta e anônima à RPC via REST do Supabase —
- * create_order_from_cart é `anon`-callable por design (arquitetura
- * §5.3, checkout 100% anônimo) e permanece assim; não existe IP (nem
- * qualquer outro sinal de identidade do chamador HTTP) disponível
- * dentro de uma function PL/pgSQL para aplicar o mesmo limite ali
- * dentro sem: (a) usar `p_tenant_id`/`p_cart_id` como chave, que um
- * script contorna trivialmente gerando carrinhos novos, ou penaliza
- * TODOS os clientes reais de uma loja de uma vez; ou (b) uma mudança de
- * infraestrutura maior (ex.: um proxy/edge function na frente da API
- * REST do Supabase) — fora do escopo desta correção. Ver relatório
- * D19.1.3.1 para a análise completa.
+ * Etapa 2A: as RPCs de criação de pedido deixaram de ser chamáveis por
+ * anon e todo checkout passa pelo BFF com validação de posse. O IP segue
+ * disponível somente nesta camada, por isso o rate limit permanece aqui
+ * como proteção contra abuso, adicional à autorização criptográfica.
  */
 export async function checkCheckoutRateLimit(tenantId: string): Promise<{ limited: false } | { limited: true; message: string }> {
   const headersList = await headers();

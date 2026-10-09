@@ -121,6 +121,7 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
       accessToken: "seller-token",
       orderId: "order-abc",
       orderNumber: "PED000123",
+      idempotencyKey: "vexo-order-order-abc",
       amount: 199.9,
       customerEmail: "cliente@example.com",
       backUrl: "https://loja.vexo.local/pedido/order-abc",
@@ -132,6 +133,7 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
     expect(body.external_reference).toBe("order-abc");
     expect(body.items[0].unit_price).toBe(199.9);
     expect((init!.headers as Record<string, string>).authorization).toBe("Bearer seller-token");
+    expect((init!.headers as Record<string, string>)["x-idempotency-key"]).toBe("vexo-order-order-abc");
   });
 
   it("searchPaymentByExternalReference queries by external_reference, sorted newest-first, and maps the first result", async () => {
@@ -292,6 +294,7 @@ describe("timeout / AbortController (D9.1)", () => {
         accessToken: "seller-token",
         orderId: "order-abc",
         orderNumber: "PED000123",
+        idempotencyKey: "vexo-order-order-abc",
         amount: 10,
         customerEmail: "cliente@example.com",
         backUrl: "https://loja.vexo.local/pedido/order-abc",
@@ -324,6 +327,7 @@ describe("timeout / AbortController (D9.1)", () => {
         accessToken: "super-secret-seller-token",
         orderId: "order-abc",
         orderNumber: "PED000123",
+        idempotencyKey: "vexo-order-order-abc",
         amount: 10,
         customerEmail: "cliente@example.com",
         backUrl: "https://loja.vexo.local/pedido/order-abc",

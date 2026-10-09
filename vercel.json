@@ -1,4 +1,10 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "validation/vexo-2a-postgres": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/reconcile-payments",

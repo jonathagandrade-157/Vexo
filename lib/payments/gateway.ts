@@ -23,6 +23,8 @@ export interface CreatePaymentInput {
   accessToken: string;
   orderId: string;
   orderNumber: string;
+  /** Chave estável por pedido para retries não criarem outra cobrança/preference. */
+  idempotencyKey: string;
   /** Sempre `orders.total` já calculado pelo servidor (Etapa 10) — o gateway nunca recebe um valor vindo do cliente. */
   amount: number;
   customerEmail: string;

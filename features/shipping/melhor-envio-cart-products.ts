@@ -2,7 +2,7 @@ import "server-only";
 
 import { effectivePrice } from "@/features/cart/pricing";
 import type { ShipmentQuoteProduct } from "@/lib/shipping-connections/melhorenvio-quote";
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 /**
  * D3.2-B Ponto 2C — monta `products[]` (o payload de cotação do Melhor
@@ -12,14 +12,11 @@ import { createSupabasePublicClient } from "@/lib/supabase/server";
  * `create_order_from_cart` (nunca confiar em cart_items para preço, que
  * nem armazena isso — Etapa 9).
  *
- * `anon` client (mesmo de `getCart`/`getShippingQuote`): RLS de
- * `cart_items`/`products` já restringe a tenants publicados; a posse do
- * carrinho em si vem do `cart_id` (uuid não adivinhável, cookie
- * httpOnly), nunca de uma policy de linha. Escopo explícito por
- * `tenant_id` + `cart_id` abaixo é defesa em profundidade, não a única
- * garantia — `prevent_cross_tenant_cart_item` (trigger, migration 030) já
- * impede um `cart_item` apontar para produto de outro tenant desde a
- * escrita.
+ * A leitura usa service_role porque cart_items não é mais público desde
+ * a Etapa 2A. Todo chamador precisa validar antes a posse por hash do
+ * segredo; `tenant_id` + `cart_id` aqui mantêm defesa em profundidade.
+ * `prevent_cross_tenant_cart_item` ainda impede mistura estrutural de
+ * produto/carrinho/tenant.
  */
 
 export type BuildMelhorEnvioProductsReason = "empty_cart" | "incomplete_product_data";
@@ -62,7 +59,7 @@ function firstProduct(value: CartItemRow["product"]): JoinedProduct | null {
  * antes de qualquer chamada de rede (prompt Ponto 2C §8).
  */
 export async function buildMelhorEnvioProductsFromCart(tenantId: string, cartId: string): Promise<BuildMelhorEnvioProductsResult> {
-  const supabase = createSupabasePublicClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { data } = await supabase
     .from("cart_items")
     .select("quantity, product:products(id, price, promotional_price, status, weight, height, width, length)")

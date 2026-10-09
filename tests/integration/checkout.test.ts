@@ -1,10 +1,8 @@
 /**
  * Etapa 10 — checkout (prompt Etapa 10 §23/§24). RLS/trigger/RPC
- * testados diretamente via SQL (asActor), mesmo padrão de sempre. O
- * checkout em si é anônimo (`anon`), mesmo modelo do carrinho da Etapa
- * 9 — `create_order_from_cart`/`get_order_confirmation` são
- * `security definer`, únicos caminhos de escrita/leitura para `anon`
- * (não há policy pública direta nas tabelas).
+ * testados diretamente via SQL (asActor), mesmo padrão de sempre. Desde
+ * a Etapa 2A, criação é service-role-only via BFF; somente a projeção de
+ * confirmação continua pública por token de pedido.
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -68,12 +66,12 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
   async function createCartWithItem(tenantId: string, productId: string, quantity = 1): Promise<string> {
     const cartId = randomUUID();
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, tenantId]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId, tenantId, productId, quantity,
@@ -89,7 +87,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
     overrides: Partial<{ name: string; email: string; phone: string; address: typeof address }> = {},
   ) {
     return asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query<{ create_order_from_cart: string }>("select create_order_from_cart($1, $2, $3, $4, $5, $6)", [
           tenantId,
@@ -111,7 +109,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
   // 1/22 — checkout vazio é bloqueado, nenhum pedido é criado.
   it("rejects checkout on an empty cart, creating no order at all", async () => {
     const cartId = randomUUID();
-    await asActor({ role: "anon" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, fx.tenantA]), {
+    await asActor({ role: "service_role" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, fx.tenantA]), {
       commit: true,
     });
 
@@ -120,7 +118,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
 
     const orders = await withSuperuser((c) => c.query("select 1 from public.orders where tenant_id = $1", [fx.tenantA]));
     // não é uma asserção de zero global (outros testes já criaram pedidos em A) — só confirma que ESTE carrinho vazio não gerou nenhum.
-    const itemsStillEmpty = await asActor({ role: "anon" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
+    const itemsStillEmpty = await asActor({ role: "service_role" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
     expect(itemsStillEmpty.rows).toHaveLength(0);
     expect(orders.rows).toBeDefined();
   });
@@ -133,7 +131,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
     const err = await expectPgError(callCreateOrder(fx.tenantA, cartId));
     expect(err.message).toMatch(/no longer available/i);
 
-    const items = await asActor({ role: "anon" }, (c) => c.query("select quantity from public.cart_items where cart_id = $1", [cartId]));
+    const items = await asActor({ role: "service_role" }, (c) => c.query("select quantity from public.cart_items where cart_id = $1", [cartId]));
     expect(items.rows).toHaveLength(1);
     expect(items.rows[0]?.quantity).toBe(2);
 
@@ -144,7 +142,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
   it("a cart can never contain another tenant's product in the first place (inherited from Etapa 9's trigger)", async () => {
     const cartId = await createCartWithItem(fx.tenantA, productA, 1);
     const err = await expectPgError(
-      asActor({ role: "anon" }, (c) =>
+      asActor({ role: "service_role" }, (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId, fx.tenantA, productB, 1,
         ]),
@@ -174,7 +172,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
   it("creates an order with items, correct tenant/totals/status, snapshot data, and clears the cart", async () => {
     const cartId = await createCartWithItem(fx.tenantA, productA, 2);
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
         cartId, fx.tenantA, productA2, 1,
       ]),
@@ -209,7 +207,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
     );
     expect(items.rows).toHaveLength(2);
 
-    const cartAfter = await asActor({ role: "anon" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
+    const cartAfter = await asActor({ role: "service_role" }, (c) => c.query("select 1 from public.cart_items where cart_id = $1", [cartId]));
     expect(cartAfter.rows).toHaveLength(0);
   });
 
@@ -335,16 +333,23 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
     expect(orders.rows).toHaveLength(0);
   });
 
-  // anon-only: authenticated não tem EXECUTE nas funções de checkout.
-  it("checkout functions are anon-only — authenticated has no execute grant", async () => {
+  // BFF-only: nenhum cliente direto possui EXECUTE na criação de pedido.
+  it("create_order_from_cart is service-role-only — anon/authenticated have no execute grant", async () => {
     const cartId = await createCartWithItem(fx.tenantA, productA, 1);
-    const err = await expectPgError(
-      asActor({ role: "authenticated", userId: fx.userOutsider }, (c) =>
-        c.query("select create_order_from_cart($1, $2, $3, $4, $5, $6)", [
-          fx.tenantA, cartId, "X", "x@example.com", "11999999999", JSON.stringify(address),
-        ]),
-      ),
-    );
-    expect(err.message).toMatch(/permission denied/i);
+    for (const actor of [{ role: "anon" as const }, { role: "authenticated" as const, userId: fx.userOutsider }]) {
+      const err = await expectPgError(
+        asActor(actor, (c) =>
+          c.query("select create_order_from_cart($1, $2, $3, $4, $5, $6)", [
+            fx.tenantA,
+            cartId,
+            "X",
+            "x@example.com",
+            "11999999999",
+            JSON.stringify(address),
+          ]),
+        ),
+      );
+      expect(err.message).toMatch(/permission denied/i);
+    }
   });
 });
