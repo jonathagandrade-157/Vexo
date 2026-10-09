@@ -88,12 +88,12 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
   async function createCartWithItem(tenantId: string, productId: string, quantity = 1): Promise<string> {
     const cartId = randomUUID();
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, tenantId]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId,
@@ -108,7 +108,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
 
   function callCreateOrder(tenantId: string, cartId: string) {
     return asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query<{ create_order_from_cart: string }>("select create_order_from_cart($1, $2, $3, $4, $5, $6)", [
           tenantId,
@@ -250,7 +250,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
     await withSuperuser((c) => c.query("update public.product_inventory set stock_quantity = 0 where product_id = $1", [productNoStock]));
   });
 
-  it("o decremento automático do checkout (anon) NÃO gera PRODUCT_STOCK_ADJUSTED em audit_logs, mesmo decrementando o estoque de verdade", async () => {
+  it("o decremento automático do checkout (service_role) NÃO gera PRODUCT_STOCK_ADJUSTED em audit_logs, mesmo decrementando o estoque de verdade", async () => {
     const stockProductId = await withSuperuser(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         "insert into public.products (tenant_id, name, slug, price) values ($1, 'Estoque Auditoria', $2, 100) returning id",
@@ -281,7 +281,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
     expect(adjustedLogs.rows).toHaveLength(0);
   });
 
-  it("contraste com o teste acima: criar (INSERT) e remover (DELETE via cascade do produto) uma linha de estoque SÃO auditados normalmente — a exclusão do evento é específica do decremento anon, não um bug de auditoria geral", async () => {
+  it("contraste com o teste acima: criar (INSERT) e remover (DELETE via cascade do produto) uma linha de estoque SÃO auditados normalmente — a exclusão do evento é específica do decremento do checkout, não um bug de auditoria geral", async () => {
     const productId = await withSuperuser(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         "insert into public.products (tenant_id, name, slug, price) values ($1, 'Produto Ciclo Estoque', $2, 10) returning id",
@@ -409,11 +409,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
     });
 
     const cartId = randomUUID();
-    await asActor({ role: "anon" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, fx.tenantA]), {
+    await asActor({ role: "service_role" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, fx.tenantA]), {
       commit: true,
     });
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 3), ($1, $2, $4, 7)", [
           cartId,
@@ -453,11 +453,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
     // productLegacy (do beforeAll) nunca teve linha em product_inventory.
 
     const cartId = randomUUID();
-    await asActor({ role: "anon" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, fx.tenantA]), {
+    await asActor({ role: "service_role" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, fx.tenantA]), {
       commit: true,
     });
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 2), ($1, $2, $4, 5)", [
           cartId,
@@ -628,31 +628,31 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
     // exatamente o cenário que motivou o achado M1 antes de
     // `order by ci.product_id` existir no loop de create_order_from_cart.
     const cartX = randomUUID();
-    await asActor({ role: "anon" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartX, fx.tenantA]), {
+    await asActor({ role: "service_role" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartX, fx.tenantA]), {
       commit: true,
     });
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 1)", [cartX, fx.tenantA, productM]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 1)", [cartX, fx.tenantA, productN]),
       { commit: true },
     );
 
     const cartY = randomUUID();
-    await asActor({ role: "anon" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartY, fx.tenantA]), {
+    await asActor({ role: "service_role" }, (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartY, fx.tenantA]), {
       commit: true,
     });
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 1)", [cartY, fx.tenantA, productN]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 1)", [cartY, fx.tenantA, productM]),
       { commit: true },
     );

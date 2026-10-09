@@ -127,7 +127,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Etapa 2A — secure cart ch
             overrides.name ?? `Cliente seguro ${runId}`,
             `cliente-${runId}@example.com`,
             "+5511999999999",
-            JSON.stringify(overrides.address === undefined ? ADDRESS : overrides.address),
+            overrides.address === null ? null : JSON.stringify(overrides.address ?? ADDRESS),
             overrides.orderSource ?? "vexo_checkout",
             overrides.paymentChannel ?? "gateway",
             overrides.requestedPaymentMethod ?? null,
@@ -455,16 +455,19 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Etapa 2A — secure cart ch
 
   it("rejects another visitor's token and preserves cart, stock and orders", async () => {
     const cartId = await createOwnedCart(fx.tenantA, productA, OWNER_HASH_A);
+    const customerName = `Token inválido ${runId}`;
     const before = await withSuperuser((client) =>
       client.query("select stock_quantity from public.product_inventory where product_id = $1", [productA]),
     );
 
-    const err = await expectPgError(checkout(fx.tenantA, cartId, OWNER_HASH_B));
+    const err = await expectPgError(
+      checkout(fx.tenantA, cartId, OWNER_HASH_B, { kind: "none" }, { name: customerName }),
+    );
     expect(err.message).toMatch(/ownership could not be verified/i);
 
     const state = await withSuperuser(async (client) => ({
       items: await client.query("select quantity from public.cart_items where cart_id = $1", [cartId]),
-      orders: await client.query("select 1 from public.orders where customer_name = $1", [`Cliente seguro ${runId}`]),
+      orders: await client.query("select 1 from public.orders where customer_name = $1", [customerName]),
       stock: await client.query("select stock_quantity from public.product_inventory where product_id = $1", [productA]),
     }));
     expect(state.items.rows).toHaveLength(1);

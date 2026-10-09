@@ -38,7 +38,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("list_stale_pending_gateway_
 
   async function createStalePendingPayment(tenantId: string, total: number, ageMinutes: number): Promise<string> {
     const orderId = await insertOrder(tenantId, total);
-    await asActor({ role: "anon" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [tenantId, orderId]), {
+    await asActor({ role: "service_role" }, (c) => c.query("select create_payment_for_order($1, $2, 'mercadopago')", [tenantId, orderId]), {
       commit: true,
     });
     await withSuperuser((c) =>
