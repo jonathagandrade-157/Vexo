@@ -17,6 +17,10 @@ test-results/
 # Build artifacts
 *.tsbuildinfo
 
+# Local exports/deliverables from unrelated client projects. These files
+# must live outside the VEXO repository and must never enter a commit.
+/deliverables/
+
 # Env files — never commit real secrets.
 # .env.example is the only env file tracked in git.
 .env
