@@ -250,7 +250,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
     await withSuperuser((c) => c.query("update public.product_inventory set stock_quantity = 0 where product_id = $1", [productNoStock]));
   });
 
-  it("o decremento automático do checkout (service_role) NÃO gera PRODUCT_STOCK_ADJUSTED em audit_logs, mesmo decrementando o estoque de verdade", async () => {
+  it("a chamada privilegiada direta legada permanece auditável como PRODUCT_STOCK_ADJUSTED", async () => {
     const stockProductId = await withSuperuser(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         "insert into public.products (tenant_id, name, slug, price) values ($1, 'Estoque Auditoria', $2, 100) returning id",
@@ -278,10 +278,10 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Estoque — product_invento
         [invId],
       ),
     );
-    expect(adjustedLogs.rows).toHaveLength(0);
+    expect(adjustedLogs.rows).toHaveLength(1);
   });
 
-  it("contraste com o teste acima: criar (INSERT) e remover (DELETE via cascade do produto) uma linha de estoque SÃO auditados normalmente — a exclusão do evento é específica do decremento do checkout, não um bug de auditoria geral", async () => {
+  it("criar (INSERT) e remover (DELETE via cascade do produto) uma linha de estoque também são auditados normalmente", async () => {
     const productId = await withSuperuser(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         "insert into public.products (tenant_id, name, slug, price) values ($1, 'Produto Ciclo Estoque', $2, 10) returning id",

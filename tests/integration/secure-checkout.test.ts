@@ -339,6 +339,26 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Etapa 2A — secure cart ch
     expect(Number(order.rows[0]!.total)).toBe(200);
   });
 
+  it("does not misclassify the automatic stock reservation as a manual adjustment", async () => {
+    const cartId = await createOwnedCart(fx.tenantA, productA, OWNER_HASH_A);
+    const inventory = await withSuperuser((client) =>
+      client.query<{ id: string }>("select id from public.product_inventory where product_id = $1 and variant_id is null", [productA]),
+    );
+
+    await checkout(fx.tenantA, cartId, OWNER_HASH_A);
+
+    const logs = await withSuperuser((client) =>
+      client.query(
+        `select 1 from public.audit_logs
+         where resource_type = 'product_inventory'
+           and resource_id = $1
+           and action = 'PRODUCT_STOCK_ADJUSTED'`,
+        [inventory.rows[0]!.id],
+      ),
+    );
+    expect(logs.rows).toHaveLength(0);
+  });
+
   it.each([
     { type: "own_delivery", label: "Entrega própria", price: 15, address: ADDRESS },
     { type: "pickup", label: "Retirada", price: 0, address: null },

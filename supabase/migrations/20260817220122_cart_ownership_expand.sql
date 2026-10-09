@@ -38,6 +38,41 @@ create trigger protect_cart_security_fields
 before update on public.carts
 for each row execute function private.protect_cart_security_fields();
 
+-- O checkout deixou de executar como anon e passou a usar service_role.
+-- Preserve a semântica da auditoria: baixas automáticas de venda não são
+-- ajustes manuais de estoque. Um GUC transaction-local, definido somente
+-- pelo wrapper seguro abaixo, diferencia esse caminho sem silenciar
+-- updates operacionais legítimos feitos com service_role.
+create or replace function private.audit_product_inventory_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform private.log_audit(
+      new.tenant_id, 'PRODUCT_STOCK_DEFINED', 'product_inventory', new.id::text,
+      null,
+      jsonb_build_object('product_id', new.product_id, 'variant_id', new.variant_id, 'stock_quantity', new.stock_quantity, 'low_stock_threshold', new.low_stock_threshold)
+    );
+  elsif tg_op = 'UPDATE'
+        and old.stock_quantity is distinct from new.stock_quantity
+        and coalesce(current_setting('vexo.checkout_stock_adjustment', true), '') <> 'on' then
+    perform private.log_audit(
+      new.tenant_id, 'PRODUCT_STOCK_ADJUSTED', 'product_inventory', new.id::text,
+      jsonb_build_object('stock_quantity', old.stock_quantity), jsonb_build_object('stock_quantity', new.stock_quantity)
+    );
+  elsif tg_op = 'DELETE' then
+    perform private.log_audit(
+      old.tenant_id, 'PRODUCT_STOCK_REMOVED', 'product_inventory', old.id::text,
+      jsonb_build_object('product_id', old.product_id, 'variant_id', old.variant_id, 'stock_quantity', old.stock_quantity), null
+    );
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
 -- Um único ponto transacional cria pedido, reserva estoque e aplica o
 -- frete. Chamadas HTTP (ex.: Melhor Envio/Mercado Pago) acontecem antes
 -- ou depois desta função, nunca dentro da transação PostgreSQL.
@@ -111,6 +146,7 @@ begin
   -- A função histórica continua sendo a fonte única para snapshots,
   -- preços, customers, estoque e itens. Ela deixa de ser pública na
   -- migration de lockdown e passa a ser um detalhe interno deste wrapper.
+  perform set_config('vexo.checkout_stock_adjustment', 'on', true);
   v_order_id := public.create_order_from_cart(
     p_tenant_id,
     p_cart_id,
