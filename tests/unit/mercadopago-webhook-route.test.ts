@@ -181,6 +181,7 @@ describe("POST /api/webhooks/mercadopago", () => {
   });
 
   it.each([
+    ["identificador do pagamento", { externalId: "pay-other" }, {}],
     ["moeda", { currency: "USD" }, {}],
     ["vendedor/tenant", { providerAccountId: "seller-other" }, {}],
     ["valor", {}, { localPayment: { amount: 99 } }],

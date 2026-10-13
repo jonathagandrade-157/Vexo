@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
     try {
       const payment = await gateway.getPayment(credentials.accessToken, event.paymentExternalId);
       if (
+        payment.externalId !== event.paymentExternalId ||
         !payment.externalReference ||
         payment.currency !== "BRL" ||
         !payment.providerAccountId ||
