@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "validation/vexo-2a-postgres": false,
-      "codex/validation-vexo-2a2-http-sandbox": false
+      "codex/validation-vexo-2a2-http-sandbox": false,
+      "codex/validation-vexo-2a3-mp-security": false
     }
   },
   "crons": [

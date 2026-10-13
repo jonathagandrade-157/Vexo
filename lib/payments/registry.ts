@@ -14,7 +14,12 @@ export function getGateway(provider: PaymentProvider): PaymentGateway {
   switch (provider) {
     case "mercadopago": {
       const env = getMercadoPagoEnv();
-      return createMercadoPagoGateway(env.MERCADO_PAGO_CLIENT_ID, env.MERCADO_PAGO_CLIENT_SECRET, env.MERCADO_PAGO_WEBHOOK_SECRET);
+      return createMercadoPagoGateway(
+        env.MERCADO_PAGO_CLIENT_ID,
+        env.MERCADO_PAGO_CLIENT_SECRET,
+        env.MERCADO_PAGO_WEBHOOK_SECRET,
+        env.MERCADO_PAGO_TEST_MODE,
+      );
     }
     default: {
       const exhaustive: never = provider;

@@ -20,6 +20,8 @@ function toSafeErrorMessage(err: unknown): string {
   return "unknown error";
 }
 
+class PaymentIdentityError extends Error {}
+
 /**
  * Endpoint de webhook do Mercado Pago (arquitetura §12.1). `service_role`
  * é usado aqui deliberadamente — não há sessão de usuário nenhuma num
@@ -32,10 +34,11 @@ function toSafeErrorMessage(err: unknown): string {
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const gateway = getGateway("mercadopago");
+  const notificationDataId = new URL(request.url).searchParams.get("data.id");
 
   // Assinatura verificada ANTES de qualquer parsing de negócio (§12.1) —
   // falha aqui nunca toca o banco.
-  if (!gateway.verifyWebhookSignature(request.headers, rawBody)) {
+  if (!gateway.verifyWebhookSignature(request.headers, rawBody, notificationDataId)) {
     // getClientIp já existe (lib/security/rate-limit.ts, D15-S.2, em
     // produção) — reaproveitado aqui, nenhuma infraestrutura nova. Nunca
     // loga a assinatura recebida nem o rawBody (poderia ecoar payload
@@ -57,6 +60,9 @@ export async function POST(request: NextRequest) {
 
   const event = gateway.parseWebhookEvent(request.headers, payload);
   if (!event) {
+    return new NextResponse(null, { status: 400 });
+  }
+  if (notificationDataId && notificationDataId.toLowerCase() !== event.paymentExternalId?.toLowerCase()) {
     return new NextResponse(null, { status: 400 });
   }
 
@@ -91,52 +97,73 @@ export async function POST(request: NextRequest) {
   if (event.paymentExternalId && event.providerAccountId) {
     const { data: providerRow } = await supabase
       .from("store_payment_providers")
-      .select("tenant_id")
+      .select("tenant_id, connected_account_id")
       .eq("provider", "mercadopago")
       .eq("connected_account_id", event.providerAccountId)
       .eq("status", "connected")
       .maybeSingle();
 
-    if (providerRow) {
-      const credentials = await getPaymentCredentials(providerRow.tenant_id, "mercadopago");
-      if (credentials) {
-        try {
-          const payment = await gateway.getPayment(credentials.accessToken, event.paymentExternalId);
-          if (payment.externalReference) {
-            await supabase.rpc("apply_payment_update", {
-              p_tenant_id: providerRow.tenant_id,
-              p_order_id: payment.externalReference,
-              p_provider: "mercadopago",
-              p_external_id: payment.externalId,
-              p_status: payment.status,
-              p_method: payment.method,
-              p_amount: payment.amount,
-            });
-          }
-        } catch (err) {
-          // Consulta ao Mercado Pago falhou (indisponibilidade, token
-          // expirado, etc.) — não marca processed_at, deixa o próprio
-          // webhook (MP reenvia) ou uma consulta futura reprocessar. O
-          // status 200 é mantido de propósito (semântica de retry do MP
-          // inalterada) — o log abaixo só existe para dar visibilidade a
-          // uma falha hoje completamente silenciosa.
-          console.error("[webhooks] mercadopago post-signature processing failed", {
-            tenantId: providerRow.tenant_id,
-            eventId: event.eventId,
-            paymentExternalId: event.paymentExternalId,
-            message: toSafeErrorMessage(err),
-          });
-          return new NextResponse(null, { status: 200 });
-        }
+    if (!providerRow) {
+      return new NextResponse(null, { status: 200 });
+    }
+    const credentials = await getPaymentCredentials(providerRow.tenant_id, "mercadopago");
+    if (!credentials || credentials.providerAccountId !== providerRow.connected_account_id) {
+      return new NextResponse(null, { status: 200 });
+    }
+    try {
+      const payment = await gateway.getPayment(credentials.accessToken, event.paymentExternalId);
+      if (
+        !payment.externalReference ||
+        payment.currency !== "BRL" ||
+        !payment.providerAccountId ||
+        payment.providerAccountId !== providerRow.connected_account_id
+      ) {
+        throw new PaymentIdentityError("mercadopago: payment identity validation failed");
       }
+
+      const { data: localPayment, error: localPaymentError } = await supabase
+        .from("payments")
+        .select("amount")
+        .eq("tenant_id", providerRow.tenant_id)
+        .eq("order_id", payment.externalReference)
+        .eq("provider", "mercadopago")
+        .maybeSingle();
+      if (localPaymentError) throw new Error("mercadopago: local payment lookup failed");
+      if (!localPayment || Math.abs(Number(localPayment.amount) - payment.amount) > 0.01) {
+        throw new PaymentIdentityError("mercadopago: local order/payment validation failed");
+      }
+
+      const { error: applyError } = await supabase.rpc("apply_payment_update", {
+        p_tenant_id: providerRow.tenant_id,
+        p_order_id: payment.externalReference,
+        p_provider: "mercadopago",
+        p_external_id: payment.externalId,
+        p_status: payment.status,
+        p_method: payment.method,
+        p_amount: payment.amount,
+      });
+      if (applyError) throw new Error("mercadopago: apply payment update failed");
+    } catch (err) {
+      // Divergência de identidade é rejeitada definitivamente com 200
+      // sem marcar o evento. Falha transitória devolve 503 para que o
+      // provedor tente novamente; a reconciliação continua como segunda
+      // linha de defesa em ambos os casos.
+      console.error("[webhooks] mercadopago post-signature processing failed", {
+        tenantId: providerRow.tenant_id,
+        eventId: event.eventId,
+        paymentExternalId: event.paymentExternalId,
+        message: toSafeErrorMessage(err),
+      });
+      return new NextResponse(null, { status: err instanceof PaymentIdentityError ? 200 : 503 });
     }
   }
 
-  await supabase
+  const { error: processedError } = await supabase
     .from("payment_webhook_events")
     .update({ processed_at: new Date().toISOString() })
     .eq("provider", "mercadopago")
     .eq("event_id", event.eventId);
+  if (processedError) return new NextResponse(null, { status: 500 });
 
   return new NextResponse(null, { status: 200 });
 }

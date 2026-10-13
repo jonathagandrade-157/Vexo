@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, validation/vexo-2a-postgres, codex/validation-vexo-2a2-http-sandbox]
+    branches: [main, validation/vexo-2a-postgres, codex/validation-vexo-2a2-http-sandbox, codex/validation-vexo-2a3-mp-security]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

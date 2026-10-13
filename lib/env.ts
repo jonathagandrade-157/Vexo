@@ -44,6 +44,8 @@ const mercadoPagoServerSchema = z.object({
   MERCADO_PAGO_CLIENT_ID: z.string().min(1),
   MERCADO_PAGO_CLIENT_SECRET: z.string().min(1),
   MERCADO_PAGO_WEBHOOK_SECRET: z.string().min(1),
+  // OAuth de homologação solicita explicitamente `test_token=true`.
+  MERCADO_PAGO_TEST_MODE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   // HMAC key para assinar o `state` do OAuth (tenant_id + nonce + expiração) — lib/security/oauth-state.ts.
   OAUTH_STATE_SECRET: z.string().min(16),
 });
