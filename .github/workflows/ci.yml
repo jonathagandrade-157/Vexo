@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, validation/vexo-2a-postgres]
+    branches: [main, validation/vexo-2a-postgres, codex/validation-vexo-2a2-http-sandbox]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -103,3 +103,36 @@ jobs:
 
       - name: Public smoke tests
         run: npm run test:e2e
+
+  supabase-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Pinned action commit plus an explicit CLI version: the runner starts
+      # only a disposable local stack. No Supabase access token, project ref,
+      # linked project, or production secret is available to this job.
+      - uses: supabase/setup-cli@bea637206310b05056109c4ffab256b2c3c522af
+        with:
+          version: 2.115.0
+
+      - name: Start isolated Supabase Auth and PostgREST
+        run: >-
+          supabase start
+          --exclude studio,realtime,storage-api,imgproxy,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
+
+      - name: Real HTTP Auth, PostgREST and checkout tests
+        run: npm run test:http:supabase
+
+      - name: Stop isolated Supabase stack
+        if: always()
+        run: supabase stop --no-backup
