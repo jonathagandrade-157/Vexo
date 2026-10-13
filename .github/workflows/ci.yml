@@ -126,9 +126,16 @@ jobs:
           version: 2.115.0
 
       - name: Start isolated Supabase Auth and PostgREST
-        run: >-
-          supabase start
-          --exclude studio,realtime,storage-api,imgproxy,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! supabase start \
+            --exclude studio,realtime,storage-api,imgproxy,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor \
+            >"$RUNNER_TEMP/supabase-start.log" 2>&1; then
+            echo "The isolated Supabase stack failed to start. Output was withheld because the CLI includes local API keys."
+            exit 1
+          fi
+          echo "Isolated Supabase Auth and PostgREST started; credential-bearing CLI output was withheld."
 
       - name: Real HTTP Auth, PostgREST and checkout tests
         run: npm run test:http:supabase
