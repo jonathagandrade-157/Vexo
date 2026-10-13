@@ -345,18 +345,28 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Etapa 2A — secure cart ch
       client.query<{ id: string }>("select id from public.product_inventory where product_id = $1 and variant_id is null", [productA]),
     );
 
-    await checkout(fx.tenantA, cartId, OWNER_HASH_A);
-
-    const logs = await withSuperuser((client) =>
-      client.query(
-        `select 1 from public.audit_logs
+    const auditCountBefore = await withSuperuser((client) =>
+      client.query<{ count: string }>(
+        `select count(*)::text as count from public.audit_logs
          where resource_type = 'product_inventory'
            and resource_id = $1
            and action = 'PRODUCT_STOCK_ADJUSTED'`,
         [inventory.rows[0]!.id],
       ),
     );
-    expect(logs.rows).toHaveLength(0);
+
+    await checkout(fx.tenantA, cartId, OWNER_HASH_A);
+
+    const auditCountAfter = await withSuperuser((client) =>
+      client.query<{ count: string }>(
+        `select count(*)::text as count from public.audit_logs
+         where resource_type = 'product_inventory'
+           and resource_id = $1
+           and action = 'PRODUCT_STOCK_ADJUSTED'`,
+        [inventory.rows[0]!.id],
+      ),
+    );
+    expect(auditCountAfter.rows[0]!.count).toBe(auditCountBefore.rows[0]!.count);
   });
 
   it.each([
