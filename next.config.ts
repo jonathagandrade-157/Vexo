@@ -105,7 +105,6 @@ function buildCspReportOnly(): string {
     font-src 'self';
     connect-src 'self' https://*.supabase.co${isDev ? " http://127.0.0.1:54321 http://localhost:54321" : ""};
     frame-src 'self';
-    upgrade-insecure-requests;
   `;
   return csp.replace(/\s{2,}/g, " ").trim();
 }
