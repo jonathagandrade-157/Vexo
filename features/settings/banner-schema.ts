@@ -17,9 +17,37 @@ const optionalText = (max: number) =>
     .optional()
     .transform((v) => (v && v.length > 0 ? v : null));
 
+function isSafeBannerLink(value: string | null) {
+  if (value === null) return true;
+
+  if (value.startsWith("#")) {
+    return value.length > 1 && !/[\s\\]/.test(value);
+  }
+
+  if (value.startsWith("/")) {
+    return !value.startsWith("//") && !/[\s\\]/.test(value);
+  }
+
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname.length > 0 &&
+      url.username === "" &&
+      url.password === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+const optionalBannerLink = optionalText(2048).refine(isSafeBannerLink, {
+  message: "Use uma âncora (#secao), um caminho interno (/pagina) ou uma URL https:// válida",
+});
+
 export const bannerFieldsSchema = z.object({
   title: optionalText(120),
-  linkUrl: optionalText(2048),
+  linkUrl: optionalBannerLink,
   status: z.enum(BANNER_STATUSES),
 });
 

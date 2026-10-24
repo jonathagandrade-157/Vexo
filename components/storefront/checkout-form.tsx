@@ -691,6 +691,7 @@ export function CheckoutForm({
                   label="Complemento (opcional)"
                   name="complement"
                   placeholder="Apto, bloco…"
+                  required={false}
                 />
               </div>
               <TextField
