@@ -72,13 +72,15 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
   it("a definitive APPROVED result found → calls apply_payment_update and increments reconciled", async () => {
     const supabase = fakeSupabase([{ tenant_id: TENANT_A, order_id: ORDER_A }]);
     vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null });
+    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null, providerAccountId: "seller-a" });
     const searchPaymentByExternalReference = vi.fn().mockResolvedValue({
       externalId: "mp-payment-1",
       status: "APPROVED",
       amount: 100,
       method: "pix",
       externalReference: ORDER_A,
+      currency: "BRL",
+      providerAccountId: "seller-a",
     });
     vi.mocked(getGateway).mockReturnValue({ searchPaymentByExternalReference } as never);
 
@@ -100,13 +102,15 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
   it("a definitive REJECTED result found → also reconciled, not only APPROVED (aprovação condição #2 do ticket)", async () => {
     const supabase = fakeSupabase([{ tenant_id: TENANT_A, order_id: ORDER_A }]);
     vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null });
+    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null, providerAccountId: "seller-a" });
     const searchPaymentByExternalReference = vi.fn().mockResolvedValue({
       externalId: "mp-payment-2",
       status: "REJECTED",
       amount: 100,
       method: "pix",
       externalReference: ORDER_A,
+      currency: "BRL",
+      providerAccountId: "seller-a",
     });
     vi.mocked(getGateway).mockReturnValue({ searchPaymentByExternalReference } as never);
 
@@ -121,13 +125,15 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
     async (status) => {
       const supabase = fakeSupabase([{ tenant_id: TENANT_A, order_id: ORDER_A }]);
       vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-      vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null });
+      vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null, providerAccountId: "seller-a" });
       const searchPaymentByExternalReference = vi.fn().mockResolvedValue({
         externalId: "mp-payment-3",
         status,
         amount: 100,
         method: "pix",
         externalReference: ORDER_A,
+        currency: "BRL",
+        providerAccountId: "seller-a",
       });
       vi.mocked(getGateway).mockReturnValue({ searchPaymentByExternalReference } as never);
 
@@ -141,7 +147,7 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
   it("search result is null (nothing found yet) → skipped, never calls apply_payment_update, not counted as reconciled", async () => {
     const supabase = fakeSupabase([{ tenant_id: TENANT_A, order_id: ORDER_A }]);
     vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null });
+    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null, providerAccountId: "seller-a" });
     const searchPaymentByExternalReference = vi.fn().mockResolvedValue(null);
     vi.mocked(getGateway).mockReturnValue({ searchPaymentByExternalReference } as never);
 
@@ -154,13 +160,15 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
   it("search result is still PENDING at Mercado Pago (order genuinely in progress) → skipped, not a lost webhook", async () => {
     const supabase = fakeSupabase([{ tenant_id: TENANT_A, order_id: ORDER_A }]);
     vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null });
+    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null, providerAccountId: "seller-a" });
     const searchPaymentByExternalReference = vi.fn().mockResolvedValue({
       externalId: "mp-payment-4",
       status: "PENDING",
       amount: 100,
       method: "pix",
       externalReference: ORDER_A,
+      currency: "BRL",
+      providerAccountId: "seller-a",
     });
     vi.mocked(getGateway).mockReturnValue({ searchPaymentByExternalReference } as never);
 
@@ -168,6 +176,35 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
 
     expect(result).toEqual({ checked: 1, reconciled: 0 });
     expect(supabase.rpc).not.toHaveBeenCalledWith("apply_payment_update", expect.anything());
+  });
+
+  it.each([
+    ["outro pedido", { externalReference: ORDER_B, currency: "BRL", providerAccountId: "seller-a" }],
+    ["moeda divergente", { externalReference: ORDER_A, currency: "USD", providerAccountId: "seller-a" }],
+    ["vendedor divergente", { externalReference: ORDER_A, currency: "BRL", providerAccountId: "seller-b" }],
+  ])("identidade remota inválida (%s) → não reconcilia nem grava", async (_label, identity) => {
+    const supabase = fakeSupabase([{ tenant_id: TENANT_A, order_id: ORDER_A }]);
+    vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
+    vi.mocked(getPaymentCredentials).mockResolvedValue({
+      accessToken: "token-a",
+      refreshToken: null,
+      providerAccountId: "seller-a",
+    });
+    vi.mocked(getGateway).mockReturnValue({
+      searchPaymentByExternalReference: vi.fn().mockResolvedValue({
+        externalId: "mp-payment-invalid",
+        status: "APPROVED",
+        amount: 100,
+        method: "pix",
+        ...identity,
+      }),
+    } as never);
+
+    const result = await reconcileStalePendingPayments();
+
+    expect(result).toEqual({ checked: 1, reconciled: 0 });
+    expect(supabase.rpc).not.toHaveBeenCalledWith("apply_payment_update", expect.anything());
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
   });
 
   it("no stored credentials for the tenant (gateway disconnected meanwhile) → skipped without error", async () => {
@@ -190,7 +227,7 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
       { tenant_id: TENANT_B, order_id: ORDER_B },
     ]);
     vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token", refreshToken: null });
+    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token", refreshToken: null, providerAccountId: "seller-a" });
     const searchPaymentByExternalReference = vi.fn().mockImplementation((_token: string, orderId: string) => {
       if (orderId === ORDER_A) throw new Error("mercadopago: network error");
       return Promise.resolve({
@@ -199,6 +236,8 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
         amount: 50,
         method: "pix",
         externalReference: ORDER_B,
+        currency: "BRL",
+        providerAccountId: "seller-a",
       });
     });
     vi.mocked(getGateway).mockReturnValue({ searchPaymentByExternalReference } as never);
@@ -221,13 +260,15 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
       return Promise.resolve({ data: null, error: { message: "constraint violation" } });
     });
     vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null });
+    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null, providerAccountId: "seller-a" });
     const searchPaymentByExternalReference = vi.fn().mockResolvedValue({
       externalId: "mp-payment-6",
       status: "APPROVED",
       amount: 100,
       method: "pix",
       externalReference: ORDER_A,
+      currency: "BRL",
+      providerAccountId: "seller-a",
     });
     vi.mocked(getGateway).mockReturnValue({ searchPaymentByExternalReference } as never);
 
@@ -240,7 +281,7 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
   it("reconciled > 0 → fires Sentry.captureMessage at 'warning' level with the count (webhook-health signal)", async () => {
     const supabase = fakeSupabase([{ tenant_id: TENANT_A, order_id: ORDER_A }]);
     vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(supabase as never);
-    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null });
+    vi.mocked(getPaymentCredentials).mockResolvedValue({ accessToken: "token-a", refreshToken: null, providerAccountId: "seller-a" });
     vi.mocked(getGateway).mockReturnValue({
       searchPaymentByExternalReference: vi.fn().mockResolvedValue({
         externalId: "mp-payment-7",
@@ -248,6 +289,8 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
         amount: 100,
         method: "pix",
         externalReference: ORDER_A,
+        currency: "BRL",
+        providerAccountId: "seller-a",
       }),
     } as never);
 

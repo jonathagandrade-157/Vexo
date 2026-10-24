@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * checado ANTES de getShippingQuote (que é quem de fato chama o Melhor
  * Envio) e nunca depois.
  */
-vi.mock("@/features/cart/cart-cookie", () => ({ getCartId: vi.fn(async () => null) }));
+vi.mock("@/features/cart/ownership", () => ({ getOwnedActiveCart: vi.fn(async () => null) }));
 vi.mock("@/features/shipping/quote", () => ({ getShippingQuote: vi.fn() }));
 vi.mock("@/features/storefront/resolve-tenant", () => ({ resolveStorefrontTenant: vi.fn() }));
 vi.mock("@/lib/security/rate-limit", async () => {
@@ -19,7 +19,7 @@ vi.mock("@/lib/security/rate-limit", async () => {
   return { ...actual, checkRateLimit: vi.fn(), getClientIp: vi.fn(() => "203.0.113.5") };
 });
 
-import { getCartId } from "@/features/cart/cart-cookie";
+import { getOwnedActiveCart } from "@/features/cart/ownership";
 import { getShippingQuote } from "@/features/shipping/quote";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { checkRateLimit } from "@/lib/security/rate-limit";
@@ -44,7 +44,7 @@ describe("GET /api/shipping/quote (D15-S.2 — rate limiting)", () => {
   afterEach(() => {
     vi.mocked(resolveStorefrontTenant).mockReset();
     vi.mocked(getShippingQuote).mockReset();
-    vi.mocked(getCartId).mockClear();
+    vi.mocked(getOwnedActiveCart).mockClear();
     vi.mocked(checkRateLimit).mockReset();
   });
 

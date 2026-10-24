@@ -10,12 +10,20 @@ const gateway = createMercadoPagoGateway(CLIENT_ID, CLIENT_SECRET, WEBHOOK_SECRE
 
 describe("getAuthorizeUrl", () => {
   it("builds a real Mercado Pago authorization URL with state and redirect_uri", () => {
-    const url = new URL(gateway.getAuthorizeUrl("signed-state", "https://loja.vexo.local/api/oauth/mercadopago/callback"));
+    const url = new URL(
+      gateway.getAuthorizeUrl(
+        "signed-state",
+        "https://loja.vexo.local/api/oauth/mercadopago/callback",
+        "pkce-code-challenge",
+      ),
+    );
     expect(url.origin + url.pathname).toBe("https://auth.mercadopago.com/authorization");
     expect(url.searchParams.get("client_id")).toBe(CLIENT_ID);
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("state")).toBe("signed-state");
     expect(url.searchParams.get("redirect_uri")).toBe("https://loja.vexo.local/api/oauth/mercadopago/callback");
+    expect(url.searchParams.get("code_challenge")).toBe("pkce-code-challenge");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 });
 
@@ -30,6 +38,12 @@ describe("verifyWebhookSignature", () => {
     const rawBody = JSON.stringify({ data: { id: "12345" } });
     const headers = buildHeaders("12345", "req-1", "1700000000", WEBHOOK_SECRET);
     expect(gateway.verifyWebhookSignature(headers, rawBody)).toBe(true);
+  });
+
+  it("uses the official data.id query value when supplied and normalizes it to lowercase", () => {
+    const rawBody = JSON.stringify({ data: { id: "body-value-is-not-authoritative" } });
+    const headers = buildHeaders("abc123", "req-query", "1700000000", WEBHOOK_SECRET);
+    expect(gateway.verifyWebhookSignature(headers, rawBody, "ABC123")).toBe(true);
   });
 
   it("rejects a payload signed with the wrong secret", () => {
@@ -72,6 +86,11 @@ describe("parseWebhookEvent", () => {
     expect(gateway.parseWebhookEvent(headers, { id: 555, user_id: 42 })).toBeNull();
   });
 
+  it("returns null when user_id is missing (tenant/seller cannot be resolved safely)", () => {
+    const headers = new Headers({ "x-request-id": "req-1" });
+    expect(gateway.parseWebhookEvent(headers, { id: 555, data: { id: "999" } })).toBeNull();
+  });
+
   it("returns null for a non-object payload", () => {
     const headers = new Headers();
     expect(gateway.parseWebhookEvent(headers, null)).toBeNull();
@@ -92,20 +111,36 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
 
   it("exchangeCodeForTokens posts to the real MP token endpoint and maps the response", async () => {
     vi.mocked(global.fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ access_token: "at", refresh_token: "rt", user_id: 777, expires_in: 3600 }), {
+      new Response(JSON.stringify({ access_token: "at", refresh_token: "rt", user_id: 777, expires_in: 3600, live_mode: false }), {
         status: 200,
       }),
     );
-    const tokens = await gateway.exchangeCodeForTokens("auth-code", "https://loja.vexo.local/callback");
+    const tokens = await gateway.exchangeCodeForTokens("auth-code", "https://loja.vexo.local/callback", "pkce-verifier");
     expect(tokens).toEqual({
       accessToken: "at",
       refreshToken: "rt",
       providerAccountId: "777",
+      liveMode: false,
       expiresAt: expect.any(Date),
     });
     const [calledUrl, init] = vi.mocked(global.fetch).mock.calls[0]!;
     expect(calledUrl).toBe("https://api.mercadopago.com/oauth/token");
-    expect(JSON.parse(init!.body as string)).toMatchObject({ client_id: CLIENT_ID, code: "auth-code" });
+    expect(JSON.parse(init!.body as string)).toMatchObject({
+      client_id: CLIENT_ID,
+      code: "auth-code",
+      code_verifier: "pkce-verifier",
+      test_token: false,
+    });
+  });
+
+  it("sets test_token=true only in the explicitly configured test gateway", async () => {
+    const testGateway = createMercadoPagoGateway(CLIENT_ID, CLIENT_SECRET, WEBHOOK_SECRET, true);
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ access_token: "at", user_id: 777, live_mode: false }), { status: 200 }),
+    );
+    await testGateway.exchangeCodeForTokens("auth-code", "https://loja.vexo.local/callback", "pkce-verifier");
+    const [, init] = vi.mocked(global.fetch).mock.calls[0]!;
+    expect(JSON.parse(init!.body as string).test_token).toBe(true);
   });
 
   it("exchangeCodeForTokens throws on a non-ok response, never swallowing the failure", async () => {
@@ -121,6 +156,7 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
       accessToken: "seller-token",
       orderId: "order-abc",
       orderNumber: "PED000123",
+      idempotencyKey: "vexo-order-order-abc",
       amount: 199.9,
       customerEmail: "cliente@example.com",
       backUrl: "https://loja.vexo.local/pedido/order-abc",
@@ -132,6 +168,7 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
     expect(body.external_reference).toBe("order-abc");
     expect(body.items[0].unit_price).toBe(199.9);
     expect((init!.headers as Record<string, string>).authorization).toBe("Bearer seller-token");
+    expect((init!.headers as Record<string, string>)["x-idempotency-key"]).toBe("vexo-order-order-abc");
   });
 
   it("searchPaymentByExternalReference queries by external_reference, sorted newest-first, and maps the first result", async () => {
@@ -139,7 +176,7 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
       new Response(
         JSON.stringify({
           results: [
-            { id: 42, status: "approved", transaction_amount: 199.9, payment_method_id: "pix", external_reference: "order-abc" },
+            { id: 42, status: "approved", transaction_amount: 199.9, payment_method_id: "pix", external_reference: "order-abc", currency_id: "BRL", collector_id: 777 },
           ],
         }),
         { status: 200 },
@@ -152,6 +189,8 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
       amount: 199.9,
       method: "pix",
       externalReference: "order-abc",
+      currency: "BRL",
+      providerAccountId: "777",
     });
 
     const [calledUrl, init] = vi.mocked(global.fetch).mock.calls[0]!;
@@ -188,8 +227,8 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
             // rejeitada, criada DEPOIS da aprovada. Sem a priorização por
             // APPROVED, isto mascararia um pagamento real (ver migration
             // 20260817220121: apply_payment_update "aprovado é grudento").
-            { id: 99, status: "rejected", transaction_amount: 100, payment_method_id: "credit_card", external_reference: "order-abc" },
-            { id: 42, status: "approved", transaction_amount: 100, payment_method_id: "pix", external_reference: "order-abc" },
+            { id: 99, status: "rejected", transaction_amount: 100, payment_method_id: "credit_card", external_reference: "order-abc", currency_id: "BRL", collector_id: 777 },
+            { id: 42, status: "approved", transaction_amount: 100, payment_method_id: "pix", external_reference: "order-abc", currency_id: "BRL", collector_id: 777 },
           ],
         }),
         { status: 200 },
@@ -202,6 +241,8 @@ describe("fetch-backed operations (mocked fetch — no real network call)", () =
       amount: 100,
       method: "pix",
       externalReference: "order-abc",
+      currency: "BRL",
+      providerAccountId: "777",
     });
   });
 
@@ -292,6 +333,7 @@ describe("timeout / AbortController (D9.1)", () => {
         accessToken: "seller-token",
         orderId: "order-abc",
         orderNumber: "PED000123",
+        idempotencyKey: "vexo-order-order-abc",
         amount: 10,
         customerEmail: "cliente@example.com",
         backUrl: "https://loja.vexo.local/pedido/order-abc",
@@ -324,6 +366,7 @@ describe("timeout / AbortController (D9.1)", () => {
         accessToken: "super-secret-seller-token",
         orderId: "order-abc",
         orderNumber: "PED000123",
+        idempotencyKey: "vexo-order-order-abc",
         amount: 10,
         customerEmail: "cliente@example.com",
         backUrl: "https://loja.vexo.local/pedido/order-abc",

@@ -2,9 +2,9 @@ import "server-only";
 
 import { cache } from "react";
 
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
-import { getCartId } from "./cart-cookie";
+import { getOwnedActiveCart } from "./ownership";
 import { cartSubtotal } from "./pricing";
 
 export interface CartItemProduct {
@@ -114,7 +114,7 @@ interface OptionRow {
  * regra de formatação divergente entre carrinho e pedido.
  */
 async function fetchVariantLabels(
-  supabase: ReturnType<typeof createSupabasePublicClient>,
+  supabase: ReturnType<typeof createSupabaseServiceRoleClient>,
   tenantId: string,
   variantIds: string[],
 ): Promise<Map<string, string>> {
@@ -180,16 +180,16 @@ export const getCart = cache(async (storeSlug: string): Promise<CartView> => {
   const resolution = await resolveStorefrontTenant(storeSlug);
   if (resolution.status !== "ready") return EMPTY_CART;
 
-  const cartId = await getCartId(storeSlug);
-  if (!cartId) return EMPTY_CART;
+  const cart = await getOwnedActiveCart(storeSlug, resolution.tenant.id);
+  if (!cart) return EMPTY_CART;
 
-  const supabase = createSupabasePublicClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { data } = await supabase
     .from("cart_items")
     .select(
       "id, quantity, variant_id, product:products(id, name, slug, price, promotional_price, main_image, status), variant:product_variants(id, sku, price, promotional_price, is_active)",
     )
-    .eq("cart_id", cartId)
+    .eq("cart_id", cart.id)
     .eq("tenant_id", resolution.tenant.id)
     .order("created_at", { ascending: true });
 

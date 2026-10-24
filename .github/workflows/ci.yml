@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, validation/vexo-2a-postgres, codex/validation-vexo-2a2-http-sandbox, codex/validation-vexo-2a3-mp-security]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -62,11 +62,17 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Validate cart security migration rollout
+        run: npm run db:test:cart-rollout
+
       - name: Reset test database (apply migrations)
         run: npm run db:test:reset
 
-      - name: Test
-        run: npm test
+      - name: PostgreSQL integration tests
+        run: npx vitest run tests/integration
+
+      - name: Unit tests
+        run: npx vitest run tests/unit
 
       - name: Build
         run: npm run build
@@ -97,3 +103,43 @@ jobs:
 
       - name: Public smoke tests
         run: npm run test:e2e
+
+  supabase-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Pinned action commit plus an explicit CLI version: the runner starts
+      # only a disposable local stack. No Supabase access token, project ref,
+      # linked project, or production secret is available to this job.
+      - uses: supabase/setup-cli@bea637206310b05056109c4ffab256b2c3c522af
+        with:
+          version: 2.115.0
+
+      - name: Start isolated Supabase Auth and PostgREST
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! supabase start \
+            --exclude studio,realtime,storage-api,imgproxy,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor \
+            >"$RUNNER_TEMP/supabase-start.log" 2>&1; then
+            echo "The isolated Supabase stack failed to start. Output was withheld because the CLI includes local API keys."
+            exit 1
+          fi
+          echo "Isolated Supabase Auth and PostgREST started; credential-bearing CLI output was withheld."
+
+      - name: Real HTTP Auth, PostgREST and checkout tests
+        run: npm run test:http:supabase
+
+      - name: Stop isolated Supabase stack
+        if: always()
+        run: supabase stop --no-backup

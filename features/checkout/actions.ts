@@ -4,14 +4,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
-import { getCartId } from "@/features/cart/cart-cookie";
+import { getOwnedCartForCheckout } from "@/features/cart/ownership";
 import { initiatePaymentForOrder, isPaymentGatewayConnected } from "@/features/payments/checkout";
-import { applyShippingToOrder, isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
-import { applyMelhorEnvioShippingToOrder, verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
+import { isShippingRequired, verifyShippingPriceFresh } from "@/features/shipping/checkout";
+import { verifyMelhorEnvioShippingFresh } from "@/features/shipping/melhor-envio-checkout";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { sendOrderConfirmationEmail } from "@/lib/email/send-order-confirmation";
-import { createSupabasePublicClient } from "@/lib/supabase/server";
 import { checkCheckoutRateLimit } from "./rate-limit";
+import { createOwnedOrder, type CheckoutShippingSelection } from "./create-owned-order";
 import { checkoutSchema, friendlyCheckoutError, isAddressComplete, type CheckoutActionState, type CheckoutInput } from "./schema";
 
 function fieldErrorsFrom(parsed: ReturnType<typeof checkoutSchema.safeParse>): CheckoutActionState["fieldErrors"] {
@@ -78,9 +78,23 @@ export async function createOrderAction(
     return { status: "error", message: "Esta loja ainda não possui um meio de pagamento configurado." };
   }
 
-  const cartId = await getCartId(storeSlug);
-  if (!cartId) {
+  const cart = await getOwnedCartForCheckout(storeSlug, resolution.tenant.id);
+  if (!cart) {
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
+  }
+
+  // Retry após uma resposta perdida: o carrinho já aponta para o pedido
+  // criado. Nunca cria outro pedido; a chave estável do gateway também
+  // impede outra preference/cobrança para o mesmo orderId.
+  if (cart.checkoutOrderId) {
+    const payment = await initiatePaymentForOrder(
+      resolution.tenant.id,
+      cart.checkoutOrderId,
+      parsed.data.customerEmail,
+      storeSlug,
+    );
+    if ("checkoutUrl" in payment) redirect(payment.checkoutUrl);
+    redirect(`/loja/${storeSlug}/pedido/${cart.checkoutOrderId}`);
   }
 
   const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, shippingProvider, zip } = parsed.data;
@@ -105,7 +119,7 @@ export async function createOrderAction(
     if (shippingMethodId === undefined || shippingPrice === undefined || !zip) {
       return { status: "error", message: "Selecione uma opção de entrega antes de finalizar o pedido." };
     }
-    const fresh = await verifyMelhorEnvioShippingFresh(resolution.tenant.id, cartId, zip, shippingMethodId, shippingPrice);
+    const fresh = await verifyMelhorEnvioShippingFresh(resolution.tenant.id, cart.id, zip, shippingMethodId, shippingPrice);
     if (!fresh.valid) {
       return {
         status: "error",
@@ -148,45 +162,34 @@ export async function createOrderAction(
     shippingAddress = { zip: zip as string, street, number, complement: complement ?? null, neighborhood, city, state };
   }
 
-  const supabase = createSupabasePublicClient();
-  const { data: orderId, error } = await supabase.rpc("create_order_from_cart", {
-    p_tenant_id: resolution.tenant.id,
-    p_cart_id: cartId,
-    p_customer_name: customerName,
-    p_customer_email: customerEmail,
-    p_customer_phone: customerPhone,
-    p_shipping_address: shippingAddress,
+  const shipping: CheckoutShippingSelection = melhorEnvioShipping
+    ? { kind: "melhor_envio", ...melhorEnvioShipping }
+    : shippingMethodId !== undefined && shippingPrice !== undefined
+      ? { kind: "method", methodId: shippingMethodId, expectedPrice: shippingPrice }
+      : { kind: "none" };
+
+  const checkout = await createOwnedOrder({
+    tenantId: resolution.tenant.id,
+    cartId: cart.id,
+    ownerTokenHash: cart.ownerTokenHash,
+    customerName,
+    customerEmail,
+    customerPhone,
+    shippingAddress,
+    orderSource: "vexo_checkout",
+    paymentChannel: "gateway",
+    requestedPaymentMethod: null,
+    cashChangeFor: null,
+    shipping,
   });
 
-  if (error || !orderId) {
-    return { status: "error", message: friendlyCheckoutError(error?.message ?? "") };
+  if (!checkout.ok) {
+    return { status: "error", message: friendlyCheckoutError(checkout.error) };
   }
+  const { orderId } = checkout;
 
   revalidatePath(`/loja/${storeSlug}`);
   revalidatePath(`/loja/${storeSlug}/carrinho`);
-
-  // Aplica o frete escolhido ao pedido recém-criado (Etapa 12, RPC
-  // apply_shipping_to_order) — mesmo encadeamento de passos que o
-  // pagamento já usa (Etapa 11): o pedido já existe (shipping_total = 0
-  // por enquanto), esta chamada revalida o preço de novo, atomicamente,
-  // e só então atualiza o total. Se a loja não tem entrega configurada
-  // (nenhuma modalidade selecionada), este passo é pulado — o pedido
-  // segue com shipping_total = 0 (mesmo comportamento da Etapa 10).
-  //
-  // Se esta chamada falhar (janela residual entre a pré-checagem acima e
-  // aqui — o lojista alterou o preço nos milissegundos entre as duas), o
-  // pedido já existe e não vira um beco sem saída: segue para o
-  // pagamento com o total que o pedido já tem (sem frete), igual ao
-  // fallback já usado abaixo para falha de pagamento. O pedido fica
-  // visível em /painel/pedidos para o lojista tratar manualmente.
-  if (melhorEnvioShipping) {
-    // Já revalidado por verifyMelhorEnvioShippingFresh acima, na MESMA
-    // requisição — nunca uma segunda chamada HTTP aqui, nunca o
-    // shippingPrice do cliente.
-    await applyMelhorEnvioShippingToOrder(resolution.tenant.id, orderId as string, melhorEnvioShipping);
-  } else if (shippingMethodId !== undefined && shippingPrice !== undefined) {
-    await applyShippingToOrder(resolution.tenant.id, orderId as string, shippingMethodId, shippingPrice);
-  }
 
   // JON-13 — e-mail de "recebemos seu pedido" (nunca "confirmado": o
   // pagamento ainda nem foi iniciado neste ponto). `after()` (não um
@@ -195,24 +198,26 @@ export async function createOrderAction(
   // `redirect()` é chamado (doc do Next.js), cobrindo tanto o redirect
   // interno (confirmação própria) quanto o externo (checkout do Mercado
   // Pago) sem precisar duplicar esta chamada em nenhum dos dois.
-  after(() =>
-    sendOrderConfirmationEmail({
-      tenantId: resolution.tenant.id,
-      orderId: orderId as string,
-      customerEmail,
-      storeName: resolution.tenant.name,
-      storeSlug,
-    }),
-  );
+  if (checkout.created) {
+    after(() =>
+      sendOrderConfirmationEmail({
+        tenantId: resolution.tenant.id,
+        orderId,
+        customerEmail,
+        storeName: resolution.tenant.name,
+        storeSlug,
+      }),
+    );
+  }
 
   // O pedido já existe e o carrinho já foi limpo (create_order_from_cart,
   // Etapa 10) — se o passo de pagamento falhar daqui pra frente, o
   // cliente ainda cai na confirmação (que mostra o status real,
   // "pendente") em vez de ficar numa tela de erro sem saber se o pedido
   // existe.
-  const payment = await initiatePaymentForOrder(resolution.tenant.id, orderId as string, customerEmail, storeSlug);
+  const payment = await initiatePaymentForOrder(resolution.tenant.id, orderId, customerEmail, storeSlug);
   if ("checkoutUrl" in payment) {
     redirect(payment.checkoutUrl);
   }
-  redirect(`/loja/${storeSlug}/pedido/${orderId as string}`);
+  redirect(`/loja/${storeSlug}/pedido/${orderId}`);
 }

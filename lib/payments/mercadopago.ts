@@ -72,21 +72,30 @@ function mapStatus(mpStatus: string): NormalizedPaymentStatus {
   }
 }
 
-export function createMercadoPagoGateway(clientId: string, clientSecret: string, webhookSecret: string): PaymentGateway {
+export function createMercadoPagoGateway(
+  clientId: string,
+  clientSecret: string,
+  webhookSecret: string,
+  testMode = false,
+): PaymentGateway {
   return {
     provider: "mercadopago",
 
-    getAuthorizeUrl(state, redirectUri) {
+    getAuthorizeUrl(state, redirectUri, codeChallenge) {
       const url = new URL(`${AUTH_BASE}/authorization`);
       url.searchParams.set("client_id", clientId);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("platform_id", "mp");
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("state", state);
+      if (codeChallenge) {
+        url.searchParams.set("code_challenge", codeChallenge);
+        url.searchParams.set("code_challenge_method", "S256");
+      }
       return url.toString();
     },
 
-    async exchangeCodeForTokens(code, redirectUri) {
+    async exchangeCodeForTokens(code, redirectUri, codeVerifier) {
       const response = await fetchWithTimeout(`${API_BASE}/oauth/token`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -96,6 +105,8 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
           grant_type: "authorization_code",
           code,
           redirect_uri: redirectUri,
+          ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
+          test_token: testMode,
         }),
       });
       if (!response.ok) {
@@ -106,11 +117,13 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
         refresh_token?: string;
         user_id: number | string;
         expires_in?: number;
+        live_mode?: boolean;
       };
       return {
         accessToken: data.access_token,
         refreshToken: data.refresh_token ?? null,
         providerAccountId: String(data.user_id),
+        liveMode: typeof data.live_mode === "boolean" ? data.live_mode : null,
         expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : null,
       };
     },
@@ -121,6 +134,7 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${input.accessToken}`,
+          "x-idempotency-key": input.idempotencyKey,
         },
         body: JSON.stringify({
           items: [
@@ -158,6 +172,8 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
         transaction_amount: number;
         payment_method_id: string | null;
         external_reference: string | null;
+        currency_id?: string;
+        collector_id?: number | string;
       };
       return {
         externalId: String(data.id),
@@ -165,6 +181,8 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
         amount: data.transaction_amount,
         method: data.payment_method_id,
         externalReference: data.external_reference,
+        currency: data.currency_id ?? null,
+        providerAccountId: data.collector_id !== undefined ? String(data.collector_id) : null,
       };
     },
 
@@ -191,6 +209,8 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
           transaction_amount: number;
           payment_method_id: string | null;
           external_reference: string | null;
+          currency_id?: string;
+          collector_id?: number | string;
         }>;
       };
       // JON-15 — se existir MAIS DE UMA tentativa de pagamento para o mesmo
@@ -209,10 +229,12 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
         amount: result.transaction_amount,
         method: result.payment_method_id,
         externalReference: result.external_reference,
+        currency: result.currency_id ?? null,
+        providerAccountId: result.collector_id !== undefined ? String(result.collector_id) : null,
       };
     },
 
-    verifyWebhookSignature(headers, rawBody) {
+    verifyWebhookSignature(headers, rawBody, notificationDataId) {
       const signatureHeader = headers.get("x-signature");
       const requestId = headers.get("x-request-id");
       if (!signatureHeader || !requestId) return false;
@@ -227,13 +249,16 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
       const v1 = parts.v1;
       if (!ts || !v1) return false;
 
-      let dataId = "";
-      try {
-        const parsed = JSON.parse(rawBody) as { data?: { id?: string | number } };
-        dataId = String(parsed.data?.id ?? "").toLowerCase();
-      } catch {
-        return false;
+      let dataId = notificationDataId?.toLowerCase() ?? "";
+      if (!dataId) {
+        try {
+          const parsed = JSON.parse(rawBody) as { data?: { id?: string | number } };
+          dataId = String(parsed.data?.id ?? "").toLowerCase();
+        } catch {
+          return false;
+        }
       }
+      if (!dataId) return false;
 
       const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
       const expected = createHmac("sha256", webhookSecret).update(manifest).digest("hex");
@@ -248,10 +273,11 @@ export function createMercadoPagoGateway(clientId: string, clientSecret: string,
       const body = payload as { id?: string | number; user_id?: string | number; data?: { id?: string | number } };
       const eventId = body.id !== undefined ? String(body.id) : headers.get("x-request-id");
       const paymentExternalId = body.data?.id !== undefined ? String(body.data.id) : null;
-      if (!eventId || !paymentExternalId) return null;
+      const providerAccountId = body.user_id !== undefined ? String(body.user_id) : null;
+      if (!eventId || !paymentExternalId || !providerAccountId) return null;
       return {
         eventId,
-        providerAccountId: body.user_id !== undefined ? String(body.user_id) : null,
+        providerAccountId,
         paymentExternalId,
       };
     },

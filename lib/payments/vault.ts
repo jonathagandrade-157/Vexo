@@ -25,13 +25,25 @@ export async function storePaymentCredentials(tenantId: string, provider: Paymen
 export async function getPaymentCredentials(
   tenantId: string,
   provider: PaymentProvider,
-): Promise<{ accessToken: string; refreshToken: string | null } | null> {
+): Promise<{ accessToken: string; refreshToken: string | null; providerAccountId: string } | null> {
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase.rpc("get_payment_credentials", { p_tenant_id: tenantId, p_provider: provider });
   if (error || !data || (Array.isArray(data) && data.length === 0)) return null;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row?.access_token) return null;
-  return { accessToken: row.access_token as string, refreshToken: (row.refresh_token as string | null) ?? null };
+  const { data: providerRow, error: providerError } = await supabase
+    .from("store_payment_providers")
+    .select("connected_account_id")
+    .eq("tenant_id", tenantId)
+    .eq("provider", provider)
+    .eq("status", "connected")
+    .maybeSingle();
+  if (providerError || !providerRow?.connected_account_id) return null;
+  return {
+    accessToken: row.access_token as string,
+    refreshToken: (row.refresh_token as string | null) ?? null,
+    providerAccountId: providerRow.connected_account_id,
+  };
 }
 
 export async function deletePaymentCredentials(tenantId: string, provider: PaymentProvider): Promise<void> {

@@ -16,6 +16,7 @@ export interface OAuthTokens {
   refreshToken: string | null;
   /** Identificador da conta conectada no provedor (ex.: `user_id` do Mercado Pago) — nunca um segredo. */
   providerAccountId: string;
+  liveMode: boolean | null;
   expiresAt: Date | null;
 }
 
@@ -23,6 +24,8 @@ export interface CreatePaymentInput {
   accessToken: string;
   orderId: string;
   orderNumber: string;
+  /** Chave estável por pedido para retries não criarem outra cobrança/preference. */
+  idempotencyKey: string;
   /** Sempre `orders.total` já calculado pelo servidor (Etapa 10) — o gateway nunca recebe um valor vindo do cliente. */
   amount: number;
   customerEmail: string;
@@ -48,6 +51,9 @@ export interface PaymentDetails {
   method: string | null;
   /** O que o checkout gravou como `external_reference` ao criar o pagamento — sempre o `order_id` (arquitetura §12.1: nunca um tenant_id solto do payload). */
   externalReference: string | null;
+  currency: string | null;
+  /** `collector_id` do pagamento consultado no provedor. */
+  providerAccountId: string | null;
 }
 
 export interface WebhookEvent {
@@ -61,8 +67,8 @@ export interface WebhookEvent {
 
 export interface PaymentGateway {
   readonly provider: PaymentProvider;
-  getAuthorizeUrl(state: string, redirectUri: string): string;
-  exchangeCodeForTokens(code: string, redirectUri: string): Promise<OAuthTokens>;
+  getAuthorizeUrl(state: string, redirectUri: string, codeChallenge?: string): string;
+  exchangeCodeForTokens(code: string, redirectUri: string, codeVerifier?: string): Promise<OAuthTokens>;
   createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult>;
   getPayment(accessToken: string, externalId: string): Promise<PaymentDetails>;
   /**
@@ -78,7 +84,7 @@ export interface PaymentGateway {
    * pra esse pedido ainda.
    */
   searchPaymentByExternalReference(accessToken: string, externalReference: string): Promise<PaymentDetails | null>;
-  verifyWebhookSignature(headers: Headers, rawBody: string): boolean;
+  verifyWebhookSignature(headers: Headers, rawBody: string, notificationDataId?: string | null): boolean;
   parseWebhookEvent(headers: Headers, payload: unknown): WebhookEvent | null;
   refundPayment(accessToken: string, externalId: string): Promise<void>;
 }

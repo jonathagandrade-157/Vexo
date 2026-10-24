@@ -108,8 +108,15 @@ describe("lib/env", () => {
       MERCADO_PAGO_CLIENT_ID: VALID_ENV.MERCADO_PAGO_CLIENT_ID,
       MERCADO_PAGO_CLIENT_SECRET: VALID_ENV.MERCADO_PAGO_CLIENT_SECRET,
       MERCADO_PAGO_WEBHOOK_SECRET: VALID_ENV.MERCADO_PAGO_WEBHOOK_SECRET,
+      MERCADO_PAGO_TEST_MODE: false,
       OAUTH_STATE_SECRET: VALID_ENV.OAUTH_STATE_SECRET,
     });
+  });
+
+  it("enables Mercado Pago test-token mode only when explicitly configured", async () => {
+    Object.assign(process.env, VALID_ENV, { MERCADO_PAGO_TEST_MODE: "true" });
+    const { getMercadoPagoEnv } = await import("@/lib/env");
+    expect(getMercadoPagoEnv().MERCADO_PAGO_TEST_MODE).toBe(true);
   });
 
   it("getMercadoPagoEnv() throws a clear, secret-free error when Mercado Pago vars are missing", async () => {

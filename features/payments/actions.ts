@@ -2,13 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 import { checkBillingWriteAccess } from "@/features/billing/access-guard";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { getMercadoPagoEnv, getPublicEnv } from "@/lib/env";
 import { getGateway } from "@/lib/payments/registry";
 import { deletePaymentCredentials } from "@/lib/payments/vault";
-import { createOAuthState } from "@/lib/security/oauth-state";
+import {
+  createOAuthAttempt,
+  createOAuthState,
+  MERCADO_PAGO_OAUTH_COOKIE,
+  OAUTH_ATTEMPT_TTL_SECONDS,
+} from "@/lib/security/oauth-state";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { PaymentConnectionActionState } from "./schema";
 
@@ -57,9 +63,18 @@ export async function connectMercadoPagoAction(
 
   const { OAUTH_STATE_SECRET } = getMercadoPagoEnv();
   const state = createOAuthState(resolved.tenantId, OAUTH_STATE_SECRET);
+  const attempt = createOAuthAttempt(state, OAUTH_STATE_SECRET);
+  const cookieStore = await cookies();
+  cookieStore.set(MERCADO_PAGO_OAUTH_COOKIE, attempt.cookieValue, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/api/oauth/mercadopago/callback",
+    maxAge: OAUTH_ATTEMPT_TTL_SECONDS,
+  });
   const gateway = getGateway(PROVIDER);
 
-  redirect(gateway.getAuthorizeUrl(state, callbackRedirectUri()));
+  redirect(gateway.getAuthorizeUrl(state, callbackRedirectUri(), attempt.codeChallenge));
 }
 
 export async function disconnectMercadoPagoAction(): Promise<PaymentConnectionActionState> {

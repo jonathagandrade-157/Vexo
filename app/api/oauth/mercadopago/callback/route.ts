@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
 
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { getMercadoPagoEnv, getPublicEnv } from "@/lib/env";
 import { getGateway } from "@/lib/payments/registry";
 import { storePaymentCredentials } from "@/lib/payments/vault";
-import { verifyOAuthState } from "@/lib/security/oauth-state";
+import { MERCADO_PAGO_OAUTH_COOKIE, verifyOAuthAttempt, verifyOAuthState } from "@/lib/security/oauth-state";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const PAGAMENTOS_PATH = "/painel/configuracoes/pagamentos";
@@ -38,7 +39,11 @@ export async function GET(request: NextRequest) {
 
   const { OAUTH_STATE_SECRET } = getMercadoPagoEnv();
   const verified = verifyOAuthState(state, OAUTH_STATE_SECRET);
-  if (!verified) {
+  const cookieStore = await cookies();
+  const attemptCookie = cookieStore.get(MERCADO_PAGO_OAUTH_COOKIE)?.value;
+  cookieStore.delete(MERCADO_PAGO_OAUTH_COOKIE);
+  const codeVerifier = verifyOAuthAttempt(state, attemptCookie, OAUTH_STATE_SECRET);
+  if (!verified || !codeVerifier) {
     return redirectWithError(request, "invalid_state");
   }
 
@@ -62,7 +67,7 @@ export async function GET(request: NextRequest) {
 
   let tokens;
   try {
-    tokens = await gateway.exchangeCodeForTokens(code, redirectUri);
+    tokens = await gateway.exchangeCodeForTokens(code, redirectUri, codeVerifier);
   } catch {
     return redirectWithError(request, "exchange_failed");
   }
@@ -79,6 +84,7 @@ export async function GET(request: NextRequest) {
       provider: "mercadopago",
       status: "connected",
       connected_account_id: tokens.providerAccountId,
+      live_mode: tokens.liveMode,
       connected_at: new Date().toISOString(),
       disconnected_at: null,
     },

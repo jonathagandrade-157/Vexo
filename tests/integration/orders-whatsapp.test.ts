@@ -3,7 +3,7 @@
  * payment_status=EXTERNAL/requested_payment_method/cash_change_for
  * (migrations 20260817220079-81). Mesmo padrão de
  * `tests/integration/checkout.test.ts` (RLS/RPC testados via SQL direta,
- * `anon`) — este arquivo cobre só o que é NOVO nesta fase, não repete a
+ * `service_role`) — este arquivo cobre só o que é NOVO nesta fase, não repete a
  * cobertura já existente de recálculo de preço/lock do carrinho/
  * snapshot/duplicidade (essas garantias são as MESMAS para qualquer
  * valor de order_source, e continuam verdes, inalteradas, em
@@ -63,12 +63,12 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("order_source / payment_chan
   async function createCartWithItem(tenantId: string, productId: string, quantity = 1): Promise<string> {
     const cartId = randomUUID();
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, tenantId]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, $4)", [
           cartId,
@@ -90,7 +90,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("order_source / payment_chan
 
   function callCreateOrder(tenantId: string, cartId: string, overrides: CreateOrderOverrides = {}) {
     return asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query<{ create_order_from_cart: string }>(
           "select create_order_from_cart($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
@@ -114,7 +114,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("order_source / payment_chan
   it("chamando com só os 6 parâmetros originais (retrocompatibilidade), o pedido nasce vexo_checkout/gateway/PENDING", async () => {
     const cartId = await createCartWithItem(fx.tenantA, productA, 1);
     const result = await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query<{ create_order_from_cart: string }>("select create_order_from_cart($1, $2, $3, $4, $5, $6)", [
           fx.tenantA,
