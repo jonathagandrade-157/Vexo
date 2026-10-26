@@ -24,6 +24,7 @@ describe("lib/env", () => {
     for (const key of Object.keys(VALID_ENV)) {
       delete process.env[key];
     }
+    delete process.env.VERCEL_URL;
   });
 
   afterEach(() => {
@@ -55,6 +56,29 @@ describe("lib/env", () => {
     });
     const { getPublicEnv } = await import("@/lib/env");
     expect(() => getPublicEnv()).toThrow();
+  });
+
+  it("derives the site URL from the Vercel preview hostname when the explicit URL is absent", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      VERCEL_URL: "vexo-security-example.vercel.app",
+    });
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+
+    const { getPublicEnv } = await import("@/lib/env");
+
+    expect(getPublicEnv().NEXT_PUBLIC_SITE_URL).toBe(
+      "https://vexo-security-example.vercel.app",
+    );
+  });
+
+  it("keeps an explicit site URL authoritative over the Vercel preview hostname", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      VERCEL_URL: "vexo-security-example.vercel.app",
+    });
+
+    const { getPublicEnv } = await import("@/lib/env");
+
+    expect(getPublicEnv().NEXT_PUBLIC_SITE_URL).toBe(VALID_ENV.NEXT_PUBLIC_SITE_URL);
   });
 
   it("refuses to read public env vars when called from the browser (JON-30 — regression: process.env dinâmico nunca é inlinado no bundle do client)", async () => {

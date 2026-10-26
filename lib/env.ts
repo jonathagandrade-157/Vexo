@@ -201,7 +201,18 @@ export function getPublicEnv(): PublicEnv {
   if (typeof window !== "undefined") {
     throw new Error("getPublicEnv() must never be called from the browser.");
   }
-  cachedPublicEnv ??= readSchema(publicSchema, process.env, "public");
+  // Preview deployments have a unique hostname and should not need a
+  // manually maintained NEXT_PUBLIC_SITE_URL for every branch. Vercel
+  // exposes VERCEL_URL without a protocol during the build/runtime; keep
+  // the explicit variable authoritative for production and local setups,
+  // and only derive the HTTPS URL when it is absent.
+  const source = {
+    ...process.env,
+    NEXT_PUBLIC_SITE_URL:
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined),
+  };
+  cachedPublicEnv ??= readSchema(publicSchema, source, "public");
   return cachedPublicEnv;
 }
 
