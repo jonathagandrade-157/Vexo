@@ -97,12 +97,12 @@ As migrations históricas criam `carts`/`cart_items`, invariantes de
 tenant e `public.add_to_cart()`. O hardening é aditivo e usa
 expand/deploy/contract:
 
-1. `20260817220122_cart_ownership_expand.sql` adiciona
+1. `20261026210715_20260817220122_cart_ownership_expand.sql` adiciona
    `owner_token_hash`, `checkout_order_id` e a RPC privilegiada de
    checkout, sem quebrar a aplicação anterior.
 2. A aplicação passa a resolver posse no BFF com `service_role` e o
    segredo do cookie.
-3. `20260817220123_cart_checkout_lockdown.sql` remove policies, grants
+3. `20261026210716_20260817220123_cart_checkout_lockdown.sql` remove policies, grants
    e `EXECUTE` de `PUBLIC`, `anon` e `authenticated` sobre carrinhos e
    RPCs privilegiadas.
 

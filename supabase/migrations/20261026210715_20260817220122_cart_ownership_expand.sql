@@ -2,7 +2,7 @@
 -- atômico. Esta migration é deliberadamente compatível com a versão
 -- anterior da aplicação: ela adiciona o novo caminho server-side, mas
 -- ainda não remove os grants antigos. A revogação acontece na migration
--- 20260817220123, depois do deploy coordenado da aplicação.
+-- 20261026210716_20260817220123, depois do deploy coordenado da aplicação.
 
 alter table public.carts
   add column owner_token_hash text,
@@ -225,7 +225,7 @@ grant execute on function public.checkout_cart_secure(
 -- service_role nestes caminhos antes de a migration de lockdown remover
 -- os grants legados de anon. Conceder service_role aqui não amplia acesso
 -- do navegador e permite publicar a aplicação com o banco apenas expandido.
--- A migration 20260817220123 continua sendo a única responsável por
+-- A migration 20261026210716_20260817220123 continua sendo a única responsável por
 -- revogar anon/authenticated/PUBLIC.
 grant select, insert, update, delete on table public.carts to service_role;
 grant select, insert, update, delete on table public.cart_items to service_role;

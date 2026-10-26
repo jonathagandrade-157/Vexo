@@ -14,22 +14,38 @@ produção: aplicar migrations ou promover deploy exige um **GO específico**.
   `npm audit`, lint, typecheck, unitários, E2E e build.
 - Registrar quantidade de carrinhos ativos, pedidos pendentes, commit e
   deployment atual antes da mudança.
+- Confirmar que `supabase migration list --linked` alinha todas as versões
+  até `20260910161209` e que o dry-run lista somente as cinco migrations
+  `20261026210712` a `20261026210716`. Nunca usar `migration repair` neste
+  rollout: os arquivos do repositório já carregam os timestamps reais do
+  histórico hospedado.
 
 ## Fase 1 — expand
 
-Aplicar somente `20260817220122_cart_ownership_expand.sql`. Ela adiciona
-colunas, trigger e `checkout_cart_secure`, mantendo temporariamente os
-grants legados para a aplicação antiga. Validar:
+Aplicar o lote compatível com a aplicação atual, parando antes do
+lockdown:
+
+1. `20261026210712_20260817220119_subscription_past_due_grace_period.sql`;
+2. `20261026210713_20260817220120_reconcile_stale_pending_payments.sql`;
+3. `20261026210714_20260817220121_apply_payment_update_approved_sticky.sql`;
+4. `20261026210715_20260817220122_cart_ownership_expand.sql`.
+
+As três primeiras migrations são compatíveis e independentes do carrinho;
+a quarta adiciona colunas, trigger e `checkout_cart_secure`, mantendo
+temporariamente os grants legados para a aplicação antiga. Validar:
 
 - `owner_token_hash` e `checkout_order_id` existem;
 - `checkout_cart_secure` é executável por `service_role`, nunca por
   `PUBLIC`, `anon` ou `authenticated`;
 - storefront atual continua respondendo.
 
-Como a CLI não oferece um seletor `--to`, não executar `db push` com as
-duas migrations pendentes nesta fase. Usar o procedimento administrativo
-aprovado para aplicar um único arquivo e registrar a versão
-`20260817220122` no histórico. Fazer `db push --dry-run` antes e depois.
+Como a CLI não oferece um seletor `--to`, não executar `db push` a partir
+do diretório completo nesta fase. Montar um diretório temporário de release
+com todas as migrations versionadas até `20261026210715`, executar
+`db push --dry-run` nele e só então o `db push` aprovado. O histórico deve
+registrar exatamente as versões `20261026210712`–`20261026210715`; o novo
+dry-run no repositório completo deve deixar apenas `20261026210716`
+pendente.
 
 ## Fase 2 — deploy da aplicação
 
@@ -47,12 +63,21 @@ criam um carrinho novo; eles nunca recebem acesso retroativo.
 
 ## Fase 3 — contract
 
-Aplicar `20260817220123_cart_checkout_lockdown.sql`. Ela remove policies,
-privilégios de tabela e `EXECUTE` públicos. Verificar com
+Aplicar `20261026210716_20260817220123_cart_checkout_lockdown.sql`. Ela remove policies,
+privilégios de tabela e `EXECUTE` públicos, fixa o `search_path` de
+`private.set_updated_at` e revoga a execução pública do event trigger
+hospedado `rls_auto_enable`. Verificar com
 `has_table_privilege` e `has_function_privilege` que anon/authenticated
 não conseguem listar ou alterar carrinhos nem executar `add_to_cart`,
 `create_order_from_cart` ou `checkout_cart_secure`. Repetir o smoke de
 carrinho/checkout pelo app, que deve continuar funcionando via BFF.
+
+Rodar os advisors novamente. Alertas de execução autenticada das RPCs de
+painel permanecem exceções revisadas porque cada função revalida sessão,
+tenant e permissão internamente. `get_order_confirmation` permanece anon
+de propósito: o UUID aleatório do pedido é a capacidade de leitura e a
+função retorna apenas a visão do cliente. Os avisos "RLS enabled no
+policy" dos vaults/rate-limit/trial também são fail-closed intencionais.
 
 ## Recuperação
 

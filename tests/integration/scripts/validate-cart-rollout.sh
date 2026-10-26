@@ -34,11 +34,11 @@ cleanup
 psql "$ADMIN_CONN" -v ON_ERROR_STOP=1 -c "create database \"$ROLLOUT_DB_NAME\";" >/dev/null
 psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 -f "$SCRIPT_DIR/../fixtures/supabase-stub.sql" >/dev/null
 
-echo "Applying baseline migrations through 20260817220121..."
+echo "Applying baseline migrations through 20261026210714..."
 for migration in "$MIGRATIONS_DIR"/*.sql; do
   name="$(basename "$migration")"
   case "$name" in
-    20260817220122_*) break ;;
+    20261026210715_*) break ;;
   esac
   psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
@@ -66,9 +66,9 @@ end
 $$;
 SQL
 
-echo "Applying expansion migration 20260817220122..."
+echo "Applying expansion migration 20261026210715..."
 psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 \
-  -f "$MIGRATIONS_DIR/20260817220122_cart_ownership_expand.sql" >/dev/null
+  -f "$MIGRATIONS_DIR/20261026210715_20260817220122_cart_ownership_expand.sql" >/dev/null
 
 psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 <<'SQL'
 do $$
@@ -124,9 +124,9 @@ end
 $$;
 SQL
 
-echo "Applying lockdown migration 20260817220123..."
+echo "Applying lockdown migration 20261026210716..."
 psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 \
-  -f "$MIGRATIONS_DIR/20260817220123_cart_checkout_lockdown.sql" >/dev/null
+  -f "$MIGRATIONS_DIR/20261026210716_20260817220123_cart_checkout_lockdown.sql" >/dev/null
 
 psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 <<'SQL'
 do $$

@@ -51,3 +51,19 @@ revoke execute on function public.attach_payment_preference(uuid, uuid, text)
   from public, anon, authenticated;
 grant execute on function public.attach_payment_preference(uuid, uuid, text)
   to service_role;
+
+-- Achados do advisor do projeto hospedado, seguros para aplicar junto do
+-- lockdown. `set_updated_at` é SECURITY INVOKER e só usa `now()`, mas o
+-- search_path fixo elimina resolução mutável desnecessária. O event
+-- trigger `rls_auto_enable` é provisionado pelo ambiente hospedado (não
+-- existe no Postgres isolado do CI); ele continua ativo internamente, mas
+-- nunca precisa ser RPC pública para anon/authenticated.
+alter function private.set_updated_at() set search_path = '';
+
+do $$
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke execute on function public.rls_auto_enable() from public, anon, authenticated';
+  end if;
+end;
+$$;
