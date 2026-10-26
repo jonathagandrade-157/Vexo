@@ -1,6 +1,6 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createOAuthState, verifyOAuthState } from "@/lib/security/oauth-state";
+import { createOAuthAttempt, createOAuthState, verifyOAuthAttempt, verifyOAuthState } from "@/lib/security/oauth-state";
 
 const SECRET = "a-test-oauth-state-secret-32bytes";
 
@@ -44,5 +44,27 @@ describe("createOAuthState / verifyOAuthState", () => {
     const a = createOAuthState("tenant-123", SECRET);
     const b = createOAuthState("tenant-123", SECRET);
     expect(a).not.toBe(b);
+  });
+});
+
+describe("OAuth attempt binding / PKCE", () => {
+  it("binds the state to a one-browser cookie and returns its PKCE verifier", () => {
+    const state = createOAuthState("tenant-123", SECRET);
+    const attempt = createOAuthAttempt(state, SECRET);
+    const verifier = verifyOAuthAttempt(state, attempt.cookieValue, SECRET);
+
+    expect(verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
+    expect(createHash("sha256").update(verifier!).digest("base64url")).toBe(attempt.codeChallenge);
+  });
+
+  it("rejects an absent, tampered or state-mismatched browser binding", () => {
+    const state = createOAuthState("tenant-123", SECRET);
+    const otherState = createOAuthState("tenant-123", SECRET);
+    const attempt = createOAuthAttempt(state, SECRET);
+
+    expect(verifyOAuthAttempt(state, undefined, SECRET)).toBeNull();
+    expect(verifyOAuthAttempt(otherState, attempt.cookieValue, SECRET)).toBeNull();
+    expect(verifyOAuthAttempt(state, `${attempt.cookieValue}x`, SECRET)).toBeNull();
+    expect(verifyOAuthAttempt(state, attempt.cookieValue, "a-completely-different-secret-x")).toBeNull();
   });
 });

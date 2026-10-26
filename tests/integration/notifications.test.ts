@@ -4,7 +4,7 @@
  * RLS/trigger testados diretamente via SQL (asActor/withSuperuser), e a
  * criação do pedido reaproveita EXATAMENTE o mesmo caminho já testado em
  * tests/integration/checkout.test.ts (`create_order_from_cart` via
- * `anon`) — nunca uma segunda forma de criar pedido só para este teste.
+ * `service_role`) — nunca uma segunda forma de criar pedido só para este teste.
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -53,12 +53,12 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Notificação de novo pedid
   async function createCartWithItem(tenantId: string, productId: string): Promise<string> {
     const cartId = randomUUID();
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) => c.query("insert into public.carts (id, tenant_id) values ($1, $2)", [cartId, tenantId]),
       { commit: true },
     );
     await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 1)", [
           cartId,
@@ -72,7 +72,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Notificação de novo pedid
 
   async function createOrder(tenantId: string, cartId: string): Promise<string> {
     const result = await asActor(
-      { role: "anon" },
+      { role: "service_role" },
       (c) =>
         c.query<{ create_order_from_cart: string }>("select create_order_from_cart($1, $2, $3, $4, $5, $6)", [
           tenantId,

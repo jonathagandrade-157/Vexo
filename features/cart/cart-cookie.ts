@@ -3,29 +3,30 @@ import "server-only";
 import { cookies } from "next/headers";
 
 import { getCartCookieName } from "./cart-cookie-name";
+import { parseCartCredentials, serializeCartCredentials, type CartCredentials } from "./cart-session";
 
 export { getCartCookieName };
 
 const CART_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 dias
 
-/** Só lê — nunca cria. Um `cart_id` de cookie nunca é, por si só, autoridade: toda mutação ainda revalida tenant/produto no servidor. */
-export async function getCartId(storeSlug: string): Promise<string | null> {
+/** Só lê — nunca cria. Credenciais inválidas/legadas são tratadas como ausência de carrinho. */
+export async function getCartCredentials(storeSlug: string): Promise<CartCredentials | null> {
   const store = await cookies();
-  return store.get(getCartCookieName(storeSlug))?.value ?? null;
+  return parseCartCredentials(store.get(getCartCookieName(storeSlug))?.value);
 }
 
 /**
- * `cart_id` é sempre gerado no servidor (nunca aceito do cliente) antes
- * de chamar isto — o cookie só guarda um id opaco, um token de posse
- * (como um token de sessão), não uma escolha do cliente.
+ * Id e segredo são sempre gerados no servidor. O segredo aleatório é a
+ * prova de posse; o UUID isolado nunca autoriza acesso.
  */
-export async function setCartId(storeSlug: string, cartId: string): Promise<void> {
+export async function setCartCredentials(storeSlug: string, credentials: CartCredentials): Promise<void> {
   const store = await cookies();
-  store.set(getCartCookieName(storeSlug), cartId, {
+  store.set(getCartCookieName(storeSlug), serializeCartCredentials(credentials), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    path: `/loja/${storeSlug}`,
+    // Também funciona nas rotas limpas de domínio personalizado.
+    path: "/",
     maxAge: CART_COOKIE_MAX_AGE_SECONDS,
   });
 }

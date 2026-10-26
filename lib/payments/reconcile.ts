@@ -68,6 +68,18 @@ export async function reconcileStalePendingPayments(): Promise<ReconcilePayments
       // pedido genuinamente em andamento. Próxima execução tenta de novo.
       if (!payment || payment.status === "PENDING") continue;
 
+      if (
+        payment.externalReference !== orderId ||
+        payment.currency !== "BRL" ||
+        !payment.providerAccountId ||
+        payment.providerAccountId !== credentials.providerAccountId
+      ) {
+        Sentry.captureException(new Error("JON-15: Mercado Pago payment identity validation failed"), {
+          extra: { tenantId, orderId },
+        });
+        continue;
+      }
+
       const { error: applyError } = await supabase.rpc("apply_payment_update", {
         p_tenant_id: tenantId,
         p_order_id: orderId,

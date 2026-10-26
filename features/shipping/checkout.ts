@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabasePublicClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import type { ShippingMethodType } from "@/lib/shipping/provider";
 
 /**
@@ -62,12 +62,10 @@ export async function verifyShippingPriceFresh(
 }
 
 /**
- * Aplica o frete escolhido a um pedido PENDING recém-criado (RPC anon,
- * migration 048) — chamado depois de `create_order_from_cart` (Etapa 10,
- * inalterada), antes de `initiatePaymentForOrder` (Etapa 11, inalterada),
- * mesmo encadeamento de passos que o pagamento já usa. Nunca confia em
- * `expectedPrice` como valor final — a função no banco sempre relê o
- * preço atual e só usa esse parâmetro para detectar divergência.
+ * Adaptador server-only da RPC de frete. Desde a Etapa 2A ela é
+ * service-role-only e, no checkout normal, é composta atomicamente por
+ * checkout_cart_secure. Mantida exportada para recuperação operacional
+ * e testes focados da regra anti-manipulação.
  */
 export async function applyShippingToOrder(
   tenantId: string,
@@ -75,7 +73,7 @@ export async function applyShippingToOrder(
   shippingMethodId: string,
   expectedPrice: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = createSupabasePublicClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { error } = await supabase.rpc("apply_shipping_to_order", {
     p_tenant_id: tenantId,
     p_order_id: orderId,

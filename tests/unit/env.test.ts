@@ -24,6 +24,7 @@ describe("lib/env", () => {
     for (const key of Object.keys(VALID_ENV)) {
       delete process.env[key];
     }
+    delete process.env.VERCEL_URL;
   });
 
   afterEach(() => {
@@ -55,6 +56,29 @@ describe("lib/env", () => {
     });
     const { getPublicEnv } = await import("@/lib/env");
     expect(() => getPublicEnv()).toThrow();
+  });
+
+  it("derives the site URL from the Vercel preview hostname when the explicit URL is absent", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      VERCEL_URL: "vexo-security-example.vercel.app",
+    });
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+
+    const { getPublicEnv } = await import("@/lib/env");
+
+    expect(getPublicEnv().NEXT_PUBLIC_SITE_URL).toBe(
+      "https://vexo-security-example.vercel.app",
+    );
+  });
+
+  it("keeps an explicit site URL authoritative over the Vercel preview hostname", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      VERCEL_URL: "vexo-security-example.vercel.app",
+    });
+
+    const { getPublicEnv } = await import("@/lib/env");
+
+    expect(getPublicEnv().NEXT_PUBLIC_SITE_URL).toBe(VALID_ENV.NEXT_PUBLIC_SITE_URL);
   });
 
   it("refuses to read public env vars when called from the browser (JON-30 — regression: process.env dinâmico nunca é inlinado no bundle do client)", async () => {
@@ -108,8 +132,15 @@ describe("lib/env", () => {
       MERCADO_PAGO_CLIENT_ID: VALID_ENV.MERCADO_PAGO_CLIENT_ID,
       MERCADO_PAGO_CLIENT_SECRET: VALID_ENV.MERCADO_PAGO_CLIENT_SECRET,
       MERCADO_PAGO_WEBHOOK_SECRET: VALID_ENV.MERCADO_PAGO_WEBHOOK_SECRET,
+      MERCADO_PAGO_TEST_MODE: false,
       OAUTH_STATE_SECRET: VALID_ENV.OAUTH_STATE_SECRET,
     });
+  });
+
+  it("enables Mercado Pago test-token mode only when explicitly configured", async () => {
+    Object.assign(process.env, VALID_ENV, { MERCADO_PAGO_TEST_MODE: "true" });
+    const { getMercadoPagoEnv } = await import("@/lib/env");
+    expect(getMercadoPagoEnv().MERCADO_PAGO_TEST_MODE).toBe(true);
   });
 
   it("getMercadoPagoEnv() throws a clear, secret-free error when Mercado Pago vars are missing", async () => {
