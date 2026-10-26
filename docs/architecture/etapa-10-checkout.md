@@ -58,10 +58,15 @@ migration quando os próximos estados forem aprovados (mesmo padrão de
 
 ## Regras de preço e criação do pedido
 
-`public.create_order_from_cart()` (SECURITY DEFINER, `anon`-only) é o
-único caminho de escrita — `anon` não tem nenhuma policy/grant direto em
-`orders`/`order_items`. Sequência, dentro de uma única transação (tudo
-ou nada, nenhuma escrita parcial):
+`public.checkout_cart_secure()` é o único caminho da aplicação para criar
+um pedido. A função é `SECURITY DEFINER`, mas só `service_role` tem
+`EXECUTE`; `PUBLIC`, `anon` e `authenticated` são revogados
+explicitamente. Antes de qualquer escrita, ela revalida no PostgreSQL
+`tenant_id + cart_id + owner_token_hash`. A função histórica
+`create_order_from_cart()` permanece como detalhe interno também
+restrito a `service_role`.
+
+Sequência, dentro de uma única transação (tudo ou nada):
 
 1. trava o carrinho (`for update` — ver "Anti-duplicidade" abaixo);
 2. confirma que o carrinho pertence ao tenant informado e que o tenant
@@ -84,23 +89,21 @@ Etapa 9).
 
 ## Anti-duplicidade / concorrência
 
-`select ... from carts where id = p_cart_id for update` é o primeiro
-passo da função — trava o carrinho para a duração inteira da transação.
-Uma segunda tentativa concorrente para o MESMO carrinho (double-click,
-refresh, retry, requisição duplicada) fica bloqueada até a primeira
-commitar (carrinho já vazio → erro amigável "carrinho vazio", nunca um
-pedido duplicado) ou abortar (lock liberado, nada mudou). Testado com
-`Promise.allSettled` correndo 2 chamadas reais simultâneas — só uma
-cria pedido, a outra recebe erro limpo.
+`checkout_cart_secure` trava a linha do carrinho com `for update`. Ao
+final, grava o pedido em `carts.checkout_order_id`; retries sequenciais
+ou concorrentes devolvem o mesmo `orderId` com `created=false`. A chave
+estável do gateway também impede criar outra preferência/cobrança para
+o mesmo pedido. Se preço, estoque ou frete falhar, a transação inteira é
+revertida, inclusive reserva e limpeza do carrinho.
 
 ## Segurança
 
 Revisão explícita contra os 18 itens do checklist do prompt (§24):
 
-- **Tenant hopping / manipulação de `cart_id`**: `create_order_from_cart`
-  confere que o `cart_id` recebido pertence de fato ao `tenant_id`
-  informado — um `cart_id` de outro tenant é rejeitado ("cart not
-  found"), testado explicitamente.
+- **Tenant hopping / manipulação de `cart_id`**: o navegador não envia
+  `cart_id` para o checkout. O BFF deriva as credenciais do cookie e a
+  RPC exige tenant, UUID e hash do segredo. Carrinho de outro tenant ou
+  token incorreto recebe a mesma falha de autorização.
 - **IDOR / manipulação de `order_id`**: `get_order_confirmation` só
   retorna dados quando `(tenant_id, order_id)` combinam de verdade —
   testado que um `order_id` real de outro tenant, ou um `order_id`
@@ -123,7 +126,7 @@ Revisão explícita contra os 18 itens do checklist do prompt (§24):
   valores é um parâmetro aceito pela função — estruturalmente
   impossível, não só validado.
 - **Replay attack / double submit / race condition / pedido duplicado**:
-  ver "Anti-duplicidade" acima.
+  lock de linha + `checkout_order_id` idempotente; ver acima.
 - **XSS/SQL injection**: toda escrita via parâmetro de função (nunca
   concatenação); renderização sempre via JSX (React escapa por padrão);
   `grep` dedicado confirmou zero `dangerouslySetInnerHTML`/`service_role`
@@ -133,11 +136,10 @@ Revisão explícita contra os 18 itens do checklist do prompt (§24):
   sem `product_id`, sem e-mail/telefone do cliente); o log de auditoria
   também guarda só `order_number`/`total`/`status`, nunca nome/e-mail/
   endereço (testado explicitamente).
-- **RLS**: `orders`/`order_items` sem NENHUMA policy para `anon` (só as
-  duas funções `security definer` tocam essas tabelas para o visitante);
-  staff só lê via `orders.view` (permissão que já existia desde a Etapa
-  2 — não criada agora), testado que staff de tenant B não vê pedido de
-  tenant A, e que um membro sem `orders.view` (ex.: SUPPORT) também não.
+- **RLS e grants**: `orders`/`order_items` continuam sem policy de escrita
+  para visitante. Além disso, tabelas de carrinho e RPCs privilegiadas
+  não são alcançáveis pelos papéis públicos. Staff só lê via
+  `orders.view`, preservando isolamento entre tenants.
 
 Nenhuma vulnerabilidade exigiu correção depois de escrita — a exceção em
 `log_audit` (ver acima) foi um ajuste necessário identificado e resolvido

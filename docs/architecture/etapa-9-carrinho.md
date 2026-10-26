@@ -46,20 +46,16 @@ uma migration incremental trivial, não um redesenho.
 
 ## Estratégia de persistência
 
-Cookie **httpOnly, um por loja** (`vexo_cart_{slug}`), guardando só o
-`cart_id` (UUID gerado no servidor, nunca escolhido pelo cliente,
-122 bits de entropia — não adivinhável). Um cookie por slug, não um
-cookie único compartilhado entre lojas, é o que garante "carrinhos de
-lojas diferentes não se misturam" já na camada de cookie, além do banco.
-`maxAge` de 30 dias — sobrevive a refresh, fechar/reabrir o navegador,
-navegação dentro da mesma loja. Funciona para visitante anônimo, sem
-exigir login.
+Cookie **HttpOnly, um por loja** (`vexo_cart_{slug}`), no formato
+versionado `v1.<cart_id>.<owner_token>`. O servidor gera tanto o UUID
+quanto um segredo aleatório de 256 bits; o banco armazena somente
+`SHA-256(owner_token)` em `carts.owner_token_hash`. O UUID identifica o
+carrinho, mas nunca é aceito isoladamente como prova de posse.
 
-O cookie é um **token de posse** (como um token de sessão), não uma
-tabela de "dono" — o modelo padrão de qualquer carrinho de e-commerce
-sem conta. Preparado para evoluir: quando clientes identificados
-existirem, um cart pode ganhar `customer_id` na hora do login (migration
-incremental), sem redesenhar nada do que já existe.
+O cookie usa `Secure` em produção, `SameSite=Lax`, `Path=/` e `maxAge`
+de 30 dias. Um cookie por slug evita mistura entre lojas já na camada de
+sessão. Cookies legados contendo apenas UUID falham fechados e originam
+um carrinho novo; nenhum dado é aberto para preservar compatibilidade.
 
 ## Regras de quantidade
 
@@ -95,57 +91,53 @@ mesmo tenant do carrinho, ou cujo `tenant_id` não bata com o do carrinho
 pai — testado explicitamente (produto de outro tenant, produto
 inexistente, produto inativo, `tenant_id` inconsistente).
 
-## Migrations (3, incrementais)
+## Migrations e rollout
 
-`carts`+`cart_items` (tabelas, triggers `set_updated_at`/
-`prevent_tenant_id_change` reaproveitados + `prevent_cross_tenant_cart_item`
-novo) → RLS `anon`-only + `GRANT` explícito de tabela (RLS restringe
-linhas, não concede privilégio — o `GRANT` não pode ser presumido) →
-`public.add_to_cart()`, upsert atômico com incremento (ver "Concorrência"
-abaixo).
+As migrations históricas criam `carts`/`cart_items`, invariantes de
+tenant e `public.add_to_cart()`. O hardening é aditivo e usa
+expand/deploy/contract:
 
-## Segurança — modelo de RLS diferente do resto do projeto, documentado
+1. `20260817220122_cart_ownership_expand.sql` adiciona
+   `owner_token_hash`, `checkout_order_id` e a RPC privilegiada de
+   checkout, sem quebrar a aplicação anterior.
+2. A aplicação passa a resolver posse no BFF com `service_role` e o
+   segredo do cookie.
+3. `20260817220123_cart_checkout_lockdown.sql` remove policies, grants
+   e `EXECUTE` de `PUBLIC`, `anon` e `authenticated` sobre carrinhos e
+   RPCs privilegiadas.
 
-Toda outra tabela deste projeto usa RLS por *membership* (`tem_permission`,
-`is_tenant_member`). `carts`/`cart_items` não podem usar esse modelo: não
-existe identidade de sessão para um visitante anônimo checar "esse é o
-SEU carrinho" contra. A RLS aqui garante só **invariantes de dado** (o
-tenant referenciado é um tenant publicado de verdade — não suspenso/
-excluído), não posse por linha. A posse real é o cookie httpOnly (não
-legível por JS/XSS) + o `cart_id` ser um UUID não adivinhável — o mesmo
-modelo de qualquer token de sessão/carrinho anônimo de e-commerce. Essa
-diferença é intencional e documentada aqui explicitamente, para não ser
-lida como um RLS "fraco" por engano — o isolamento que RLS *não* cobre
-aqui (quem pode ler qual carrinho) não é o mesmo isolamento que ela
-cobre em todo o resto do projeto (quem pode ler qual dado administrativo
-de um tenant).
+O procedimento operacional e a recuperação estão em
+`docs/runbooks/cart-security-rollout.md`.
 
-Restrita a `anon` — nunca `authenticated` (lição da Etapa 6: alargar
-alargaria para qualquer uso autenticado da tabela, não só um cenário
-futuro de cliente logado; testado explicitamente que `authenticated` não
-tem `EXECUTE` na função `add_to_cart`).
+## Segurança — autorização de carrinho anônimo
 
-Revisão contra os 14 itens do checklist do prompt (§13): tenant hopping,
-IDOR, manipulação de preço/quantidade, product_id de outro tenant,
-produto inativo/inexistente, acesso sem tenant, alteração de carrinho de
-outro visitante, mass assignment, XSS, injection, race condition, double
-submit — todos cobertos pelos mecanismos acima e testados. Nenhuma
-vulnerabilidade exigiu correção depois de escrita; `grep` dedicado
-confirmou zero uso de `service_role`/`dangerouslySetInnerHTML` em todo o
-código novo desta etapa.
+`carts` e `cart_items` não são expostos diretamente no Data API. Os
+papéis `PUBLIC`, `anon` e `authenticated` não têm privilégio de tabela
+nem `EXECUTE` em `add_to_cart` ou nas RPCs de checkout. Toda operação
+passa por uma Server Action tratada como entrada não confiável.
+
+O BFF resolve o tenant pelo slug, lê `cart_id` e segredo apenas do
+cookie HttpOnly, calcula o hash no servidor e exige a combinação
+`tenant_id + cart_id + owner_token_hash`. Só então usa `service_role`,
+sempre com filtros explícitos. O PostgreSQL repete a verificação dentro
+de `checkout_cart_secure`; conhecer ou enumerar um UUID não autoriza
+leitura, alteração, remoção nem criação de pedido.
+
+Testes negativos cobrem listagem/CRUD/RPC com anon e authenticated,
+token ausente, token errado, carrinho de outro tenant e tentativa de
+checkout direto. Testes positivos preservam o checkout convidado sem
+conta.
 
 ## Concorrência
 
-`public.add_to_cart()` (RPC, `security invoker` — roda como `anon`,
-sujeita às mesmas RLS/trigger de uma escrita direta, sem bypass) faz
+`public.add_to_cart()` continua fazendo
 `insert ... on conflict (cart_id, product_id) do update set quantity =
 least(quantity + excluded.quantity, 99)` numa única instrução atômica —
 duas chamadas quase simultâneas para o mesmo produto nunca criam duas
-linhas nem perdem um incremento (testado com `Promise.allSettled`
-correndo 2 chamadas concorrentes de verdade). Botão "Adicionar ao
-carrinho" desabilitado durante o envio (client-side) como primeira
-camada. Alterar/remover quantidade usa `useTransition` com o botão
-desabilitado durante a operação.
+linhas nem perdem um incremento. A diferença é a fronteira: a função só
+pode ser chamada por `service_role`, depois da autorização de posse no
+BFF. Botão e controles continuam desabilitados durante a operação, mas
+isso é UX, não controle de segurança.
 
 **Limitação aceita, documentada**: criar um carrinho novo (quando ainda
 não há cookie) não é atômico — duas requisições quase simultâneas sem
