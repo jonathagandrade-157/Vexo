@@ -55,6 +55,10 @@ const database = new pg.Client({ connectionString: databaseUrl });
 await database.connect();
 try {
   await database.query("begin");
+  // Match withSuperuser() in the integration fixtures: audit triggers
+  // require an explicit actor even on the direct setup connection.
+  // The transaction ends before any real browser request is executed.
+  await database.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: "service_role" })]);
   for (const tenantSlug of [slug, otherSlug]) {
     const tenant = await database.query(
       `insert into public.tenants (name, slug, created_by, status, onboarding_completed_at, checkout_mode, whatsapp_phone)
