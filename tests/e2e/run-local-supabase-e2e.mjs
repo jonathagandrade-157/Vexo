@@ -105,6 +105,7 @@ Object.assign(env, {
   NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX: "vexo.local",
   TRIAL_HASH_SECRET: "disposable-browser-test-only-hash-secret",
   E2E_ISOLATED_SUPABASE: "1",
+  E2E_BROWSER_CHANNEL: process.env.E2E_BROWSER_CHANNEL === "chrome" ? "chrome" : "",
   E2E_STOREFRONT_SLUG: slug,
   E2E_OTHER_STOREFRONT_SLUG: otherSlug,
   E2E_OWNER_EMAIL: email,

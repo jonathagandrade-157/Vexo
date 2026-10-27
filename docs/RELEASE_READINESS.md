@@ -84,6 +84,10 @@ correto; histórico de CI não aprova alterações locais posteriores.
   consulta do carrinho.
 - O diagnóstico temporário que escrevia carrinho em produção foi removido;
   nenhum teste permanente depende de mutação do ambiente publicado.
+- Runner `test:e2e:supabase` preparado com build de produção e stack
+  loopback descartável. Credenciais de integrações externas são excluídas;
+  `.env` de produção/local impede sua execução. Os 24 cenários foram
+  descobertos, mas execução efetiva ainda está pendente no CI.
 
 ## Evidências válidas
 
@@ -167,8 +171,12 @@ correto; histórico de CI não aprova alterações locais posteriores.
 - [ ] Smoke de homologação.
 - [ ] Backup e restore comprovados.
 - [ ] Monitoramento e rollback revisados.
-- [x] PR #3 revisável com CI verde no commit `457e906`; novas alterações
-  exigem uma nova execução antes de manter este gate aprovado.
+- [ ] CI da revisão atual da PR #3: baseline verde no commit `457e906`;
+  execução ampliada do commit `4c1363b` retida na instalação do navegador.
+  Jobs de audit/lint/typecheck/integrações/unitários/build e HTTP passaram.
+  O CI passa a usar o canal Chrome suportado pelo Playwright, já instalado
+  no runner, com versão registrada. Nenhum cenário foi desabilitado para
+  contornar a instalação; a execução ampliada continua pendente.
 - [ ] Aprovação explícita para deployment de produção.
 - [ ] Smoke pós-deploy e logs limpos.
 
@@ -181,6 +189,11 @@ correto; histórico de CI não aprova alterações locais posteriores.
 | Mercado Pago sandbox | Proprietário | Fornecer/configurar app, webhook e usuários de teste no ambiente seguro. |
 | Asaas sandbox | Proprietário | Fornecer/configurar API key e token de webhook no ambiente seguro. |
 | Produção | Proprietário | Dar GO específico somente após os gates anteriores. |
+
+Procedimentos preparados: [rotação de chaves](runbooks/supabase-key-rotation.md)
+e [backup/recuperação](runbooks/backup-recovery.md). Nenhuma execução externa
+dessas operações foi realizada. Storage e criptografia do Vault fazem parte
+do aceite do restore, além de dados, Auth, RLS e migrations.
 
 ## Próxima tarefa executável
 
