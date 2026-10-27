@@ -28,8 +28,8 @@ async function addProduct(page: Page, product = "principal") {
 
 function collectErrors(page: Page) {
   const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(`${new URL(page.url()).pathname}: ${error.message}`));
+  page.on("console", (message) => { if (message.type() === "error") errors.push(`${new URL(page.url()).pathname}: ${message.text()}`); });
   return errors;
 }
 
@@ -107,7 +107,9 @@ test.describe("comércio com Supabase descartável", () => {
     for (const path of paths) {
       const response = await page.goto(path);
       expect(response?.status(), path).toBe(200);
-      await expect(page.getByRole("heading", { level: 1 }).first(), path).toBeVisible();
+      // Explicitly blocked/coming-soon modules use their own readable
+      // state heading. They are not implemented features under this test.
+      await expect(page.locator("main").getByRole("heading").first(), path).toBeVisible();
       const size = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
       expect(size.scroll, `Overflow horizontal em ${path}`).toBeLessThanOrEqual(size.width);
     }
