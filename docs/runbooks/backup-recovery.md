@@ -5,6 +5,10 @@ Estado em 2026-10-27: nenhum backup recuperável/restore comprovado;
 infraestrutura, contratação ou exportação de dados autorizada neste roteiro.
 Nenhuma nova migration de produção deve avançar antes deste gate.
 
+Decisão do proprietário em 2026-10-27: backup lógico externo; destino
+protegido será indicado. Esta escolha não autoriza uma exportação para
+destino indefinido. A cópia e o restore ainda não foram executados.
+
 ## Decisão necessária do proprietário
 
 Escolher o mecanismo e aprovar destino, acesso, retenção, custo e responsável:

@@ -148,6 +148,11 @@ correto; histórico de CI não aprova alterações locais posteriores.
   um ícone decorativo fazia parte do nome acessível do botão. O ícone agora
   é `aria-hidden`; nomes/variantes do carrinho mobile também quebram linha
   sem corte. A nova rodada deve concluir login e leitura do pedido no painel.
+- Workflow `40563637511` verde no commit `3f779a5`: 24/24 E2E com build de
+  produção e Supabase descartável, desktop/Pixel 7/360 px, incluindo
+  login e leitura do pedido no painel. 16/16 HTTP, 738 integrações e
+  1.327 unitários passaram, assim como audit, lint, typecheck, rollout e
+  build. Ampliação para histórico/status e 17 páginas do painel em curso.
 - Smoke read-only do preview protegido da PR #3 em desktop 1440 px e
   Pixel 7 (412 px): home, os quatro produtos, carrinho vazio e checkout
   vazio retornaram HTTP 200; nenhum erro JavaScript/hidratação ou HTTP
@@ -218,7 +223,7 @@ correto; histórico de CI não aprova alterações locais posteriores.
 
 | Bloqueio | Responsável | Ação necessária |
 | --- | --- | --- |
-| Backup/PITR indisponível | Proprietário do projeto | Contratar recurso ou aprovar/configurar backup lógico protegido e destino separado. |
+| Backup recuperável indisponível | Proprietário do projeto | Opção escolhida: backup lógico externo. Informar o destino protegido para verificar controles e preparar a exportação aprovada. |
 | Rotação real de credenciais | Proprietário + operação | Autorizar a troca depois do smoke com as chaves modernas; nunca copiar valores para relatório. |
 | Mercado Pago sandbox | Proprietário | Fornecer/configurar app, webhook e usuários de teste no ambiente seguro. |
 | Asaas sandbox | Proprietário | Fornecer/configurar API key e token de webhook no ambiente seguro. |

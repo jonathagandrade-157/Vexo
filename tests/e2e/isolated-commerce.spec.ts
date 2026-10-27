@@ -89,6 +89,31 @@ test.describe("comércio com Supabase descartável", () => {
     await expect(page.getByText("Produto E2E principal", { exact: true })).toBeVisible();
   });
 
+  test("abre as páginas do lojista sem falhas de console, HTTP ou overflow", async ({ page }) => {
+    test.setTimeout(180_000);
+    const errors = collectErrors(page);
+    await page.goto("/login");
+    await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_OWNER_EMAIL!);
+    await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_OWNER_PASSWORD!);
+    await page.getByRole("button", { name: "Entrar no VEXO", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel$/);
+
+    const paths = [
+      "/painel", "/painel/pedidos", "/painel/produtos", "/painel/categorias", "/painel/clientes",
+      "/painel/aparencia", "/painel/equipe", "/painel/historico", "/painel/configuracoes",
+      "/painel/configuracoes/pedidos", "/painel/configuracoes/pagamentos", "/painel/configuracoes/entrega",
+      "/painel/configuracoes/dominio", "/painel/assinatura", "/painel/suporte", "/painel/marketing", "/painel/vexo-ai",
+    ];
+    for (const path of paths) {
+      const response = await page.goto(path);
+      expect(response?.status(), path).toBe(200);
+      await expect(page.getByRole("heading", { level: 1 }).first(), path).toBeVisible();
+      const size = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
+      expect(size.scroll, `Overflow horizontal em ${path}`).toBeLessThanOrEqual(size.width);
+    }
+    expect(errors).toEqual([]);
+  });
+
   test("cria pedido externo, baixa estoque uma vez e exibe o pedido ao lojista", async ({ page, browser }) => {
     const errors = collectErrors(page);
     await addProduct(page);
@@ -149,6 +174,32 @@ test.describe("comércio com Supabase descartável", () => {
       await expect(panel).toHaveURL(/\/painel$/);
       await panel.goto(`http://127.0.0.1:3100/painel/pedidos/${orderId}`);
       await expect(panel.getByText("Cliente E2E Sintético", { exact: true })).toBeVisible();
+
+      // This is a disposable cash order, not a gateway charge or a real
+      // receipt. Exercise the merchant's real status/audit workflow.
+      await panel.getByRole("button", { name: "Confirmar pagamento", exact: true }).click();
+      const dialog = panel.locator("dialog[open]");
+      await dialog.getByLabel("Motivo/observação", { exact: true }).fill("Validação sintética de CI; nenhum recebimento real.");
+      await dialog.getByRole("button", { name: "Confirmar pagamento", exact: true }).click();
+      await expect(panel.getByText("Pagamento confirmado.", { exact: true })).toBeVisible();
+      await panel.getByLabel("Novo status", { exact: true }).selectOption("PREPARING");
+      await panel.getByLabel("Nota interna (opcional)", { exact: true }).fill("Pedido sintético em preparação.");
+      await panel.getByRole("button", { name: "Avançar status", exact: true }).click();
+      await expect(panel.getByText("Em preparação", { exact: true }).first()).toBeVisible();
+      await panel.reload();
+      await expect(panel.getByText("Em preparação", { exact: true }).first()).toBeVisible();
+
+      const finalOrder = await query(
+        `select o.status, o.payment_status, i.stock_quantity,
+                (select count(*)::int from public.audit_logs where resource_id = o.id::text and action = 'ORDER_PAYMENT_CONFIRMED') as confirmations,
+                (select count(*)::int from public.audit_logs where resource_id = o.id::text and action = 'ORDER_STATUS_CHANGED') as transitions
+         from public.orders o join public.order_items oi on oi.order_id = o.id
+         join public.product_inventory i on i.product_id = oi.product_id where o.id = $1`,
+        [orderId],
+      );
+      expect(finalOrder.rows[0]).toMatchObject({ status: "PREPARING", payment_status: "APPROVED", confirmations: 1 });
+      expect(finalOrder.rows[0].transitions).toBeGreaterThanOrEqual(1);
+      expect(finalOrder.rows[0].stock_quantity).toBe(stockBefore.rows[0].stock_quantity - 1);
       expect(panelErrors).toEqual([]);
     } finally {
       await merchant.close();
