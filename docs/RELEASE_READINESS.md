@@ -128,6 +128,20 @@ correto; histórico de CI não aprova alterações locais posteriores.
 - Consulta somente leitura em produção confirmou
   `has_table_privilege('service_role', 'public.products', 'SELECT')=false`,
   com `cart_items=true` e `product_variants=true`. Nenhum grant foi aplicado.
+- Workflow `40533027492`: teste HTTP do join passou depois da migration
+  no Supabase descartável (16/16 HTTP). No navegador, 17/24 passaram;
+  persistência desktop e isolamento foram comprovados. As sete falhas
+  restantes mostraram nomes de produtos comprimidos a largura zero no
+  carrinho mobile e uma expectativa incorreta do teste para formulário
+  vazio (a validação nativa bloqueia antes da Server Action). Correções em
+  nova validação. O stub PostgreSQL concede privilégios mais amplos que o
+  Supabase real; o teste de rollout agora reproduz explicitamente o grant
+  ausente antes de aplicar o hotfix no banco local.
+- Nova tentativa de smoke read-only do painel de produção foi recusada
+  pelo controle de permissões do navegador; permanece pendente, sem uso
+  de outra superfície para contornar a recusa.
+- Validação mobile nesta missão usa viewports emulados. Verificação em
+  aparelho físico permanece pendente, sem alegação de teste de hardware.
 - Smoke read-only do preview protegido da PR #3 em desktop 1440 px e
   Pixel 7 (412 px): home, os quatro produtos, carrinho vazio e checkout
   vazio retornaram HTTP 200; nenhum erro JavaScript/hidratação ou HTTP

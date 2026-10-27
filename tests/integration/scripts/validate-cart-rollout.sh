@@ -161,6 +161,10 @@ SQL
 
 echo "Validating the cart product read permission hotfix..."
 psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 <<'SQL'
+-- The generic PostgreSQL stub grants service_role more than the actual
+-- hosted project. Reproduce the read-only privilege check observed in
+-- production before validating the forward migration in this local DB.
+revoke select on table public.products from service_role;
 do $$
 begin
   if has_table_privilege('service_role', 'public.products', 'SELECT') then

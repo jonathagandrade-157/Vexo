@@ -10,7 +10,7 @@ import { getProductImagePublicUrl } from "@/features/products/image-storage";
 import { effectivePrice } from "@/features/cart/pricing";
 import { CART_ITEM_MAX_QUANTITY } from "@/features/cart/schema";
 
-/** Uma linha por produto — mesma estrutura em desktop e mobile (prompt Etapa 9 §12: "não criar uma segunda versão visual independente"), só o espaçamento se adapta via classes responsivas. */
+/** Mobile uses two grid rows so the image, quantity and subtotal cannot shrink the product name to zero width. Desktop keeps the same single row. */
 export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug: string }) {
   const [isPending, startTransition] = useTransition();
 
@@ -27,8 +27,8 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
   }
 
   return (
-    <div className="flex items-center gap-4 border-b border-outline-variant/20 py-4 last:border-b-0">
-      <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low">
+    <div className="grid grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-outline-variant/20 py-4 last:border-b-0 md:flex md:gap-4">
+      <div className="relative row-span-2 h-16 w-16 flex-shrink-0 self-start overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-low md:self-auto">
         {item.product.main_image ? (
           <Image alt={item.product.name} className="object-cover" fill sizes="64px" src={getProductImagePublicUrl(item.product.main_image)} />
         ) : (
@@ -38,7 +38,7 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="col-start-2 row-start-1 min-w-0 flex-1">
         <p className="truncate font-label text-label-md text-on-surface">{item.product.name}</p>
         {/* D20.6 Fase 3.5 — rótulo da variante ("Preto / M"), mesmo padrão já usado em order-summary.tsx (D20.5) para checkout/confirmação. */}
         {item.variant?.label ? <p className="truncate font-body text-body-sm text-on-surface-variant">{item.variant.label}</p> : null}
@@ -50,7 +50,7 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
       </div>
 
       {item.available ? (
-        <div className="flex items-center rounded-lg border border-outline-variant/50">
+        <div className="col-start-2 row-start-2 flex items-center justify-self-start rounded-lg border border-outline-variant/50">
           <button
             aria-label="Diminuir quantidade"
             className="px-2 py-1.5 text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-40"
@@ -73,13 +73,13 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
         </div>
       ) : null}
 
-      <p className="w-20 text-right font-label text-label-md text-on-surface">
+      <p className="col-start-3 row-start-2 w-20 text-right font-label text-label-md text-on-surface">
         {item.available ? formatPrice(effectivePrice(item.product, item.variant) * item.quantity) : "—"}
       </p>
 
       <button
         aria-label="Remover"
-        className="rounded p-1.5 text-on-surface-variant transition-colors hover:bg-error-container/20 hover:text-error disabled:opacity-40"
+        className="col-start-3 row-start-1 justify-self-end rounded p-1.5 text-on-surface-variant transition-colors hover:bg-error-container/20 hover:text-error disabled:opacity-40"
         disabled={isPending}
         onClick={remove}
         type="button"

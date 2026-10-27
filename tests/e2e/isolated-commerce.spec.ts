@@ -100,7 +100,10 @@ test.describe("comércio com Supabase descartável", () => {
     await page.route("**/api/address/cep?*", (route) => route.fulfill({ json: { status: "not_found" } }));
     await page.goto(`/loja/${slug}/checkout`);
     await page.getByRole("button", { name: "Continuar no WhatsApp", exact: true }).click();
-    await expect(page.getByText("Verifique os campos destacados.")).toBeVisible();
+    const customerName = page.getByLabel("Nome completo", { exact: true });
+    await expect(customerName).toBeFocused();
+    expect(await customerName.evaluate((input: HTMLInputElement) => input.validity.valueMissing)).toBe(true);
+    expect((await query("select checkout_order_id from public.carts where id = $1", [cartId])).rows[0].checkout_order_id).toBeNull();
     await page.getByLabel("Nome completo", { exact: true }).fill("Cliente E2E Sintético");
     await page.getByLabel("E-mail", { exact: true }).fill(customerEmail);
     await page.getByLabel("Telefone / WhatsApp", { exact: true }).fill("11999999999");
