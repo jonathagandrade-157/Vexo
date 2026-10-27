@@ -6,6 +6,7 @@ import { cache } from "react";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { getOwnedActiveCart } from "./ownership";
+import { CART_ITEMS_SELECT } from "./cart-query";
 import { cartSubtotal } from "./pricing";
 
 export interface CartItemProduct {
@@ -187,9 +188,7 @@ export const getCart = cache(async (storeSlug: string): Promise<CartView> => {
   const supabase = createSupabaseServiceRoleClient();
   const { data, error } = await supabase
     .from("cart_items")
-    .select(
-      "id, quantity, variant_id, product:products(id, name, slug, price, promotional_price, main_image, status), variant:product_variants(id, sku, price, promotional_price, is_active)",
-    )
+    .select(CART_ITEMS_SELECT)
     .eq("cart_id", cart.id)
     .eq("tenant_id", resolution.tenant.id)
     .order("created_at", { ascending: true });

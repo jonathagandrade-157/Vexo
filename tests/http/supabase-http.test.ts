@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { pool, withSuperuser } from "../integration/helpers/db";
 import { giveUnlimitedPlan } from "../integration/helpers/fixtures";
+import { CART_ITEMS_SELECT } from "../../features/cart/cart-query";
 
 const runId = randomUUID().slice(0, 8);
 const apiUrl = process.env.SUPABASE_HTTP_URL ?? "";
@@ -299,6 +300,17 @@ describe.skipIf(!process.env.RUN_SUPABASE_HTTP_TESTS).sequential("Etapa 2A.2 —
     const privileged = await http(path, { actor: "service_role" });
     expect(privileged.status).toBe(200);
     expect(privileged.body).toEqual([{ id: cartId, tenant_id: tenantA }]);
+  });
+
+  it("reads the real cart projection including product and optional variant through the BFF role", async () => {
+    const { productId } = await createProduct(tenantA, 10);
+    const cartId = await createCart(tenantA, productId, "a".repeat(64), 2);
+    const query = new URLSearchParams({ cart_id: `eq.${cartId}`, tenant_id: `eq.${tenantA}`, select: CART_ITEMS_SELECT });
+    const result = await http(`/rest/v1/cart_items?${query}`, { actor: "service_role" });
+    expect(result.status, JSON.stringify(result.body)).toBe(200);
+    expect(result.body).toEqual([
+      expect.objectContaining({ quantity: 2, product: expect.objectContaining({ id: productId, price: 100 }), variant: null }),
+    ]);
   });
 
   it.each(["anon", "authenticated"] as const)("blocks every privileged checkout RPC for %s over HTTP", async (actor) => {
