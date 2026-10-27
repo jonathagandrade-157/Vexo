@@ -42,6 +42,10 @@ test.describe("comércio com Supabase descartável", () => {
     await addProduct(page, "adicional");
     await page.goto(`/loja/${slug}/carrinho`);
     await expect(page.getByText("Produto E2E principal", { exact: true })).toBeVisible();
+    const nameWidth = await page.getByText("Produto E2E principal", { exact: true }).evaluate((element) => ({
+      content: element.scrollWidth, available: element.clientWidth,
+    }));
+    expect(nameWidth.content).toBeLessThanOrEqual(nameWidth.available);
     await expect(page.getByText("Produto E2E adicional", { exact: true })).toBeVisible();
     await expect(page.getByText(/R\$\s*135,00/)).toBeVisible();
 
@@ -137,6 +141,7 @@ test.describe("comércio com Supabase descartável", () => {
     const merchant = await browser.newContext();
     try {
       const panel = await merchant.newPage();
+      const panelErrors = collectErrors(panel);
       await panel.goto("http://127.0.0.1:3100/login");
       await panel.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_OWNER_EMAIL!);
       await panel.getByLabel("Senha", { exact: true }).fill(process.env.E2E_OWNER_PASSWORD!);
@@ -144,6 +149,7 @@ test.describe("comércio com Supabase descartável", () => {
       await expect(panel).toHaveURL(/\/painel$/);
       await panel.goto(`http://127.0.0.1:3100/painel/pedidos/${orderId}`);
       await expect(panel.getByText("Cliente E2E Sintético", { exact: true })).toBeVisible();
+      expect(panelErrors).toEqual([]);
     } finally {
       await merchant.close();
     }

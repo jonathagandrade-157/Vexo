@@ -142,6 +142,12 @@ correto; histórico de CI não aprova alterações locais posteriores.
   de outra superfície para contornar a recusa.
 - Validação mobile nesta missão usa viewports emulados. Verificação em
   aparelho físico permanece pendente, sem alegação de teste de hardware.
+- Workflow `40538834877`: job principal verde e 21/24 E2E isolados passaram.
+  Criação de pedido, confirmação/reload e baixa única de estoque passaram
+  nas três larguras; a consulta no painel parou no seletor de login porque
+  um ícone decorativo fazia parte do nome acessível do botão. O ícone agora
+  é `aria-hidden`; nomes/variantes do carrinho mobile também quebram linha
+  sem corte. A nova rodada deve concluir login e leitura do pedido no painel.
 - Smoke read-only do preview protegido da PR #3 em desktop 1440 px e
   Pixel 7 (412 px): home, os quatro produtos, carrinho vazio e checkout
   vazio retornaram HTTP 200; nenhum erro JavaScript/hidratação ou HTTP

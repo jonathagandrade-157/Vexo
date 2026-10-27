@@ -39,9 +39,9 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
       </div>
 
       <div className="col-start-2 row-start-1 min-w-0 flex-1">
-        <p className="truncate font-label text-label-md text-on-surface">{item.product.name}</p>
+        <p className="break-words font-label text-label-md text-on-surface md:truncate">{item.product.name}</p>
         {/* D20.6 Fase 3.5 — rótulo da variante ("Preto / M"), mesmo padrão já usado em order-summary.tsx (D20.5) para checkout/confirmação. */}
-        {item.variant?.label ? <p className="truncate font-body text-body-sm text-on-surface-variant">{item.variant.label}</p> : null}
+        {item.variant?.label ? <p className="break-words font-body text-body-sm text-on-surface-variant md:truncate">{item.variant.label}</p> : null}
         {item.available ? (
           <p className="font-body text-body-sm text-on-surface-variant">{formatPrice(effectivePrice(item.product, item.variant))}</p>
         ) : (

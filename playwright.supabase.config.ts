@@ -16,7 +16,7 @@ export default defineConfig({
     { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
     { name: "mobile-360", use: { ...devices["Pixel 7"], viewport: { width: 360, height: 800 } } },
   ],
-  use: { ...baseConfig.use, baseURL: "http://127.0.0.1:3100" },
+  use: { ...baseConfig.use, baseURL: "http://127.0.0.1:3100", actionTimeout: 15_000, navigationTimeout: 30_000 },
   webServer: {
     command: "npm run start -- --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
