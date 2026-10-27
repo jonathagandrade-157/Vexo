@@ -108,6 +108,15 @@ correto; histórico de CI não aprova alterações locais posteriores.
   - `e2e`: 6 testes públicos passaram e 4 storefronts foram pulados porque
     o job usa Supabase placeholder. Os quatro pulados continuam pendentes
     em homologação; não são contabilizados como aprovados.
+- O commit `457e9066533991dcca7210befc62a560bee38854` também passou no
+  workflow completo `40442431230`.
+- Smoke read-only do preview protegido da PR #3 em desktop 1440 px e
+  Pixel 7 (412 px): home, os quatro produtos, carrinho vazio e checkout
+  vazio retornaram HTTP 200; nenhum erro JavaScript/hidratação ou HTTP
+  4xx/5xx da aplicação, overflow horizontal na home ou link `/loja/TESTE`.
+  A navegação não criou cookie de carrinho. A toolbar `vercel.live` gerou
+  14 avisos CSP report-only no Pixel 7; não é erro da aplicação nem prova
+  de CSP enforced. Script e token temporários removidos depois do teste.
 - Inventário read-only da Vercel em 2026-10-27, sem leitura de valores:
   - existem as variáveis legadas `NEXT_PUBLIC_SUPABASE_ANON_KEY` e
     `SUPABASE_SERVICE_ROLE_KEY`; as modernas ainda não existem;
@@ -158,7 +167,8 @@ correto; histórico de CI não aprova alterações locais posteriores.
 - [ ] Smoke de homologação.
 - [ ] Backup e restore comprovados.
 - [ ] Monitoramento e rollback revisados.
-- [ ] PR revisável e CI verde.
+- [x] PR #3 revisável com CI verde no commit `457e906`; novas alterações
+  exigem uma nova execução antes de manter este gate aprovado.
 - [ ] Aprovação explícita para deployment de produção.
 - [ ] Smoke pós-deploy e logs limpos.
 
@@ -174,10 +184,12 @@ correto; histórico de CI não aprova alterações locais posteriores.
 
 ## Próxima tarefa executável
 
-1. Ampliar as regressões permanentes do cliente administrativo e do carrinho.
-2. Executar integração segura do carrinho em ambiente controlado.
-3. Executar typecheck, lint, build, auditoria e suíte aplicável.
-4. Criar commit e PR; não publicar em produção sem novo GO explícito.
+1. Executar os testes de navegador contra Supabase descartável no CI,
+   com build de produção, desktop, Pixel 7 e 360 px: carrinho persistente,
+   múltiplos itens, quantidade, remoção, posse/tenant, pedido externo,
+   baixa de estoque e leitura no painel do lojista.
+2. Revisar falhas reais e corrigir o fluxo impactado até a suíte passar.
+3. Completar integrações sandbox e gates externos antes do GO comercial.
 
 ## Veredito
 

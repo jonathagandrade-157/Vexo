@@ -143,6 +143,12 @@ jobs:
       - name: Real HTTP Auth, PostgREST and checkout tests
         run: npm run test:http:supabase
 
+      - name: Install Chromium for isolated commerce flow
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser to database commerce tests (desktop, Pixel 7, 360 px)
+        run: npm run test:e2e:supabase
+
       - name: Stop isolated Supabase stack
         if: always()
         run: supabase stop --no-backup
