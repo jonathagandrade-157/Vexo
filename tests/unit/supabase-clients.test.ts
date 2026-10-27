@@ -19,11 +19,14 @@ describe("lib/supabase clients", () => {
   beforeEach(() => {
     vi.resetModules();
     Object.assign(process.env, VALID_ENV);
+    delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    delete process.env.SUPABASE_SECRET_KEY;
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
     vi.doUnmock("next/headers");
+    vi.unstubAllGlobals();
   });
 
   it("createSupabaseBrowserClient builds a client from public env only", async () => {
@@ -42,6 +45,36 @@ describe("lib/supabase clients", () => {
     const client = createSupabaseServiceRoleClient();
     expect(client).toBeDefined();
     expect(typeof client.from).toBe("function");
+  });
+
+  it("builds both clients with modern Supabase keys only", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_modern";
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_modern";
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
+    const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
+
+    expect(typeof createSupabaseBrowserClient().from).toBe("function");
+    expect(typeof createSupabaseServiceRoleClient().from).toBe("function");
+  });
+
+  it("sends the modern server secret as the API key from a server-only base client", async () => {
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_modern";
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response("[]", { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
+    const result = await createSupabaseServiceRoleClient().from("carts").select("id").limit(1);
+
+    expect(result.error).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(new Headers(init?.headers).get("apikey")).toBe("sb_secret_modern");
   });
 
   it("createSupabaseServerClient reads the request's cookies via next/headers", async () => {

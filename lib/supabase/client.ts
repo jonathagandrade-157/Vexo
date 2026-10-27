@@ -3,7 +3,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 
 /**
- * Browser Supabase client. Uses only the `anon` key (public, safe to ship —
+ * Browser Supabase client. Uses only the publishable key (public, safe to ship —
  * architecture §3.4/§23) and is subject to RLS on every request, same as
  * the server client. Never import `getServerEnv`/`SUPABASE_SERVICE_ROLE_KEY`
  * from a file reachable from here.
@@ -20,9 +20,15 @@ import { createBrowserClient } from "@supabase/ssr";
  */
 export function createSupabaseBrowserClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Both accesses must remain literal so Next.js can inline them. Prefer
+  // the modern opaque key; keep the legacy key only during migration.
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL ausente");
-  if (!anonKey) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY ausente");
+  if (!publishableKey) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ausente");
+  }
 
-  return createBrowserClient(url, anonKey);
+  return createBrowserClient(url, publishableKey);
 }

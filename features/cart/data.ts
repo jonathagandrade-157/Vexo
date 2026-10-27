@@ -1,5 +1,6 @@
 import "server-only";
 
+import * as Sentry from "@sentry/nextjs";
 import { cache } from "react";
 
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -184,7 +185,7 @@ export const getCart = cache(async (storeSlug: string): Promise<CartView> => {
   if (!cart) return EMPTY_CART;
 
   const supabase = createSupabaseServiceRoleClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("cart_items")
     .select(
       "id, quantity, variant_id, product:products(id, name, slug, price, promotional_price, main_image, status), variant:product_variants(id, sku, price, promotional_price, is_active)",
@@ -192,6 +193,12 @@ export const getCart = cache(async (storeSlug: string): Promise<CartView> => {
     .eq("cart_id", cart.id)
     .eq("tenant_id", resolution.tenant.id)
     .order("created_at", { ascending: true });
+
+  if (error) {
+    const cause = new Error("Falha ao carregar os itens do carrinho.");
+    Sentry.captureException(cause, { extra: { supabaseCode: error.code } });
+    throw cause;
+  }
 
   const rows = (data ?? []) as unknown as ProductJoinRow[];
   const itemsWithoutLabel = rows

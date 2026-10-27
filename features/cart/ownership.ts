@@ -1,5 +1,7 @@
 import "server-only";
 
+import * as Sentry from "@sentry/nextjs";
+
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getCartCredentials } from "./cart-cookie";
 import { hashCartToken } from "./cart-session";
@@ -19,13 +21,19 @@ export async function getOwnedCartForCheckout(storeSlug: string, tenantId: strin
   if (!credentials) return null;
 
   const ownerTokenHash = hashCartToken(credentials.token);
-  const { data } = await createSupabaseServiceRoleClient()
+  const { data, error } = await createSupabaseServiceRoleClient()
     .from("carts")
     .select("id, checkout_order_id")
     .eq("id", credentials.cartId)
     .eq("tenant_id", tenantId)
     .eq("owner_token_hash", ownerTokenHash)
     .maybeSingle();
+
+  if (error) {
+    const cause = new Error("Falha ao autorizar o carrinho no banco.");
+    Sentry.captureException(cause, { extra: { supabaseCode: error.code } });
+    throw cause;
+  }
 
   return data ? { id: data.id, ownerTokenHash, checkoutOrderId: data.checkout_order_id } : null;
 }

@@ -84,6 +84,16 @@ test.describe("vitrine pública", () => {
       }
       expect(added, "Nenhum produto da vitrine pôde ser adicionado ao carrinho").toBe(true);
 
+      const cartCookie = (await page.context().cookies()).find(
+        (cookie) => cookie.name === `vexo_cart_${storefrontSlug}`,
+      );
+      expect(cartCookie, "A Server Action confirmou a inclusão, mas não emitiu o cookie de posse do carrinho").toMatchObject({
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: true,
+      });
+      expect(cartCookie?.value).toMatch(/^v1\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/);
+
       await page.goto(cartPath);
       await expect(page.getByRole("heading", { level: 1, name: /seu carrinho/i })).toBeVisible();
       await expect(page.getByRole("link", { name: /finalizar compra/i })).toBeVisible();
