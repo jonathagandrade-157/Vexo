@@ -28,10 +28,9 @@ test.describe("jornada pública essencial", () => {
     );
   });
 
-  test("preferência de tema é aplicada e persistida", async ({ page }, testInfo) => {
+  test("preferência de tema é aplicada e persistida", async ({ page, isMobile }) => {
     await page.goto("/");
 
-    const isMobile = testInfo.project.name === "mobile-chromium";
     await page
       .getByRole("button", { name: isMobile ? /alternar para claro/i : "Usar tema claro" })
       .click();

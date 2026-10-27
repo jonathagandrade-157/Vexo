@@ -39,7 +39,10 @@ correto; histórico de CI não aprova alterações locais posteriores.
 - [ ] Corrigir o carrinho que confirma a inclusão, mas abre vazio em
   produção. Reproduzido em IAB, Chrome e Playwright; o cookie seguro é
   emitido. Correção do cliente administrativo preparada, ainda não
-  validada nem publicada.
+  publicada. E2E real mostrou uma segunda causa: o join do carrinho não
+  pode ler `products` como `service_role`. Migration mínima
+  `20261027150000_cart_product_read_grant.sql` preparada; aplicação em
+  produção depende de backup recuperável e aprovação específica.
 - [ ] Validar adição, múltiplos itens, quantidade, remoção, reload,
   navegação, estoque, indisponibilidade, isolamento e manipulação de
   identidade em um ambiente controlado.
@@ -88,6 +91,9 @@ correto; histórico de CI não aprova alterações locais posteriores.
   loopback descartável. Credenciais de integrações externas são excluídas;
   `.env` de produção/local impede sua execução. Os 24 cenários foram
   descobertos, mas execução efetiva ainda está pendente no CI.
+- Corrigido destino `#promocoes` dos cinco templates sem promoções, com
+  estado vazio legível e regressões de renderização. A suíte 360 px passa
+  a usar a opção real `isMobile`, sem depender do nome do projeto.
 
 ## Evidências válidas
 
@@ -114,6 +120,14 @@ correto; histórico de CI não aprova alterações locais posteriores.
     em homologação; não são contabilizados como aprovados.
 - O commit `457e9066533991dcca7210befc62a560bee38854` também passou no
   workflow completo `40442431230`.
+- Workflow `40527025194`: 24 cenários de navegador com Supabase real
+  executados, 8 passaram e 16 falharam. As falhas expuseram leitura de
+  produtos sem grant no BFF, âncora de promoções ausente e seleção
+  incorreta do controle de tema pelo teste em 360 px. Não contam como
+  aprovação do carrinho; correções estão em nova validação.
+- Consulta somente leitura em produção confirmou
+  `has_table_privilege('service_role', 'public.products', 'SELECT')=false`,
+  com `cart_items=true` e `product_variants=true`. Nenhum grant foi aplicado.
 - Smoke read-only do preview protegido da PR #3 em desktop 1440 px e
   Pixel 7 (412 px): home, os quatro produtos, carrinho vazio e checkout
   vazio retornaram HTTP 200; nenhum erro JavaScript/hidratação ou HTTP
@@ -166,8 +180,8 @@ correto; histórico de CI não aprova alterações locais posteriores.
 - [x] Lint.
 - [x] Build de produção no CI Linux/Turbopack.
 - [x] `npm audit --audit-level=moderate`: 0 vulnerabilidades.
-- [x] Histórico de migrations local/remoto sem divergência até
-  `20261026210716`.
+- [ ] Histórico alinhado até `20261026210716`; hotfix local
+  `20261027150000` pendente, separado para aplicação aprovada após backup.
 - [ ] Smoke de homologação.
 - [ ] Backup e restore comprovados.
 - [ ] Monitoramento e rollback revisados.

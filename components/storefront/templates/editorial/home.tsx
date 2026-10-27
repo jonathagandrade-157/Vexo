@@ -95,7 +95,9 @@ export function EditorialHome({ tenant, categories, products, promotions, banner
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <p className="text-center font-body text-body-sm text-neutral-500" id="promocoes">Nenhuma promoção no momento.</p>
+        )}
 
         <section className="mx-auto max-w-xl text-center" id="sobre">
           <h2 className="mb-3 font-display text-xl italic text-neutral-900">Sobre a {tenant.name}</h2>
