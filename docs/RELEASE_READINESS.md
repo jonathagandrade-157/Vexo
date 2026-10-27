@@ -1,6 +1,6 @@
 # VEXO — Release Readiness
 
-Atualizado em 2026-10-26. Este checklist registra o estado executável do
+Atualizado em 2026-10-27. Este checklist registra o estado executável do
 lançamento. Um item só recebe `[x]` quando existe evidência do ambiente
 correto; histórico de CI não aprova alterações locais posteriores.
 
@@ -8,9 +8,10 @@ correto; histórico de CI não aprova alterações locais posteriores.
 
 - Repositório: `jonathagandrade-157/Vexo`.
 - Worktree ativo: `.worktrees/vexo-security-hardening`.
-- Branch: `codex/vexo-security-hardening`.
-- HEAD local: `d0456e5aea3f3b71bc6cf5f9abfe61d9a74b7a69`.
+- Branch: `codex/vexo-launch-blockers`.
+- Base do hotfix: `d0456e5aea3f3b71bc6cf5f9abfe61d9a74b7a69`.
 - PR anterior: `#2`, mesclado em `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`.
+- PR atual: `#3`, aberto contra `main`; nenhum merge/deploy autorizado.
 - Produção: `https://vexoecommerce.vercel.app`.
 - Supabase: projeto `Vexo`, ref `vqbiurnfqkjkrenigxzv`, região `us-east-1`.
 - O checkout principal está isolado do worktree principal, que contém
@@ -96,6 +97,9 @@ correto; histórico de CI não aprova alterações locais posteriores.
   não reapareceu nos cenários repetidos.
 - Falha atual do carrinho é uma evidência negativa válida e mantém o gate
   fechado.
+- Em 2026-10-27, `supabase migration list --project-ref` confirmou todas
+  as versões locais e remotas alinhadas até `20261026210716`, sem migration
+  pendente ou divergente.
 
 ## Evidências inválidas ou pendentes
 
@@ -114,8 +118,10 @@ correto; histórico de CI não aprova alterações locais posteriores.
   execução isolada com Webpack ficou presa na compilação inicial da landing
   no worktree do OneDrive e foi encerrada. Nenhuma execução parcial é
   registrada como E2E aprovado; o job Linux do CI continua sendo a prova.
-- Não há evidência de restore; `backups: null` e `pitr_enabled: false`
-  foram observados no Supabase.
+- Não há evidência de restore. A verificação read-only foi repetida em
+  2026-10-27 com Supabase CLI 2.115.0 e confirmou `backups: null`,
+  `pitr_enabled: false`, `physical_backup_data: {}` e `walg_enabled: true`;
+  WAL habilitado não é um ponto restaurável disponível para o projeto.
 - Não há credenciais de sandbox configuradas e validadas para Mercado
   Pago/Asaas neste worktree.
 - O fluxo manual completo de lojista e comprador ainda não foi executado
