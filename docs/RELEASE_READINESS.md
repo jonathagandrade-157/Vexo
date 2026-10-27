@@ -100,6 +100,22 @@ correto; histórico de CI não aprova alterações locais posteriores.
 - Em 2026-10-27, `supabase migration list --project-ref` confirmou todas
   as versões locais e remotas alinhadas até `20261026210716`, sem migration
   pendente ou divergente.
+- GitHub Actions do PR #3 (`40441899083`) passou nos três jobs:
+  - `ci`: audit, lint, typecheck, rollout, 51 arquivos/738 integrações,
+    115 arquivos/1.322 unitários e build Next.js/Turbopack;
+  - `supabase-http`: 15/15 testes reais de Auth, PostgREST e checkout em
+    stack Supabase isolada;
+  - `e2e`: 6 testes públicos passaram e 4 storefronts foram pulados porque
+    o job usa Supabase placeholder. Os quatro pulados continuam pendentes
+    em homologação; não são contabilizados como aprovados.
+- Inventário read-only da Vercel em 2026-10-27, sem leitura de valores:
+  - existem as variáveis legadas `NEXT_PUBLIC_SUPABASE_ANON_KEY` e
+    `SUPABASE_SERVICE_ROLE_KEY`; as modernas ainda não existem;
+  - existem nomes para Mercado Pago e `OAUTH_STATE_SECRET`, mas
+    `MERCADO_PAGO_TEST_MODE` não está definido e validade/modo das
+    credenciais não foram comprovados;
+  - `ASAAS_API_KEY`, `ASAAS_API_URL` e `ASAAS_WEBHOOK_TOKEN` estão ausentes;
+  - Resend, Sentry e `CRON_SECRET` possuem entradas de produção.
 
 ## Evidências inválidas ou pendentes
 
@@ -130,13 +146,15 @@ correto; histórico de CI não aprova alterações locais posteriores.
 ## Gates de release
 
 - [x] Testes unitários atuais: 115 arquivos / 1.322 testes.
-- [ ] Testes de integração atuais.
+- [x] Testes de integração atuais: 51 arquivos / 738 testes PostgreSQL e
+  15/15 testes HTTP Supabase.
 - [ ] E2E desktop e mobile atuais.
 - [x] Typecheck.
 - [x] Lint.
-- [ ] Build de produção.
+- [x] Build de produção no CI Linux/Turbopack.
 - [x] `npm audit --audit-level=moderate`: 0 vulnerabilidades.
-- [ ] Histórico/dry-run de migrations sem divergência.
+- [x] Histórico de migrations local/remoto sem divergência até
+  `20261026210716`.
 - [ ] Smoke de homologação.
 - [ ] Backup e restore comprovados.
 - [ ] Monitoramento e rollback revisados.
