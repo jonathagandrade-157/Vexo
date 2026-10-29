@@ -15,7 +15,10 @@ export async function verifyKeyCutover({ apiUrl, projectRef, mode, publishableKe
   }
   const cases = [
     ["modern-public-catalog", publishableKey, "products", 200],
-    ["modern-public-cart-denied", publishableKey, "carts", 403],
+    // PostgREST returns 401 for an anonymous role denied SQL privileges;
+    // gateways can surface the same denial as 403. Catalog access below
+    // proves this is a valid public key, rather than accepting any 401.
+    ["modern-public-cart-denied", publishableKey, "carts", [401, 403]],
     ["modern-server-cart", secretKey, "carts", 200],
     ["legacy-public", legacyAnonKey, "products", mode === "after-revoke" ? 401 : 200],
     ["legacy-privileged", legacyServiceKey, "carts", mode === "after-revoke" ? 401 : 200],
@@ -28,7 +31,7 @@ export async function verifyKeyCutover({ apiUrl, projectRef, mode, publishableKe
       });
       // No row, response body, URL parameter, header or key is recorded.
       await response.body?.cancel();
-      return { name, expected, status: response.status, passed: response.status === expected };
+      return { name, expected, status: response.status, passed: Array.isArray(expected) ? expected.includes(response.status) : response.status === expected };
     } catch { return { name, expected, status: 0, passed: false }; }
   }));
   return { projectRef, mode, verified: checks.every((check) => check.passed), checks };

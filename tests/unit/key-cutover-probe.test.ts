@@ -32,3 +32,12 @@ it("uses apikey for opaque keys and requires both legacy keys to fail", async ()
 it("rejects mismatched origins before making any request", async () => {
   await expect(verifyKeyCutover({ ...config, synthetic: false, apiUrl: "https://unapproved.example" })).rejects.toThrow(/origin/);
 });
+
+it("accepts anonymous permission denial only while the same modern key reads the public catalog", async () => {
+  const response = (url: string, init: RequestInit) => {
+    const key = (init.headers as Record<string, string>).apikey;
+    return Promise.resolve(new Response(null, { status: key === config.secretKey ? 200 : key === config.publishableKey && url.includes("/products") ? 200 : 401 }));
+  };
+  expect((await verifyKeyCutover(config, response)).verified).toBe(true);
+  expect((await verifyKeyCutover(config, async () => new Response(null, { status: 401 }))).verified).toBe(false);
+});
