@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import pg from "pg";
 
 const isolated = process.env.E2E_ISOLATED_SUPABASE === "1";
@@ -40,6 +40,35 @@ function collectErrors(page: Page) {
     errors.push(`${new URL(page.url()).pathname}: HTTP ${response.status()} ${new URL(response.url()).pathname} (${response.request().resourceType()})`);
   });
   return errors;
+}
+
+async function expectReadableText(locator: Locator) {
+  const contrast = await locator.evaluate((element) => {
+    const channels = (color: string) => (color.match(/[\d.]+/g) ?? []).map(Number);
+    const foreground = channels(getComputedStyle(element).color);
+    let ancestor: Element | null = element;
+    let background: number[] | undefined;
+    while (ancestor) {
+      const candidate = channels(getComputedStyle(ancestor).backgroundColor);
+      if (candidate.length >= 3 && (candidate[3] ?? 1) === 1) {
+        background = candidate;
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+    if (!background || foreground.length < 3) throw new Error("Expected opaque RGB colors for the contrast regression.");
+    const luminance = (rgb: number[]) => rgb.slice(0, 3).reduce((sum, channel, index) => {
+      const value = channel / 255;
+      const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      return sum + linear * [0.2126, 0.7152, 0.0722][index]!;
+    }, 0);
+    const text = luminance(foreground);
+    const surface = luminance(background);
+    return { ratio: (Math.max(text, surface) + 0.05) / (Math.min(text, surface) + 0.05), foreground, background };
+  });
+  // WCAG 2.2 minimum for normal text; also used as a conservative target
+  // for this heading. This checks actual browser colors, not CSS classes.
+  expect(contrast.ratio, JSON.stringify(contrast)).toBeGreaterThanOrEqual(4.5);
 }
 
 test.describe("comércio com Supabase descartável", () => {
@@ -107,6 +136,15 @@ test.describe("comércio com Supabase descartável", () => {
       [cookie.value.split(".")[1]],
     )).rows[0];
     expect(item).toEqual({ quantity: 2, sku: "E2E-PRETO", price: "120.00", promotional_price: "90.00" });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", colorScheme);
+      await expectReadableText(page.getByRole("heading", { name: "Seu carrinho", exact: true }));
+      await expectReadableText(page.getByText("Produto E2E com variantes", { exact: true }));
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath("variant-cart.png"), fullPage: true });
     await page.getByRole("button", { name: "Remover", exact: true }).click();
     await expect(page.getByRole("heading", { name: /carrinho está vazio/i })).toBeVisible();
@@ -209,6 +247,7 @@ test.describe("comércio com Supabase descartável", () => {
     await expect(page.getByLabel("Cidade", { exact: true })).toHaveValue("São Paulo");
     expect((await query("select address_zip, address_city, address_state from public.tenants where slug = $1", [slug])).rows[0])
       .toEqual({ address_zip: "01310100", address_city: "São Paulo", address_state: "SP" });
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath("merchant-settings.png"), fullPage: true });
 
     // Restore through the same UI even though this database is disposable.
@@ -294,6 +333,7 @@ test.describe("comércio com Supabase descartável", () => {
     const response = await page.goto(`/loja/${signup.slug}`);
     expect(response?.status()).toBe(200);
     await expect(page.getByText(storeName, { exact: true }).first()).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath("published-store.png"), fullPage: true });
     expect(errors).toEqual([]);
   });
