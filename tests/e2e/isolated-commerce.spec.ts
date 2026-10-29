@@ -65,6 +65,44 @@ test.describe("comércio com Supabase descartável", () => {
     expect(errors).toEqual([]);
   });
 
+  test("seleciona variante, preserva preço promocional e bloqueia opções indisponíveis", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto(`/loja/${slug}/produto/sem-estoque`);
+    await expect(page.getByRole("button", { name: "Indisponível", exact: true })).toBeDisabled();
+    await page.goto(`/loja/${slug}/produto/variantes`);
+    await expect(page.getByRole("button", { name: "Selecione: Cor", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Branco", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Indisponível", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Azul", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Esta combinação não está disponível", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Preto", exact: true }).focus();
+    await expect(page.getByRole("button", { name: "Preto", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "Preto", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText(/R\$\s*90,00/).first()).toBeVisible();
+    await expect(page.getByText("SKU: E2E-PRETO", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /adicionar ao carrinho/i }).click();
+    await expect(page.getByRole("status").filter({ hasText: /adicionado ao carrinho/i })).toBeVisible();
+    await page.goto(`/loja/${slug}/carrinho`);
+    await expect(page.getByText("Produto E2E com variantes", { exact: true })).toBeVisible();
+    await expect(page.getByText("Preto", { exact: true })).toBeVisible();
+    await expect(page.getByText(/R\$\s*90,00/).first()).toBeVisible();
+    await page.getByRole("button", { name: "Aumentar quantidade", exact: true }).click();
+    await expect(page.getByText(/R\$\s*180,00/).first()).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Preto", { exact: true })).toBeVisible();
+    await expect(page.getByText(/R\$\s*180,00/).first()).toBeVisible();
+    const cookie = (await page.context().cookies()).find((value) => value.name === `vexo_cart_${slug}`)!;
+    const item = (await query(
+      "select ci.quantity, v.sku, v.price, v.promotional_price from public.cart_items ci join public.product_variants v on v.id = ci.variant_id where ci.cart_id = $1",
+      [cookie.value.split(".")[1]],
+    )).rows[0];
+    expect(item).toEqual({ quantity: 2, sku: "E2E-PRETO", price: "120.00", promotional_price: "90.00" });
+    await page.getByRole("button", { name: "Remover", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /carrinho está vazio/i })).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
   test("recusa segredo alterado e cookie reaproveitado em outra loja", async ({ page, browser }) => {
     await addProduct(page);
     const cookie = (await page.context().cookies()).find((value) => value.name === `vexo_cart_${slug}`)!;

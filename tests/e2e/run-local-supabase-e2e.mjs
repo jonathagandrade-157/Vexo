@@ -91,6 +91,37 @@ try {
         [tenantId, product.rows[0].id],
       );
     }
+    const variableProduct = await database.query(
+      "insert into public.products (tenant_id, name, slug, price, status) values ($1, 'Produto E2E com variantes', 'variantes', 120, 'active') returning id",
+      [tenantId],
+    );
+    const variableId = variableProduct.rows[0].id;
+    const option = await database.query(
+      "insert into public.product_options (tenant_id, product_id, name, position) values ($1, $2, 'Cor', 0) returning id",
+      [tenantId, variableId],
+    );
+    for (const [position, color, price, promotion, stock, active] of [[0, "Preto", 120, 90, 5, true], [1, "Branco", 130, null, 0, true], [2, "Azul", 140, null, 5, false]]) {
+      const value = await database.query(
+        "insert into public.product_option_values (tenant_id, product_option_id, value, position) values ($1, $2, $3, $4) returning id",
+        [tenantId, option.rows[0].id, color, position],
+      );
+      const variant = await database.query(
+        "insert into public.product_variants (tenant_id, product_id, sku, price, promotional_price, option_value_ids, is_active) values ($1, $2, $3, $4, $5, array[$6]::uuid[], $7) returning id",
+        [tenantId, variableId, `E2E-${color.toUpperCase()}`, price, promotion, value.rows[0].id, active],
+      );
+      await database.query(
+        "insert into public.product_inventory (tenant_id, product_id, variant_id, stock_quantity) values ($1, $2, $3, $4)",
+        [tenantId, variableId, variant.rows[0].id, stock],
+      );
+    }
+    const unavailable = await database.query(
+      "insert into public.products (tenant_id, name, slug, price, status) values ($1, 'Produto E2E sem estoque', 'sem-estoque', 60, 'active') returning id",
+      [tenantId],
+    );
+    await database.query(
+      "insert into public.product_inventory (tenant_id, product_id, stock_quantity) values ($1, $2, 0)",
+      [tenantId, unavailable.rows[0].id],
+    );
     await database.query("update public.shipping_settings set enabled = false where tenant_id = $1", [tenantId]);
   }
   await database.query("commit");
