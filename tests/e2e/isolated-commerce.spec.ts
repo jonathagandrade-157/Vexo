@@ -7,14 +7,20 @@ const isolated = process.env.E2E_ISOLATED_SUPABASE === "1";
 const slug = process.env.E2E_STOREFRONT_SLUG;
 const otherSlug = process.env.E2E_OTHER_STOREFRONT_SLUG;
 
-async function query(sql: string, values: unknown[] = []) {
+async function query(sql: string, values: unknown[] = [], serviceActor = false) {
   if (!isolated || !["127.0.0.1", "localhost", "[::1]"].includes(new URL(process.env.DATABASE_URL!).hostname)) {
     throw new Error("Browser database assertions require the disposable loopback stack.");
   }
   const database = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await database.connect();
   try {
-    return await database.query(sql, values);
+    if (serviceActor) {
+      await database.query("begin");
+      await database.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: "service_role" })]);
+    }
+    const result = await database.query(sql, values);
+    if (serviceActor) await database.query("commit");
+    return result;
   } finally {
     await database.end();
   }
@@ -377,11 +383,47 @@ test.describe("comércio com Supabase descartável", () => {
     await page.getByLabel("Quantidade em estoque", { exact: true }).fill("3");
     await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
     await expect.poll(async () => (await query("select p.price, i.stock_quantity from public.products p join public.product_inventory i on i.product_id = p.id where p.id = $1", [productId])).rows[0]).toMatchObject({ price: "140.00", stock_quantity: 3 });
+    await expect(page).toHaveURL(/\/painel\/produtos$/);
+    await page.goto(`/painel/produtos/${productId}/editar`);
     await page.reload();
     await expect(page.getByLabel("Preço de venda", { exact: true })).toHaveValue("140");
     await expect(page.getByLabel("Quantidade em estoque", { exact: true })).toHaveValue("3");
     await page.screenshot({ path: testInfo.outputPath("merchant-product-edit.png"), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test("persiste variantes configuradas antes do cadastro e preserva seu estoque ao editar o produto", async ({ page }, testInfo) => {
+    const errors = collectErrors(page);
+    const productName = `Produto com voltagens ${randomBytes(5).toString("hex")}`;
+    await page.goto("/login");
+    await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_OWNER_EMAIL!);
+    await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_OWNER_PASSWORD!);
+    await page.getByRole("button", { name: "Entrar no VEXO", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel$/);
+    await page.goto("/painel/produtos/novo");
+    await page.getByLabel("Nome do produto", { exact: true }).fill(productName);
+    await page.getByLabel("Preço de venda", { exact: true }).fill("95");
+    await page.getByRole("button", { name: /voltagem/i }).click();
+    await page.getByRole("button", { name: /gerar 3 variantes/i }).click();
+    await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel\/produtos\/[a-f0-9-]+\/editar$/);
+    const productId = new URL(page.url()).pathname.split("/")[3]!;
+    const variants = await query("select id, tenant_id, price from public.product_variants where product_id = $1", [productId]);
+    expect(variants.rows).toHaveLength(3);
+    expect(variants.rows.every((variant) => Number(variant.price) === 95)).toBe(true);
+    // These stock rows are synthetic setup in the disposable database.
+    // Editing the base product must not delete or reinterpret them.
+    await query("insert into public.product_inventory(tenant_id, product_id, variant_id, stock_quantity) select tenant_id, product_id, id, 7 from public.product_variants where product_id = $1", [productId], true);
+    await page.reload();
+    await expect(page.getByLabel("Quantidade em estoque", { exact: true })).toHaveValue("");
+    await page.getByLabel("Nome do produto", { exact: true }).fill(`${productName} editado`);
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel\/produtos$/);
+    const stock = await query("select stock_quantity from public.product_inventory where product_id = $1 and variant_id is not null", [productId]);
+    expect(stock.rows).toEqual([{ stock_quantity: 7 }, { stock_quantity: 7 }, { stock_quantity: 7 }]);
+    await page.goto(`/painel/produtos/${productId}/editar`);
+    await page.screenshot({ path: testInfo.outputPath("merchant-variants.png"), fullPage: true });
     expect(errors).toEqual([]);
   });
 
