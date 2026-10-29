@@ -89,7 +89,7 @@ test.describe("comércio com Supabase descartável", () => {
     await expect(page.getByText("Produto E2E principal", { exact: true })).toBeVisible();
   });
 
-  test("abre as páginas do lojista sem falhas de console, HTTP ou overflow", async ({ page }) => {
+  test("abre as páginas do lojista sem falhas de console, HTTP ou overflow", async ({ page, isMobile }) => {
     test.setTimeout(180_000);
     const errors = collectErrors(page);
     await page.goto("/login");
@@ -113,6 +113,16 @@ test.describe("comércio com Supabase descartável", () => {
       const size = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
       expect(size.scroll, `Overflow horizontal em ${path}`).toBeLessThanOrEqual(size.width);
     }
+    await page.goto("/painel/configuracoes");
+    // Logout must own a separate form: nesting it in the profile form
+    // makes the browser repair the HTML and breaks React hydration.
+    const settingsLogout = page.locator("main").getByRole("button", { name: /sair da conta/i });
+    expect(await settingsLogout.evaluate((button) => button.closest("form")?.querySelector('[name="storeName"]') === null)).toBe(true);
+    const logout = isMobile ? settingsLogout : page.getByRole("button", { name: /logout/i });
+    await logout.click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.goto("/painel");
+    await expect(page).toHaveURL(/\/login/);
     expect(errors).toEqual([]);
   });
 

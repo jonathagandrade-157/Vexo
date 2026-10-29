@@ -3,7 +3,6 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
-import { LogoutButton } from "@/components/painel/logout-button";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
@@ -116,9 +115,6 @@ export function StoreProfileForm({
 
       <div className="flex items-center justify-between">
         <SaveButton canEdit={canEdit} />
-        <div className="ml-auto w-full max-w-[220px] md:hidden">
-          <LogoutButton variant="settings" />
-        </div>
       </div>
     </form>
   );
