@@ -199,7 +199,7 @@ test.describe("comércio com Supabase descartável", () => {
     await page.getByLabel("Senha", { exact: true }).fill(password);
     await page.getByLabel("Confirmar senha", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Começar teste grátis", exact: true }).click();
-    await expect(page.getByRole("alert")).toHaveText("É necessário aceitar os termos para continuar.");
+    await expect(page.locator("form").getByRole("alert")).toHaveText("É necessário aceitar os termos para continuar.");
     expect((await query("select count(*)::int as total from auth.users where email = $1", [email])).rows[0].total).toBe(0);
     await page.locator('input[name="acceptTerms"]').check();
     await page.getByLabel("Confirmar senha", { exact: true }).fill("Senha-diferente-A9!");
