@@ -338,6 +338,72 @@ test.describe("comércio com Supabase descartável", () => {
     expect(errors).toEqual([]);
   });
 
+  test("cadastra categoria e produto, edita preço e estoque e preserva após reload", async ({ page }, testInfo) => {
+    const errors = collectErrors(page);
+    const suffix = randomBytes(5).toString("hex");
+    const categoryName = `Categoria ${suffix}`;
+    const productName = `Produto gerenciado ${suffix}`;
+    await page.goto("/login");
+    await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_OWNER_EMAIL!);
+    await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_OWNER_PASSWORD!);
+    await page.getByRole("button", { name: "Entrar no VEXO", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel$/);
+    await page.goto("/painel/categorias");
+    await page.getByRole("button", { name: /nova categoria/i }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Nome da categoria", { exact: true }).fill(categoryName);
+    await dialog.getByRole("button", { name: "Criar categoria", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+
+    await page.goto("/painel/produtos/novo");
+    await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+    await expect(page.getByText("Informe o nome do produto", { exact: true })).toBeVisible();
+    await page.getByLabel("Nome do produto", { exact: true }).fill(productName);
+    await page.getByLabel("Preço de venda", { exact: true }).fill("125.50");
+    await page.getByLabel("Categoria", { exact: true }).selectOption({ label: categoryName });
+    await page.getByLabel("Quantidade em estoque", { exact: true }).fill("8");
+    await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel\/produtos\/[a-f0-9-]+\/editar$/);
+    await expect(page.getByLabel("Nome do produto", { exact: true })).toHaveValue(productName);
+    const productId = new URL(page.url()).pathname.split("/")[3]!;
+    const persisted = await query("select p.price, p.category_id, i.stock_quantity from public.products p join public.product_inventory i on i.product_id = p.id where p.id = $1", [productId]);
+    expect(persisted.rows[0]).toMatchObject({ price: "125.50", stock_quantity: 8 });
+    expect(persisted.rows[0].category_id).toBeTruthy();
+
+    await page.getByLabel("Preço de venda", { exact: true }).fill("140");
+    await page.getByLabel("Quantidade em estoque", { exact: true }).fill("3");
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect.poll(async () => (await query("select p.price, i.stock_quantity from public.products p join public.product_inventory i on i.product_id = p.id where p.id = $1", [productId])).rows[0]).toMatchObject({ price: "140.00", stock_quantity: 3 });
+    await page.reload();
+    await expect(page.getByLabel("Preço de venda", { exact: true })).toHaveValue("140");
+    await expect(page.getByLabel("Quantidade em estoque", { exact: true })).toHaveValue("3");
+    await page.screenshot({ path: testInfo.outputPath("merchant-product-edit.png"), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test("restringe o colaborador OPERATOR aos pedidos sem permitir criar produto ou gerir equipe", async ({ page }) => {
+    // STAFF is represented by the existing fixed roles; do not invent a new role.
+    const errors = collectErrors(page);
+    await page.goto("/login");
+    await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_OPERATOR_EMAIL!);
+    await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_OWNER_PASSWORD!);
+    await page.getByRole("button", { name: "Entrar no VEXO", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel$/);
+    await page.goto("/painel/pedidos");
+    await expect(page.getByRole("heading", { name: "Pedidos", exact: true })).toBeVisible();
+    await page.goto("/painel/produtos/novo");
+    await expect(page).toHaveURL(/\/painel\/produtos$/);
+    await expect(page.getByLabel("Nome do produto", { exact: true })).toHaveCount(0);
+    await page.goto("/painel/equipe");
+    await expect(page.getByText("Sua função não tem acesso a esta página.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /enviar convite/i })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
   test("cria pedido externo, baixa estoque uma vez e exibe o pedido ao lojista", async ({ page, browser }) => {
     const errors = collectErrors(page);
     await addProduct(page);

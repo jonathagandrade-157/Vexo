@@ -59,6 +59,9 @@ const password = `Local-browser-${runId}-A9!`;
 const supabase = createClient(apiUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } });
 const { data, error } = await supabase.auth.admin.createUser({ email, password, email_confirm: true });
 if (error || !data.user) throw new Error("Could not create the disposable browser test owner.");
+const operatorEmail = `operator-${runId}@example.test`;
+const operator = await supabase.auth.admin.createUser({ email: operatorEmail, password, email_confirm: true });
+if (operator.error || !operator.data.user) throw new Error("Could not create the disposable browser test operator.");
 
 const database = new pg.Client({ connectionString: databaseUrl });
 await database.connect();
@@ -84,6 +87,10 @@ try {
       await database.query(
         "insert into public.tenant_members (tenant_id, user_id, role_id) select $1, $2, id from public.roles where key = 'OWNER'",
         [tenantId, data.user.id],
+      );
+      await database.query(
+        "insert into public.tenant_members (tenant_id, user_id, role_id) select $1, $2, id from public.roles where key = 'OPERATOR'",
+        [tenantId, operator.data.user.id],
       );
     }
     await database.query(
@@ -158,6 +165,7 @@ Object.assign(env, {
   E2E_OTHER_STOREFRONT_SLUG: otherSlug,
   E2E_OWNER_EMAIL: email,
   E2E_OWNER_PASSWORD: password,
+  E2E_OPERATOR_EMAIL: operatorEmail,
   DATABASE_URL: databaseUrl,
 });
 
