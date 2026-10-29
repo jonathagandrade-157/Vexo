@@ -75,6 +75,11 @@ test.describe("jornada pública essencial", () => {
     expect(icon.ok()).toBeTruthy();
     expect(icon.headers()["content-type"]).toContain("image/png");
 
+    const favicon = await request.get("/favicon.ico");
+    expect(favicon.ok()).toBeTruthy();
+    expect(favicon.headers()["content-type"]).toMatch(/image\/(?:x-icon|vnd.microsoft.icon)/);
+    expect(Array.from((await favicon.body()).subarray(0, 4))).toEqual([0, 0, 1, 0]);
+
     const openGraphImage = await request.get("/opengraph-image");
     expect(openGraphImage.ok()).toBeTruthy();
     expect(openGraphImage.headers()["content-type"]).toContain("image/png");

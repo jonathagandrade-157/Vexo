@@ -74,7 +74,7 @@ test.describe("comércio com Supabase descartável", () => {
     expect(errors).toEqual([]);
   });
 
-  test("seleciona variante, preserva preço promocional e bloqueia opções indisponíveis", async ({ page }) => {
+  test("seleciona variante, preserva preço promocional e bloqueia opções indisponíveis", async ({ page }, testInfo) => {
     const errors = collectErrors(page);
     await page.goto(`/loja/${slug}/produto/sem-estoque`);
     await expect(page.getByRole("button", { name: "Indisponível", exact: true })).toBeDisabled();
@@ -107,6 +107,7 @@ test.describe("comércio com Supabase descartável", () => {
       [cookie.value.split(".")[1]],
     )).rows[0];
     expect(item).toEqual({ quantity: 2, sku: "E2E-PRETO", price: "120.00", promotional_price: "90.00" });
+    await page.screenshot({ path: testInfo.outputPath("variant-cart.png"), fullPage: true });
     await page.getByRole("button", { name: "Remover", exact: true }).click();
     await expect(page.getByRole("heading", { name: /carrinho está vazio/i })).toBeVisible();
     expect(errors).toEqual([]);
@@ -173,7 +174,7 @@ test.describe("comércio com Supabase descartável", () => {
     expect(errors).toEqual([]);
   });
 
-  test("valida e persiste perfil e endereço da loja sem enviar o formulário de saída", async ({ page }) => {
+  test("valida e persiste perfil e endereço da loja sem enviar o formulário de saída", async ({ page }, testInfo) => {
     const errors = collectErrors(page);
     const original = (await query("select name, address_zip, address_street, address_number, address_neighborhood, address_city, address_state from public.tenants where slug = $1", [slug])).rows[0];
     await page.goto("/login");
@@ -208,6 +209,7 @@ test.describe("comércio com Supabase descartável", () => {
     await expect(page.getByLabel("Cidade", { exact: true })).toHaveValue("São Paulo");
     expect((await query("select address_zip, address_city, address_state from public.tenants where slug = $1", [slug])).rows[0])
       .toEqual({ address_zip: "01310100", address_city: "São Paulo", address_state: "SP" });
+    await page.screenshot({ path: testInfo.outputPath("merchant-settings.png"), fullPage: true });
 
     // Restore through the same UI even though this database is disposable.
     await page.getByLabel("Nome da loja", { exact: true }).fill(original.name);
@@ -223,7 +225,7 @@ test.describe("comércio com Supabase descartável", () => {
     expect(errors).toEqual([]);
   });
 
-  test("cadastra um lojista sintético, retoma o onboarding e publica a loja local", async ({ page }) => {
+  test("cadastra um lojista sintético, retoma o onboarding e publica a loja local", async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     const errors = collectErrors(page);
     const suffix = randomBytes(6).toString("hex");
@@ -292,6 +294,7 @@ test.describe("comércio com Supabase descartável", () => {
     const response = await page.goto(`/loja/${signup.slug}`);
     expect(response?.status()).toBe(200);
     await expect(page.getByText(storeName, { exact: true }).first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("published-store.png"), fullPage: true });
     expect(errors).toEqual([]);
   });
 
