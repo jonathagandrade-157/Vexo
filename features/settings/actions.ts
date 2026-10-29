@@ -5,15 +5,7 @@ import { redirect } from "next/navigation";
 import { checkBillingWriteAccess } from "@/features/billing/access-guard";
 import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { storeProfileSchema, type StoreProfileInput } from "./schema";
-
-export interface StoreProfileActionState {
-  status: "idle" | "error" | "success";
-  message?: string;
-  fieldErrors?: Partial<Record<keyof StoreProfileInput, string>>;
-}
-
-export const initialStoreProfileState: StoreProfileActionState = { status: "idle" };
+import { storeProfileSchema, type StoreProfileActionState, type StoreProfileInput } from "./schema";
 
 /**
  * Edita os dados da loja depois do onboarding (arquitetura §11/§12 Etapa

@@ -66,6 +66,10 @@ try {
       [tenantSlug === slug ? "Loja E2E" : "Outra loja E2E", tenantSlug, data.user.id],
     );
     const tenantId = tenant.rows[0].id;
+    await database.query(
+      "update public.tenants set segment = 'apparel', instagram_handle = 'loja_e2e', contact_email = $1 where id = $2",
+      [email, tenantId],
+    );
     // Only the first tenant belongs to the owner used by the panel test.
     if (tenantSlug === slug) {
       await database.query(

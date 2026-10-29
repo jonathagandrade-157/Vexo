@@ -116,13 +116,135 @@ test.describe("comércio com Supabase descartável", () => {
     await page.goto("/painel/configuracoes");
     // Logout must own a separate form: nesting it in the profile form
     // makes the browser repair the HTML and breaks React hydration.
-    const settingsLogout = page.locator("main").getByRole("button", { name: /sair da conta/i });
+    const settingsLogout = page.locator("main").getByRole("button", { name: /sair da conta/i, includeHidden: true });
     expect(await settingsLogout.evaluate((button) => button.closest("form")?.querySelector('[name="storeName"]') === null)).toBe(true);
     const logout = isMobile ? settingsLogout : page.getByRole("button", { name: /logout/i });
     await logout.click();
     await expect(page).toHaveURL(/\/login$/);
     await page.goto("/painel");
     await expect(page).toHaveURL(/\/login/);
+    expect(errors).toEqual([]);
+  });
+
+  test("valida e persiste perfil e endereço da loja sem enviar o formulário de saída", async ({ page }) => {
+    const errors = collectErrors(page);
+    const original = (await query("select name, address_zip, address_street, address_number, address_neighborhood, address_city, address_state from public.tenants where slug = $1", [slug])).rows[0];
+    await page.goto("/login");
+    await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_OWNER_EMAIL!);
+    await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_OWNER_PASSWORD!);
+    await page.getByRole("button", { name: "Entrar no VEXO", exact: true }).click();
+    await expect(page).toHaveURL(/\/painel$/);
+    await page.goto("/painel/configuracoes");
+
+    await page.getByLabel("Nome da loja", { exact: true }).fill("");
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect(page.getByText("Informe o nome da loja", { exact: true })).toBeVisible();
+    expect((await query("select name from public.tenants where slug = $1", [slug])).rows[0].name).toBe(original.name);
+
+    await page.getByLabel("Nome da loja", { exact: true }).fill("Loja E2E Editada");
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Alterações salvas." })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("Nome da loja", { exact: true })).toHaveValue("Loja E2E Editada");
+    expect((await query("select name from public.tenants where slug = $1", [slug])).rows[0].name).toBe("Loja E2E Editada");
+
+    await page.getByLabel("CEP", { exact: true }).fill("01310-100");
+    await page.getByLabel("Logradouro", { exact: true }).fill("Rua de Teste");
+    await page.getByLabel("Número", { exact: true }).fill("100");
+    await page.getByLabel("Bairro", { exact: true }).fill("Centro");
+    await page.getByLabel("Cidade", { exact: true }).fill("São Paulo");
+    await page.getByLabel("Estado", { exact: true }).selectOption("SP");
+    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(page.getByText("Endereço salvo.", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("CEP", { exact: true })).toHaveValue("01310-100");
+    await expect(page.getByLabel("Cidade", { exact: true })).toHaveValue("São Paulo");
+    expect((await query("select address_zip, address_city, address_state from public.tenants where slug = $1", [slug])).rows[0])
+      .toEqual({ address_zip: "01310100", address_city: "São Paulo", address_state: "SP" });
+
+    // Restore through the same UI even though this database is disposable.
+    await page.getByLabel("Nome da loja", { exact: true }).fill(original.name);
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Alterações salvas." })).toBeVisible();
+    for (const [label, column] of [["CEP", "address_zip"], ["Logradouro", "address_street"], ["Número", "address_number"], ["Bairro", "address_neighborhood"], ["Cidade", "address_city"]] as const) {
+      await page.getByLabel(label, { exact: true }).fill(original[column] ?? "");
+    }
+    await page.getByLabel("Estado", { exact: true }).selectOption(original.address_state ?? "");
+    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(page.getByText("Endereço salvo.", { exact: true })).toBeVisible();
+    expect((await query("select name, address_zip, address_street, address_number, address_neighborhood, address_city, address_state from public.tenants where slug = $1", [slug])).rows[0]).toEqual(original);
+    expect(errors).toEqual([]);
+  });
+
+  test("cadastra um lojista sintético, retoma o onboarding e publica a loja local", async ({ page }) => {
+    test.setTimeout(180_000);
+    const errors = collectErrors(page);
+    const suffix = randomBytes(6).toString("hex");
+    const storeName = `Loja E2E Cadastro ${suffix}`;
+    const email = `cadastro-${suffix}@example.test`;
+    // Random checksum-valid fixture, never submitted outside loopback.
+    const digits = Array.from(randomBytes(9), (value) => value % 10);
+    for (const length of [9, 10]) {
+      const remainder = digits.reduce((sum, digit, index) => sum + digit * (length + 1 - index), 0) % 11;
+      digits.push(remainder < 2 ? 0 : 11 - remainder);
+    }
+    const document = digits.join("");
+    const password = `Cadastro-local-${suffix}-A9!`;
+    await page.goto("/cadastro");
+    await page.getByLabel("Nome da loja", { exact: true }).fill(storeName);
+    await page.getByLabel("Nome completo", { exact: true }).fill("Lojista E2E Sintético");
+    await page.getByLabel("E-mail", { exact: true }).fill(email);
+    await page.getByLabel("Telefone", { exact: true }).fill("11999999999");
+    await page.getByLabel("CPF / CNPJ", { exact: true }).fill(document);
+    await page.getByLabel("Senha", { exact: true }).fill(password);
+    await page.getByLabel("Confirmar senha", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Começar teste grátis", exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveText("É necessário aceitar os termos para continuar.");
+    expect((await query("select count(*)::int as total from auth.users where email = $1", [email])).rows[0].total).toBe(0);
+    await page.locator('input[name="acceptTerms"]').check();
+    await page.getByLabel("Confirmar senha", { exact: true }).fill("Senha-diferente-A9!");
+    await page.getByRole("button", { name: "Começar teste grátis", exact: true }).click();
+    await expect(page.getByText("As senhas não coincidem", { exact: true })).toBeVisible();
+    expect((await query("select count(*)::int as total from auth.users where email = $1", [email])).rows[0].total).toBe(0);
+    await page.getByLabel("Confirmar senha", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "Começar teste grátis", exact: true }).click();
+    await expect(page).toHaveURL(/\/trial\/sucesso\?tenant=/);
+    await expect(page.getByRole("heading", { name: /seu teste grátis começou/i })).toBeVisible();
+    const tenantId = new URL(page.url()).searchParams.get("tenant")!;
+    const signup = (await query(
+      `select p.cpf_hash, t.slug, t.onboarding_completed_at,
+              (select count(*)::int from public.trial_records tr where tr.tenant_id = t.id) as trials,
+              (select count(*)::int from public.tenant_members tm join public.roles r on r.id = tm.role_id where tm.tenant_id = t.id and tm.user_id = u.id and r.key = 'OWNER') as owners
+       from auth.users u join public.profiles p on p.id = u.id join public.tenants t on t.created_by = u.id where u.email = $1 and t.id = $2`,
+      [email, tenantId],
+    )).rows[0];
+    expect(signup).toMatchObject({ trials: 1, owners: 1, onboarding_completed_at: null });
+    expect(signup.cpf_hash).not.toBe(document);
+    expect(signup.cpf_hash).toMatch(/^[a-f0-9]{64}$/);
+    await page.getByRole("link", { name: /configurar minha loja/i }).click();
+    await expect(page).toHaveURL(/\/onboarding\/segmento$/);
+    await page.getByRole("button", { name: /continuar/i }).click();
+    await expect(page).toHaveURL(/\/onboarding\/seu-negocio$/);
+    // Required steps cannot be bypassed by typing the publish URL.
+    await page.goto("/onboarding/publicar");
+    await expect(page).toHaveURL(/\/onboarding\/seu-negocio$/);
+    await page.getByLabel("Segmento", { exact: true }).selectOption("apparel");
+    await page.getByLabel("Instagram", { exact: true }).fill("loja_e2e");
+    await page.getByLabel("WhatsApp", { exact: true }).fill("11999999999");
+    await page.getByLabel("E-mail comercial", { exact: true }).fill(email);
+    await page.getByRole("button", { name: /salvar e continuar/i }).click();
+    await expect(page).toHaveURL(/\/onboarding\/revisar$/);
+    await page.goto("/onboarding");
+    await expect(page).toHaveURL(/\/onboarding\/revisar$/);
+    await page.getByRole("button", { name: /continuar/i }).click();
+    await expect(page).toHaveURL(/\/onboarding\/publicar$/);
+    await page.getByRole("button", { name: /publicar loja/i }).click();
+    await expect(page).toHaveURL(/\/painel$/);
+    const completion = (await query("select onboarding_completed_at from public.tenants where id = $1", [tenantId])).rows[0];
+    expect(completion.onboarding_completed_at).not.toBeNull();
+    const response = await page.goto(`/loja/${signup.slug}`);
+    expect(response?.status()).toBe(200);
+    await expect(page.getByText(storeName, { exact: true }).first()).toBeVisible();
     expect(errors).toEqual([]);
   });
 

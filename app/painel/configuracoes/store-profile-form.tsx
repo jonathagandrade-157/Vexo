@@ -6,7 +6,8 @@ import { useFormStatus } from "react-dom";
 import { SelectField } from "@/components/ui/select-field";
 import { TextField } from "@/components/ui/text-field";
 import { TextareaField } from "@/components/ui/textarea-field";
-import { initialStoreProfileState, updateStoreProfileAction } from "@/features/settings/actions";
+import { updateStoreProfileAction } from "@/features/settings/actions";
+import { initialStoreProfileState } from "@/features/settings/schema";
 import { SEGMENT_OPTIONS } from "@/features/settings/segments";
 
 interface DefaultValues {
