@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -64,6 +65,21 @@ const managedFixture = `
 const source = new pg.Client({ connectionString: sourceUrl.toString() });
 const target = new pg.Client({ connectionString: targetUrl.toString() });
 await source.connect(); await target.connect();
+const storageBinary = Buffer.from([137, 80, 78, 71, 0, 255, 128, 1]);
+const storageRequests = [];
+// A loopback HTTP fixture exercises the SDK download path, not the hosted
+// Supabase Storage service or the external backup destination.
+const storageServer = createServer((request, response) => {
+  storageRequests.push(request.url);
+  if (request.url !== "/storage/v1/object/authenticated/fixture-bucket/catalog/test.bin" ||
+      request.headers.apikey !== "sb_secret_synthetic_fixture_only") {
+    response.writeHead(404); response.end(); return;
+  }
+  response.writeHead(200, { "Content-Type": "application/octet-stream" });
+  response.end(storageBinary);
+});
+await new Promise((accept) => storageServer.listen(0, "127.0.0.1", accept));
+const storageApiUrl = `http://127.0.0.1:${storageServer.address().port}`;
 try {
   await source.query(managedFixture);
   await target.query(managedFixture);
@@ -84,10 +100,12 @@ try {
   // Actual pgcrypto ciphertext is used as a generic database fixture;
   // this is deliberately not called "Supabase Vault encryption".
   await source.query("insert into vault.secrets values ('44444444-4444-4444-8444-444444444444', extensions.pgp_sym_encrypt($1,$2))", ["synthetic-provider-token", rootKey]);
+  await source.query("insert into storage.buckets values ('fixture-bucket','fixture-bucket')");
+  await source.query("insert into storage.objects values ('66666666-6666-4666-8666-666666666666','fixture-bucket','catalog/test.bin',$1)", [JSON.stringify({ size: storageBinary.length })]);
   const env = {
     ...process.env, BACKUP_SYNTHETIC_ONLY: "1", BACKUP_RESTORE_ISOLATED: "1",
     BACKUP_SOURCE_PROJECT_REF: "local", BACKUP_SOURCE_DATABASE_URL: sourceUrl.toString(),
-    BACKUP_SOURCE_API_URL: "http://127.0.0.1:54321", BACKUP_SOURCE_SECRET_KEY: "sb_secret_synthetic_fixture_only",
+    BACKUP_SOURCE_API_URL: storageApiUrl, BACKUP_SOURCE_SECRET_KEY: "sb_secret_synthetic_fixture_only",
     BACKUP_OUTPUT_DIR: output, BACKUP_AGE_RECIPIENT: recipient, BACKUP_DESTINATION: "synthetic-local-only",
     BACKUP_RELEASE_COMMIT: (await capture("git", ["rev-parse", "HEAD"])).trim(), BACKUP_VAULT_ESCROW_RECEIPT: receiptPath,
   };
@@ -95,6 +113,14 @@ try {
   assert.equal(bundle.manifest.exportComplete, true);
   assert.equal(bundle.manifest.restoreValidated, false);
   assert.equal(bundle.manifest.vaultSecrets, 1);
+  assert.equal(storageRequests.length, 1);
+  assert.equal(bundle.manifest.objects.length, 1);
+  const storedObject = bundle.manifest.objects[0];
+  assert.equal(storedObject.path, "catalog/test.bin");
+  const objectBytes = [];
+  await decryptStream(join(bundle.directory, storedObject.filename), identity,
+    new Writable({ write(chunk, _encoding, next) { objectBytes.push(chunk); next(); } }));
+  assert.deepEqual(Buffer.concat(objectBytes), storageBinary);
   assert.deepEqual(bundle.manifest.migrations, ["20261026210716"]);
   for (const entry of bundle.manifest.components) {
     const encrypted = await readFile(join(bundle.directory, entry.filename));
@@ -110,6 +136,7 @@ try {
   assert.equal(restored.syntheticDatabaseRestored, true);
   assert.equal(restored.productionRecoveryValidated, false);
   assert.equal((await target.query("select count(*)::int as count from public.orders")).rows[0].count, 1);
+  assert.equal((await target.query("select name from storage.objects")).rows[0].name, "catalog/test.bin");
   assert.equal((await target.query("select encrypted_password = extensions.crypt('Fixture-password-A9!',encrypted_password) as password_matches from auth.users")).rows[0].password_matches, true);
   assert.equal((await target.query("select extensions.pgp_sym_decrypt(secret,$1) as value from vault.secrets", [rootKey])).rows[0].value, "synthetic-provider-token");
   assert.equal((await target.query("select version from supabase_migrations.schema_migrations")).rows[0].version, "20261026210716");
@@ -148,8 +175,10 @@ try {
   assert.equal(emptyVaultBundle.manifest.vaultEscrow, null);
   console.log(JSON.stringify({ laboratory: "native PostgreSQL + real age", sourceDataSynthetic: true, DockerDesktopRequired: false,
     encryptedDatabaseRestored: true, passwordHashPreserved: true, rlsIsolationVerified: true,
-    binaryPackagingVerified: true, wrongKeyAndCorruptionRejected: true, conditionalRootEscrowVerified: true, elapsedMs: Date.now() - started,
+    binaryPackagingVerified: true, storageSdkLoopbackFixtureVerified: true, wrongKeyAndCorruptionRejected: true, conditionalRootEscrowVerified: true, elapsedMs: Date.now() - started,
     productionRecoveryValidated: false, providerAuthAndVaultRecoveryValidated: false, externalStorageTested: false }));
 } finally {
+  storageServer.closeAllConnections();
+  await new Promise((accept) => storageServer.close(accept));
   await source.end(); await target.end(); await admin.end();
 }
