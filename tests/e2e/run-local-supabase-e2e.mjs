@@ -40,8 +40,11 @@ for (const value of [apiUrl, databaseUrl]) {
   }
 }
 
-const publicKey = required("PUBLISHABLE_KEY", "ANON_KEY");
-const secretKey = required("SECRET_KEY", "SERVICE_ROLE_KEY");
+const publicKey = required("PUBLISHABLE_KEY");
+const secretKey = required("SECRET_KEY");
+if (!publicKey.startsWith("sb_publishable_") || !secretKey.startsWith("sb_secret_")) {
+  throw new Error("Modern-key E2E requires opaque publishable/secret keys issued by the local Supabase gateway.");
+}
 const runId = randomUUID().slice(0, 8);
 const slug = `e2e-browser-${runId}`;
 const otherSlug = `e2e-other-${runId}`;
@@ -160,6 +163,6 @@ function run(relativePath, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-console.log("Disposable loopback Supabase seeded; external integration credentials excluded.");
+console.log("Disposable loopback Supabase seeded; modern opaque keys required, legacy key variables absent, external integration credentials excluded.");
 run("../../node_modules/next/dist/bin/next", ["build"]);
 run("../../node_modules/@playwright/test/cli.js", ["test", "--config=playwright.supabase.config.ts"]);
