@@ -24,6 +24,8 @@ describe("lib/env", () => {
     for (const key of Object.keys(VALID_ENV)) {
       delete process.env[key];
     }
+    delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    delete process.env.SUPABASE_SECRET_KEY;
     delete process.env.VERCEL_URL;
   });
 
@@ -41,6 +43,27 @@ describe("lib/env", () => {
       NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX:
         VALID_ENV.NEXT_PUBLIC_STOREFRONT_DOMAIN_SUFFIX,
     });
+  });
+
+  it("accepts the modern publishable key without the legacy anon key", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_modern",
+    });
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    const { getPublicEnv } = await import("@/lib/env");
+
+    expect(getPublicEnv().NEXT_PUBLIC_SUPABASE_ANON_KEY).toBe("sb_publishable_modern");
+  });
+
+  it("prefers the modern publishable key while the legacy key still exists", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_modern",
+    });
+
+    const { getPublicEnv } = await import("@/lib/env");
+
+    expect(getPublicEnv().NEXT_PUBLIC_SUPABASE_ANON_KEY).toBe("sb_publishable_modern");
   });
 
   it("throws with a readable message when a public var is missing", async () => {
@@ -100,6 +123,27 @@ describe("lib/env", () => {
       SUPABASE_SERVICE_ROLE_KEY: VALID_ENV.SUPABASE_SERVICE_ROLE_KEY,
       TRIAL_HASH_SECRET: VALID_ENV.TRIAL_HASH_SECRET,
     });
+  });
+
+  it("accepts and prefers the modern server secret without the legacy service-role key", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      SUPABASE_SECRET_KEY: "sb_secret_modern",
+    });
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const { getServerEnv } = await import("@/lib/env");
+
+    expect(getServerEnv().SUPABASE_SERVICE_ROLE_KEY).toBe("sb_secret_modern");
+  });
+
+  it("prefers the modern server secret while the legacy key still exists", async () => {
+    Object.assign(process.env, VALID_ENV, {
+      SUPABASE_SECRET_KEY: "sb_secret_modern",
+    });
+
+    const { getServerEnv } = await import("@/lib/env");
+
+    expect(getServerEnv().SUPABASE_SERVICE_ROLE_KEY).toBe("sb_secret_modern");
   });
 
   it("getServerEnv() succeeds even when every Mercado Pago var is missing (production incident regression — auth/signup must never depend on payment credentials)", async () => {

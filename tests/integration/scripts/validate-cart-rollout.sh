@@ -159,4 +159,36 @@ end
 $$;
 SQL
 
+echo "Validating the cart product read permission hotfix..."
+psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 <<'SQL'
+-- The generic PostgreSQL stub grants service_role more than the actual
+-- hosted project. Reproduce the read-only privilege check observed in
+-- production before validating the forward migration in this local DB.
+revoke select on table public.products from service_role;
+do $$
+begin
+  if has_table_privilege('service_role', 'public.products', 'SELECT') then
+    raise exception 'baseline no longer reproduces the missing cart product read privilege';
+  end if;
+end
+$$;
+SQL
+
+psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 \
+  -f "$MIGRATIONS_DIR/20261027150000_cart_product_read_grant.sql" >/dev/null
+
+psql "$ROLLOUT_URL" -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if not has_table_privilege('service_role', 'public.products', 'SELECT') then
+    raise exception 'cart product read hotfix did not grant SELECT to the BFF';
+  end if;
+  if has_table_privilege('anon', 'public.cart_items', 'SELECT')
+     or has_table_privilege('authenticated', 'public.cart_items', 'SELECT') then
+    raise exception 'cart product read hotfix reopened browser cart access';
+  end if;
+end
+$$;
+SQL
+
 echo "Cart security migration rollout validated successfully."

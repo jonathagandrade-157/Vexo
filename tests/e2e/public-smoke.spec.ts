@@ -28,10 +28,9 @@ test.describe("jornada pública essencial", () => {
     );
   });
 
-  test("preferência de tema é aplicada e persistida", async ({ page }, testInfo) => {
+  test("preferência de tema é aplicada e persistida", async ({ page, isMobile }) => {
     await page.goto("/");
 
-    const isMobile = testInfo.project.name === "mobile-chromium";
     await page
       .getByRole("button", { name: isMobile ? /alternar para claro/i : "Usar tema claro" })
       .click();
@@ -75,6 +74,11 @@ test.describe("jornada pública essencial", () => {
     const icon = await request.get("/icon");
     expect(icon.ok()).toBeTruthy();
     expect(icon.headers()["content-type"]).toContain("image/png");
+
+    const favicon = await request.get("/favicon.ico");
+    expect(favicon.ok()).toBeTruthy();
+    expect(favicon.headers()["content-type"]).toMatch(/image\/(?:x-icon|vnd.microsoft.icon)/);
+    expect(Array.from((await favicon.body()).subarray(0, 4))).toEqual([0, 0, 1, 0]);
 
     const openGraphImage = await request.get("/opengraph-image");
     expect(openGraphImage.ok()).toBeTruthy();

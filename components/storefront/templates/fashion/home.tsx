@@ -86,7 +86,9 @@ export function FashionHome({ tenant, categories, products, promotions, banners,
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <p className="text-center font-body text-body-sm text-white/70" id="promocoes">Nenhuma promoção no momento.</p>
+        )}
 
         <section className="mx-auto max-w-xl border-t border-white/10 pt-12 text-center" id="sobre">
           <p className="mb-2 font-label text-label-sm uppercase tracking-widest text-[var(--store-primary)]">A marca</p>

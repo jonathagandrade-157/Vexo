@@ -34,9 +34,12 @@ const STORE_SLUG = "loja-teste";
  * usam `.select().eq().in()` — ambas as formas terminam resolvendo
  * `{data, error: null}` a partir de `tables[nomeDaTabela] ?? []`.
  */
-function fakeSupabase(tables: { cart_items: unknown[]; [table: string]: unknown[] | undefined }) {
-  function builder(rows: unknown[]) {
-    const resolved = Promise.resolve({ data: rows, error: null });
+function fakeSupabase(
+  tables: { cart_items: unknown[]; [table: string]: unknown[] | undefined },
+  cartItemsError: { code: string } | null = null,
+) {
+  function builder(rows: unknown[], error: { code: string } | null) {
+    const resolved = Promise.resolve({ data: error ? null : rows, error });
     const b = {
       select: () => b,
       eq: () => b,
@@ -45,7 +48,9 @@ function fakeSupabase(tables: { cart_items: unknown[]; [table: string]: unknown[
     };
     return b;
   }
-  const from = vi.fn((table: string) => builder(tables[table] ?? []));
+  const from = vi.fn((table: string) =>
+    builder(tables[table] ?? [], table === "cart_items" ? cartItemsError : null),
+  );
   return { from };
 }
 
@@ -105,6 +110,22 @@ describe("getCart", () => {
       },
     ]);
     expect(cart.subtotal).toBe(100); // preço do produto, comportamento de Etapa 9 intacto
+  });
+
+  it("does not silently convert a cart_items query failure into an empty cart", async () => {
+    vi.mocked(resolveStorefrontTenant).mockResolvedValue({ status: "ready", tenant: { id: TENANT_ID } } as never);
+    vi.mocked(getOwnedActiveCart).mockResolvedValue({
+      id: CART_ID,
+      ownerTokenHash: "a".repeat(64),
+      checkoutOrderId: null,
+    });
+    vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(
+      fakeSupabase({ cart_items: [] }, { code: "42501" }) as never,
+    );
+
+    await expect(getCart("loja-com-falha")).rejects.toThrow(
+      "Falha ao carregar os itens do carrinho.",
+    );
   });
 
   // 7 — produto simples inativo: comportamento já existente (fora do escopo desta correção), reconfirmado sem regressão.

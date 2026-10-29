@@ -24,13 +24,14 @@ export interface SaveStatusInput {
   /** true assim que ProductGalleryUploader terminou (com sucesso ou falha) pelo menos uma rodada de envio dos arquivos pendentes — `false` significa "ainda não sabemos", nunca "sem falha". */
   gallerySettled: boolean;
   galleryHasFailure: boolean;
+  stockSaveFailed?: boolean;
   configStatus: "idle" | "pending" | "success" | "error";
 }
 
 export function computeSaveStatus(input: SaveStatusInput): SaveStatus {
   if (input.isEditMode) return "editing";
   if (!input.justCreated) return "idle";
-  if (input.galleryHasFailure || input.configStatus === "error") return "failed";
+  if (input.stockSaveFailed || input.galleryHasFailure || input.configStatus === "error") return "failed";
   if (input.gallerySettled && input.configStatus === "success") return "done";
   return "persisting";
 }

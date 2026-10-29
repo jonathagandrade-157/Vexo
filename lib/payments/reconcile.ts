@@ -53,6 +53,12 @@ export async function reconcileStalePendingPayments(): Promise<ReconcilePayments
     return { checked: 0, reconciled: 0 };
   }
 
+  // A ausência de pedidos vencidos é o caminho normal de quase toda
+  // execução. Não inicialize uma integração opcional nesse caso: além de
+  // evitar trabalho desnecessário, isso mantém o cron saudável enquanto
+  // nenhuma loja conectou/configurou o Mercado Pago neste ambiente.
+  if (staleOrders.length === 0) return { checked: 0, reconciled: 0 };
+
   const gateway = getGateway(PROVIDER);
   let reconciled = 0;
 

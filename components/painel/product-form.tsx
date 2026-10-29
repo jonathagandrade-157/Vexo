@@ -31,7 +31,7 @@ function SaveButton({ label, disabled }: { label: string; disabled?: boolean }) 
       disabled={pending || disabled}
       type="submit"
     >
-      <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+      <span aria-hidden="true" className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
         save
       </span>
       {pending ? "Salvando…" : label}
@@ -135,6 +135,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
   /** D20.7/D20.8 — só navega quando TODO staging pendente (imagens E opções/valores/variantes) chegou a um estado terminal sem falha — nunca antes, nunca com uma falha pendente (o lojista precisa ver o que falhou e poder tentar de novo, ainda nesta tela). */
   function attemptNavigate() {
     if (hasNavigatedRef.current || !effectiveProductId) return;
+    if (state.stockSaveFailed) return;
     if (!gallerySettledRef.current || galleryHasFailureRef.current) return;
     if (configStatusRef.current === "pending" || configStatusRef.current === "error") return;
     hasNavigatedRef.current = true;
@@ -199,6 +200,7 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
   // createProductAction retornou sucesso — ver features/products/
   // save-status.ts para a derivação em si (pura, testada isoladamente).
   const saveStatus = computeSaveStatus({
+    stockSaveFailed: state.stockSaveFailed,
     isEditMode: Boolean(product),
     justCreated,
     gallerySettled,
@@ -257,6 +259,13 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
         {/* D20.7 — depois de criado, o form continua montado (mesma instância, sem navegar) só para terminar o upload das imagens já selecionadas/a persistência de opções/valores/variantes (D20.8): reenviar o form chamaria createProductAction de novo, criando um SEGUNDO produto. O botão fica desabilitado até a navegação para a tela de edição de verdade acontecer. D20.9.1 — o rótulo agora reflete os 3 estados possíveis pós-criação (salvando/falhou/salvo), nunca "Produto salvo" antes de tudo terminar de verdade. */}
         <SaveButton disabled={justCreated} label={saveButtonLabel(saveStatus)} />
       </div>
+
+      {justCreated && state.stockSaveFailed ? (
+        <p className="mb-6 rounded-lg border border-error/30 bg-error-container/10 p-4 font-body text-body-sm text-error" role="alert">
+          Produto criado, mas o estoque não foi salvo. Não cadastre o produto novamente.{" "}
+          <Link className="underline" href={`/painel/produtos/${effectiveProductId}/editar`}>Abrir edição para corrigir o estoque</Link>
+        </p>
+      ) : null}
 
       {/* D20.9.1 — B1: feedback visual explícito, distinto do rótulo do botão, enquanto imagens/opções/valores/variantes ainda estão sendo persistidas depois da criação do produto. */}
       {isSavingCritically ? (
