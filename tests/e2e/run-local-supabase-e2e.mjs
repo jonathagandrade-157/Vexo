@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 
+import { verifyKeyCutover } from "../../scripts/operations/verify-key-cutover.mjs";
+
 // This runner must never use a linked or hosted database, developer .env
 // files, or external payment/email credentials. All rows are disposable.
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -45,6 +47,10 @@ const secretKey = required("SECRET_KEY");
 if (!publicKey.startsWith("sb_publishable_") || !secretKey.startsWith("sb_secret_")) {
   throw new Error("Modern-key E2E requires opaque publishable/secret keys issued by the local Supabase gateway.");
 }
+const keyProbe = await verifyKeyCutover({ apiUrl, projectRef: "local", mode: "before-revoke", synthetic: true,
+  publishableKey: publicKey, secretKey, legacyAnonKey: required("ANON_KEY"), legacyServiceKey: required("SERVICE_ROLE_KEY") });
+if (!keyProbe.verified) throw new Error(`Local cutover preflight failed: ${JSON.stringify(keyProbe.checks)}`);
+console.log("Modern-key cutover preflight: catalog allowed, direct public cart denied, administrative cart allowed; legacy baseline still valid (not revoked).");
 const runId = randomUUID().slice(0, 8);
 const slug = `e2e-browser-${runId}`;
 const otherSlug = `e2e-other-${runId}`;

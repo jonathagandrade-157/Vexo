@@ -11,7 +11,7 @@ import { assertExecutionApproval, capture, encryptStream, hashFile, LOOPBACK, na
 
 export const REQUIRED_EXPORT_ENV = [
   "BACKUP_SOURCE_PROJECT_REF", "BACKUP_SOURCE_DATABASE_URL", "BACKUP_SOURCE_API_URL", "BACKUP_SOURCE_SECRET_KEY",
-  "BACKUP_OUTPUT_DIR", "BACKUP_AGE_RECIPIENT", "BACKUP_DESTINATION", "BACKUP_RELEASE_COMMIT", "BACKUP_VAULT_ESCROW_RECEIPT",
+  "BACKUP_OUTPUT_DIR", "BACKUP_AGE_RECIPIENT", "BACKUP_DESTINATION", "BACKUP_RELEASE_COMMIT",
 ];
 
 export function exportConfiguration(env) {
@@ -52,19 +52,12 @@ export async function connectDatabase(config) {
 
 export async function createEncryptedExport(config, env = process.env) {
   assertExecutionApproval(config, env);
-  const receipt = JSON.parse(await readFile(env.BACKUP_VAULT_ESCROW_RECEIPT, "utf8"));
-  const receiptFields = new Set(["projectRef", "rootKeySha256", "encryptedKeySha256", "encryptedKeyLocation", "createdAt", "recipient", "rootKeyEscrowVerified"]);
-  if (Object.keys(receipt).some((key) => !receiptFields.has(key)) || receipt.projectRef !== config.projectRef ||
-      !/^[a-f0-9]{64}$/.test(receipt.rootKeySha256 ?? "") || !receipt.encryptedKeyLocation ||
-      !/^[a-f0-9]{64}$/.test(receipt.encryptedKeySha256 ?? "") || receipt.rootKeyEscrowVerified !== true || receipt.recipient === config.recipient) {
-    throw new Error("A separately stored Vault root-key escrow receipt is required. A SQL dump alone is insufficient.");
-  }
   const { database, env: pgEnv } = await connectDatabase(config);
   const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID()}`;
   const directory = join(config.output, runId);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const manifest = { formatVersion: 1, runId, projectRef: config.projectRef, releaseCommit: config.releaseCommit,
-    startedAt: new Date().toISOString(), destination: config.destination, vaultEscrow: receipt,
+    startedAt: new Date().toISOString(), destination: config.destination, vaultEscrow: null,
     components: [], objects: [], exportComplete: false, restoreValidated: false,
     externalRecoveryRequired: ["Supabase Auth/SMTP/provider configuration", "JWT/session recovery strategy", "Vercel secrets in a separate vault", "DNS and approved integrations"],
   };
@@ -86,6 +79,18 @@ export async function createEncryptedExport(config, env = process.env) {
     manifest.storageInventory = await inventory(database);
     manifest.migrations = (await database.query("select version from supabase_migrations.schema_migrations order by version")).rows.map((row) => row.version);
     manifest.vaultSecrets = Number((await database.query("select count(*) as count from vault.secrets")).rows[0].count);
+    manifest.encryptedColumnLabels = Number((await database.query("select count(*) as count from pg_seclabel where provider = 'pgsodium' and label ilike '%encrypt%'")).rows[0].count);
+    if (manifest.vaultSecrets > 0 || manifest.encryptedColumnLabels > 0) {
+      if (!env.BACKUP_VAULT_ESCROW_RECEIPT) throw new Error("Encrypted source data requires a separate verified root-key escrow receipt.");
+      const receipt = JSON.parse(await readFile(env.BACKUP_VAULT_ESCROW_RECEIPT, "utf8"));
+      const receiptFields = new Set(["projectRef", "rootKeySha256", "encryptedKeySha256", "encryptedKeyLocation", "createdAt", "recipient", "rootKeyEscrowVerified"]);
+      if (Object.keys(receipt).some((key) => !receiptFields.has(key)) || receipt.projectRef !== config.projectRef ||
+          !/^[a-f0-9]{64}$/.test(receipt.rootKeySha256 ?? "") || !receipt.encryptedKeyLocation ||
+          !/^[a-f0-9]{64}$/.test(receipt.encryptedKeySha256 ?? "") || receipt.rootKeyEscrowVerified !== true || receipt.recipient === config.recipient) {
+        throw new Error("A separately stored Vault root-key escrow receipt is required. A SQL dump alone is insufficient.");
+      }
+      manifest.vaultEscrow = receipt;
+    }
     const nativeEnv = { ...pgEnv, VEXO_PG_SNAPSHOT: snapshot.id, PGOPTIONS: "-c default_transaction_read_only=on" };
     const cwd = fileURLToPath(new URL("../../", import.meta.url));
     for (const kind of ["roles", "schema", "data", "history-schema", "history-data"]) {

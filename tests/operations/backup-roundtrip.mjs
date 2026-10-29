@@ -134,9 +134,21 @@ try {
   await writeFile(join(output, "corrupt.age"), corrupt);
   await assert.rejects(() => decryptStream(join(output, "corrupt.age"), identity, new Writable({ write(_c, _e, next) { next(); } })));
   assert.equal(await hashFile(objectPath), record.ciphertextSha256);
+
+  // Existing encrypted rows must never bypass escrow, even in this fixture.
+  const withoutEscrow = { ...env };
+  delete withoutEscrow.BACKUP_VAULT_ESCROW_RECEIPT;
+  await assert.rejects(() => createEncryptedExport(exportConfiguration(withoutEscrow), withoutEscrow), /root-key escrow/);
+  // A source without Vault/TCE data needs no unnecessary root-key export.
+  // Only this disposable fixture is changed; the restored target is untouched.
+  await source.query("delete from vault.secrets");
+  const emptyVaultBundle = await createEncryptedExport(exportConfiguration(withoutEscrow), withoutEscrow);
+  assert.equal(emptyVaultBundle.manifest.vaultSecrets, 0);
+  assert.equal(emptyVaultBundle.manifest.encryptedColumnLabels, 0);
+  assert.equal(emptyVaultBundle.manifest.vaultEscrow, null);
   console.log(JSON.stringify({ laboratory: "native PostgreSQL + real age", sourceDataSynthetic: true, DockerDesktopRequired: false,
     encryptedDatabaseRestored: true, passwordHashPreserved: true, rlsIsolationVerified: true,
-    binaryPackagingVerified: true, wrongKeyAndCorruptionRejected: true, elapsedMs: Date.now() - started,
+    binaryPackagingVerified: true, wrongKeyAndCorruptionRejected: true, conditionalRootEscrowVerified: true, elapsedMs: Date.now() - started,
     productionRecoveryValidated: false, providerAuthAndVaultRecoveryValidated: false, externalStorageTested: false }));
 } finally {
   await source.end(); await target.end(); await admin.end();
