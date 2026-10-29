@@ -29,7 +29,16 @@ async function addProduct(page: Page, product = "principal") {
 function collectErrors(page: Page) {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(`${new URL(page.url()).pathname}: ${error.message}`));
-  page.on("console", (message) => { if (message.type() === "error") errors.push(`${new URL(page.url()).pathname}: ${message.text()}`); });
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const resource = message.location().url;
+    const location = resource?.startsWith("http") ? new URL(resource).pathname : resource;
+    errors.push(`${new URL(page.url()).pathname}: ${message.text()}${location ? ` [${location}]` : ""}`);
+  });
+  page.on("response", (response) => {
+    if (response.status() < 400 || new URL(response.url()).origin !== new URL(page.url()).origin) return;
+    errors.push(`${new URL(page.url()).pathname}: HTTP ${response.status()} ${new URL(response.url()).pathname} (${response.request().resourceType()})`);
+  });
   return errors;
 }
 
