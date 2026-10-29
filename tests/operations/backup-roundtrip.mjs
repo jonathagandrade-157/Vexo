@@ -59,7 +59,7 @@ const managedFixture = `
   create table auth.users(id uuid primary key, email text, encrypted_password text);
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   create table storage.buckets(id text primary key, name text);
-  create table storage.objects(id uuid primary key, bucket_id text references storage.buckets(id), name text, metadata jsonb);
+  create table storage.objects(id uuid primary key, bucket_id text references storage.buckets(id), name text, metadata jsonb, updated_at timestamptz default now());
   create table vault.secrets(id uuid primary key, secret bytea);
 `;
 const source = new pg.Client({ connectionString: sourceUrl.toString() });
@@ -67,16 +67,20 @@ const target = new pg.Client({ connectionString: targetUrl.toString() });
 await source.connect(); await target.connect();
 const storageBinary = Buffer.from([137, 80, 78, 71, 0, 255, 128, 1]);
 const storageRequests = [];
+let changeObjectDuringDownload = false;
 // A loopback HTTP fixture exercises the SDK download path, not the hosted
 // Supabase Storage service or the external backup destination.
 const storageServer = createServer((request, response) => {
   storageRequests.push(request.url);
-  if (request.url !== "/storage/v1/object/authenticated/fixture-bucket/catalog/test.bin" ||
+  if (request.url !== "/storage/v1/object/fixture-bucket/catalog/test.bin" ||
       request.headers.apikey !== "sb_secret_synthetic_fixture_only") {
     response.writeHead(404); response.end(); return;
   }
-  response.writeHead(200, { "Content-Type": "application/octet-stream" });
-  response.end(storageBinary);
+  const finish = () => { response.writeHead(200, { "Content-Type": "application/octet-stream" }); response.end(storageBinary); };
+  if (changeObjectDuringDownload) {
+    source.query("update storage.objects set updated_at = clock_timestamp()")
+      .then(finish, () => { response.writeHead(500); response.end(); });
+  } else finish();
 });
 await new Promise((accept) => storageServer.listen(0, "127.0.0.1", accept));
 const storageApiUrl = `http://127.0.0.1:${storageServer.address().port}`;
@@ -101,7 +105,7 @@ try {
   // this is deliberately not called "Supabase Vault encryption".
   await source.query("insert into vault.secrets values ('44444444-4444-4444-8444-444444444444', extensions.pgp_sym_encrypt($1,$2))", ["synthetic-provider-token", rootKey]);
   await source.query("insert into storage.buckets values ('fixture-bucket','fixture-bucket')");
-  await source.query("insert into storage.objects values ('66666666-6666-4666-8666-666666666666','fixture-bucket','catalog/test.bin',$1)", [JSON.stringify({ size: storageBinary.length })]);
+  await source.query("insert into storage.objects(id,bucket_id,name,metadata) values ('66666666-6666-4666-8666-666666666666','fixture-bucket','catalog/test.bin',$1)", [JSON.stringify({ size: storageBinary.length })]);
   const env = {
     ...process.env, BACKUP_SYNTHETIC_ONLY: "1", BACKUP_RESTORE_ISOLATED: "1",
     BACKUP_SOURCE_PROJECT_REF: "local", BACKUP_SOURCE_DATABASE_URL: sourceUrl.toString(),
@@ -173,9 +177,11 @@ try {
   assert.equal(emptyVaultBundle.manifest.vaultSecrets, 0);
   assert.equal(emptyVaultBundle.manifest.encryptedColumnLabels, 0);
   assert.equal(emptyVaultBundle.manifest.vaultEscrow, null);
+  changeObjectDuringDownload = true;
+  await assert.rejects(() => createEncryptedExport(exportConfiguration(withoutEscrow), withoutEscrow), /Storage changed/);
   console.log(JSON.stringify({ laboratory: "native PostgreSQL + real age", sourceDataSynthetic: true, DockerDesktopRequired: false,
     encryptedDatabaseRestored: true, passwordHashPreserved: true, rlsIsolationVerified: true,
-    binaryPackagingVerified: true, storageSdkLoopbackFixtureVerified: true, wrongKeyAndCorruptionRejected: true, conditionalRootEscrowVerified: true, elapsedMs: Date.now() - started,
+    binaryPackagingVerified: true, storageSdkLoopbackFixtureVerified: true, concurrentStorageChangeRejected: true, wrongKeyAndCorruptionRejected: true, conditionalRootEscrowVerified: true, elapsedMs: Date.now() - started,
     productionRecoveryValidated: false, providerAuthAndVaultRecoveryValidated: false, externalStorageTested: false }));
 } finally {
   storageServer.closeAllConnections();

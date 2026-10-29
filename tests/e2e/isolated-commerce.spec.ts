@@ -357,12 +357,24 @@ test.describe("comércio com Supabase descartável", () => {
     await page.goto("/painel/categorias");
     await page.getByRole("button", { name: /nova categoria/i }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Nome da categoria", { exact: true }).fill(categoryName);
+    await dialog.getByLabel("Nome da categoria", { exact: true }).fill(`${categoryName} inicial`);
     await dialog.getByRole("button", { name: "Criar categoria", exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+    await expect(page.getByText(`${categoryName} inicial`, { exact: true })).toBeVisible();
     await page.reload();
+    const initialRow = page.getByText(`${categoryName} inicial`, { exact: true }).locator("xpath=../..");
+    await initialRow.getByTitle("Editar", { exact: true }).click();
+    await dialog.getByLabel("Nome da categoria", { exact: true }).fill(categoryName);
+    await dialog.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expect(dialog).not.toBeVisible();
     await expect(page.getByText(categoryName, { exact: true })).toBeVisible();
+    const categoryRow = page.getByText(categoryName, { exact: true }).locator("xpath=../..");
+    await categoryRow.getByTitle("Desativar", { exact: true }).click();
+    await expect(categoryRow.getByText("Inativo", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(categoryRow.getByText("Inativo", { exact: true })).toBeVisible();
+    await categoryRow.getByTitle("Ativar", { exact: true }).click();
+    await expect(categoryRow.getByText("Ativo", { exact: true })).toBeVisible();
 
     await page.goto("/painel/produtos/novo");
     await page.getByRole("button", { name: "Salvar produto", exact: true }).click();

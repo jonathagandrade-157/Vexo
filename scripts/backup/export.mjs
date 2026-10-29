@@ -35,7 +35,7 @@ export function exportConfiguration(env) {
 }
 
 async function inventory(database) {
-  const result = await database.query("select bucket_id, name, metadata from storage.objects order by bucket_id, name");
+  const result = await database.query("select id, bucket_id, name, metadata, updated_at from storage.objects order by bucket_id, name");
   return result.rows;
 }
 
@@ -173,7 +173,7 @@ export async function uploadAndVerifyExport(bundle, config, env = process.env) {
 async function main() {
   if (!process.argv.includes("--execute")) {
     console.log(JSON.stringify({ mode: "plan-only", noExport: true, requiredNames: REQUIRED_EXPORT_ENV,
-      approvalRequired: ["exact source project", "private destination and cost", "Vault root-key escrow", "isolated restore target"],
+      approvalRequired: ["exact source project", "private destination and cost", "separate root-key escrow if Vault/TCE contains encrypted data", "isolated restore target"],
       nativeDependencies: ["Supabase CLI 2.115.0 (dry-run only)", "PostgreSQL client >= source major", "bash", "age", "AWS CLI for approved upload"] }));
     return;
   }

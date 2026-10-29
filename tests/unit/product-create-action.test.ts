@@ -51,6 +51,7 @@ function mockClient(opts: { hasPermission?: boolean; accessStatus?: string; resp
       delete: () => b,
       upsert: () => b,
       eq: () => b,
+      is: () => b,
       in: () => b,
       single: () => Promise.resolve(nextResult()),
       maybeSingle: () => Promise.resolve(nextResult()),
@@ -123,6 +124,17 @@ beforeEach(() => {
 });
 
 describe("createProductAction (D20.7)", () => {
+  it("preserva o ID criado e informa falha de estoque sem oferecer um segundo cadastro", async () => {
+    const client = mockClient({ responses: [
+      { data: { id: PRODUCT_ID }, error: null },
+      { error: { code: "42P10" } },
+    ] });
+    mockSession(client);
+    const result = await createProductAction(initialProductState, validProductFormData({ stockQuantity: "8" }));
+    expect(result).toMatchObject({ status: "success", productId: PRODUCT_ID, stockSaveFailed: true });
+    expect(client.from.mock.calls.filter((call) => call[0] === "products")).toHaveLength(1);
+  });
+
   it("criação válida devolve status success + productId, e NUNCA chama redirect()", async () => {
     const client = mockClient({
       responses: [
