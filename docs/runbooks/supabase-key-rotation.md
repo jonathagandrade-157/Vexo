@@ -18,7 +18,29 @@ e mantém fallback temporário. O browser lê o nome público literalmente
 para o Next.js incorporar o valor no build. O cliente administrativo usa
 `supabase-js` sem sessão, refresh ou cookies de usuário.
 
-## Sequência de execução aprovada
+## Evidência controlada e consumidores revisados em 29/10
+
+O cliente browser (`lib/supabase/client.ts`) lê os nomes públicos literalmente.
+SSR e cliente público usam `getPublicEnv`; o administrativo usa `getServerEnv`
+e supabase-js sem cookies. `lib/env.ts` prefere os nomes modernos e normaliza
+para as propriedades internas antigas. Esses nomes internos não indicam
+uso obrigatório do JWT legado. Os únicos fallbacks de ambiente estão nesses
+pontos; os demais módulos usam os clientes centralizados.
+
+[CI 40807222522](https://github.com/jonathagandrade-157/Vexo/actions/runs/40807222522),
+commit 7ef05de: 36 jornadas de navegador com chaves opacas emitidas pela stack
+Supabase real local, sem nomes legados no ambiente do Next. Login, painel,
+cadastro, vitrine, carrinho, checkout e histórico passaram. Não é prova de
+revogação no projeto hospedado. Upload autorizado e consumidores externos
+ainda precisam do smoke específico.
+
+Preview Vercel em 29/10 ainda compartilha as entradas legadas com Production.
+Não usar esse Preview como sandbox financeiro. Separar ambiente/projeto antes
+da homologação; ver `homologation-configuration.md`. Não foi baixado nenhum
+valor de variável. Confirmar jobs, Edge Functions e automações fora deste repo
+com o proprietário antes da revogação.
+
+## Sequência de execução após aprovação específica
 
 1. Confirmar projeto, ambientes, operador e commit aprovado. Registrar
    somente nomes/IDs de chaves e horários. Nunca guardar valores no relatório.
@@ -41,6 +63,21 @@ para o Next.js incorporar o valor no build. O cliente administrativo usa
    de autorizar chamadas e que as chaves novas continuam funcionando.
    Guardar status HTTP, nunca headers ou valores. Repetir smoke público,
    sessão do lojista e alertas. Retirar variáveis legadas dos consumidores.
+
+## Prova somente leitura da revogação
+
+`node scripts/operations/verify-key-cutover.mjs --plan` não acessa o projeto.
+Após aprovação, configurar no cofre do executor (nunca no chat):
+`KEY_PROBE_PROJECT_REF`, `KEY_PROBE_APPROVED_PROJECT_REF`, `KEY_PROBE_API_URL`,
+`KEY_PROBE_PUBLISHABLE_KEY`, `KEY_PROBE_SECRET_KEY`, `KEY_PROBE_LEGACY_ANON_KEY`
+e `KEY_PROBE_LEGACY_SERVICE_KEY`. As duas refs devem coincidir exatamente.
+
+Rodar `--execute --before-revoke` para baseline e, só após a desativação
+aprovada, `--execute --after-revoke`. O script solicita zero linhas e não lê
+corpos. Só registra status/nomes de checagem. Critério: catálogo público 200,
+carrinho direto com publishable 401/403, acesso administrativo moderno 200,
+ambas as chaves legadas originais 401. Qualquer outro status é falha, não
+evidência de revogação. O script não cria, modifica ou revoga chaves.
 
 Builds/abas antigos podem carregar o `anon` anterior. Testar reload e nova
 sessão após a revogação; indicar atualização da página em caso de sessão

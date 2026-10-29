@@ -1,74 +1,151 @@
 # Backup e recuperação do VEXO
 
-Estado em 2026-10-27: nenhum backup recuperável/restore comprovado;
-`pitr_enabled=false` e lista de backups indisponível. Sem mudança de
-infraestrutura, contratação ou exportação de dados autorizada neste roteiro.
-Nenhuma nova migration de produção deve avançar antes deste gate.
+Atualização: 2026-10-29. **P0 aberto.** Implementação preparada e laboratório
+sintético aprovado; nenhuma cópia de produção foi exportada. A escolha
+anterior de backup lógico externo não autoriza destino, custo ou exportação.
 
-Decisão do proprietário em 2026-10-27: backup lógico externo; destino
-protegido será indicado. Esta escolha não autoriza uma exportação para
-destino indefinido. A cópia e o restore ainda não foram executados.
+## Proposta concreta para aprovação
 
-## Informações pendentes do proprietário
+Destino recomendado: bucket privado Backblaze B2 compatível com S3, exclusivo
+do proprietário, prefixo `vexo/production`. Nome final, região, titular e
+custodiante precisam ser definidos. Alternativa: bucket S3 privado existente
+que satisfaça as mesmas verificações. Não foi criada conta nem contratado serviço.
 
-O mecanismo escolhido é backup lógico externo. Falta identificar o serviço
-e a pasta/bucket de destino protegido, quem controla o acesso e o responsável
-pela operação. Não enviar senhas, tokens ou chaves pelo chat. Depois da
-verificação do destino, apresentar escopo, retenção e eventual custo para
-aprovação específica antes da exportação.
+- Criptografia local com age antes do upload, inclusive manifesto, paths do
+  Storage, SQL e código implantado. Nenhum SQL em claro no disco.
+- Cópia diária, retenção mínima de 14 dias com Object Lock GOVERNANCE; chave
+  do executor sem excluir, contornar retenção ou configurar bucket. A ativação
+  de Object Lock não pode ser desfeita: faz parte da aprovação do destino.
+- Chave S3 restrita a bucket/prefixo com leitura para verificar o ciphertext
+  enviado e escrita. Restauração usa outra chave, somente leitura.
+- Executor recebe só o destinatário público age. Identidade privada em
+  cofre do custodiante e cópia offline. Outra identidade para eventual chave
+  raiz Supabase; não guardar as duas identidades no executor ou junto das cópias.
+- Linux com Node >=20, bash, PostgreSQL client >=17, age, AWS CLI e Supabase CLI
+  2.115.0. Usa o plano oficial de dump (--dry-run) com ferramentas nativas;
+  não requer Docker Desktop. O laboratório CI usa PostgreSQL descartável.
+- Staging efêmero fora de Git/OneDrive, permissões 0700/0600, executor sem
+  set -x, sem upload automático de diretórios de backup como artefatos CI.
 
-Proposta operacional para aprovação: cópia diária, retenção diária de 14
-dias, RPO alvo de 24 horas e RTO alvo de 4 horas. São metas propostas,
-não capacidades demonstradas nem compromisso comercial já assumido.
+Preço consultado em 29/10: B2 US$6,95/TB/mês, primeiros 10 GB gratuitos.
+Exemplo de 5 GB por cópia ×14 =70 GB: aproximadamente **US$0,42/mês de
+armazenamento** após franquia. Exclui impostos, câmbio, runner, chamadas não
+gratuitas e egress Supabase. Não é proposta comercial fechada.
+Consulta agregada de produção em 29/10: PostgreSQL 17.6, banco físico
+16.419.987 bytes, 9 objetos/1.471.843 bytes, Vault 0 segredos e 0 labels de
+criptografia pgsodium. Isso sugere volume pequeno; tamanho comprimido e uso
+mensal só serão conhecidos no piloto aprovado. Não prometer custo total zero.
 
-## Conteúdo necessário para recuperar o produto
+Fontes: [preço B2](https://www.backblaze.com/cloud-storage/pricing),
+[Object Lock](https://www.backblaze.com/docs/cloud-storage-object-lock),
+[chaves restritas](https://www.backblaze.com/docs/cloud-storage-application-keys),
+[egress Supabase](https://supabase.com/docs/guides/platform/manage-your-usage/egress).
 
-| Conjunto | Verificação no restore |
+## Implementação e limites
+
+scripts/backup/export.mjs: snapshot read-only compartilhado entre schema e
+dados; roles, schema/data filtrados pela CLI oficial, histórico de migrations,
+Vault separado, arquivos do Storage e código Git do commit implantado. Cifra
+cada componente, envia nomes únicos e baixa o ciphertext para comparar SHA-256.
+Manifesto enviado por último. Recusa bucket público, retenção insuficiente,
+origem divergente e pooler transacional (6543). Mudança de Storage durante o
+export aborta o bundle. Objetos >64 MiB abortam até existir streaming; o
+limite de imagem atual da aplicação é 5 MB.
+
+O manifesto nunca declara restore aprovado automaticamente. ACL/Object Lock,
+upload e readback contra B2 precisam de ensaio autorizado; o laboratório
+não prova compatibilidade externa. Falhas de rede e particularidades do
+provedor podem exigir ajuste antes de aceitar o primeiro backup.
+
+Auth: preserva linhas e hashes de senha, mas recuperar o serviço também exige
+SMTP, providers, redirects, configuração Auth e estratégia de sessões.
+Customizações em schemas gerenciados devem ser conferidas pelas migrations
+versionadas; não assumir que o filtro padrão inclui todo trigger customizado.
+Storage exige arquivos e metadados: dump SQL sozinho não contém os arquivos.
+
+Vault/TCE: a chave raiz de criptografia não está no dump. O exporter exige
+recibo de escrow separado quando encontra segredos Vault ou labels TCE.
+No estado observado (ambos zero), não exige exportar uma chave raiz sem uso.
+**Antes de ativar integrações que armazenam tokens no Vault**, preparar e
+validar esse escrow. vault-escrow.mjs cifra a raiz e verifica a cópia com
+identidade distinta; só consulta a API real com aprovação específica.
+API keys, signing keys do Auth e chave raiz Vault são credenciais diferentes.
+
+## Configuração do executor (valores somente em cofre)
+
+| Nomes | Uso |
 | --- | --- |
-| Dados e schema da aplicação | Tenants, membros, planos, catálogo, estoque, carrinhos, pedidos e históricos consistentes. |
-| Auth, roles, RLS, RPCs e histórico de migrations | Login, isolamento e privilégios iguais aos esperados; nenhuma migration reaplicada por falta do histórico. |
-| Supabase Vault | Os vaults de pagamento e entrega usam segredos cifrados; testar capacidade de recuperação sem exibir tokens. |
-| Objetos Storage | Produtos, logos e banners recuperáveis, além dos respectivos metadados. |
-| Configuração externa | Inventário de nomes de variáveis, URLs de callback, jobs, webhooks e responsáveis; segredos em cofre separado. |
+| BACKUP_SOURCE_PROJECT_REF | vqbiurnfqkjkrenigxzv |
+| BACKUP_SOURCE_DATABASE_URL | Direct/session pooler 5432; jamais argv/log |
+| BACKUP_PGSSLROOTCERT_FILE | CA verificada; TLS verify-full |
+| BACKUP_SOURCE_API_URL, BACKUP_SOURCE_SECRET_KEY | Mesmo projeto; key moderna sb_secret_ |
+| BACKUP_OUTPUT_DIR, BACKUP_AGE_RECIPIENT | Staging protegido e destinatário público |
+| BACKUP_DESTINATION | s3://BUCKET-APROVADO/vexo/production |
+| BACKUP_RELEASE_COMMIT | SHA completo efetivamente implantado |
+| BACKUP_S3_ENDPOINT, BACKUP_S3_REGION | Endpoint HTTPS e região do bucket |
+| BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY | Chave restrita do executor |
+| BACKUP_APPROVED_PROJECT_REF, BACKUP_APPROVED_DESTINATION, BACKUP_APPROVAL_REFERENCE | Correspondência exata com autorização registrada |
+| BACKUP_VAULT_ESCROW_RECEIPT | Recibo verificado se Vault/TCE contiver dados cifrados |
 
-O backup do banco não contém os arquivos do Storage. Um dump também não
-comprova por si a recuperação das chaves de criptografia do Vault.
-O plano deve cobrir ambos antes de receber aprovação.
+Flags de aprovação são guardas contra erro, não substituem autorização
+humana. Não solicitar valores secretos por chat. Não usar env de produção
+no workflow de pull requests.
 
-## Execução depois da aprovação
+Inspeção sem exportar:
 
-1. Conferir explicitamente a origem `vqbiurnfqkjkrenigxzv` e o destino
-   separado. Registrar operador e janela. Proteger os artefatos fora de
-   Git, chat, anexos e pastas sincronizadas sem controle de acesso.
-2. Fazer a cópia pelo mecanismo escolhido. Para backup lógico, seguir o
-   roteiro oficial de roles, schema e dados, preservando o histórico de
-   migrations e o tratamento específico do Vault. Usar credenciais via
-   cofre/meio seguro, sem colocá-las em comando salvo ou logs.
-3. Copiar os objetos Storage com manifesto de caminhos, tamanho e hash;
-   verificar quantidade e amostra de integridade. Criptografar e verificar
-   o upload no destino aprovado antes de considerar a cópia concluída.
-4. Preparar destino vazio e isolado, com saída de e-mail, pagamentos,
-   OAuth, cron e webhooks externos bloqueada. Uma restauração contém
-   dados e possivelmente tokens reais; jamais ativar integrações com eles.
-5. Restaurar no destino aprovado. Validar schema, dados, RLS, Auth,
-   histórico de migrations, objetos e integridade dos vaults sem chamadas
-   aos provedores. Rodar smoke com catálogo e usuário sintéticos.
-6. Medir o intervalo entre a última cópia íntegra e a falha simulada
-   (RPO), e entre o início da recuperação e a aprovação do smoke (RTO).
-7. Configurar recorrência/retenção e alerta em canal aprovado. Simular
-   uma falha da tarefa e confirmar recebimento do alerta antes de fechar.
+```sh
+node scripts/backup/export.mjs --plan
+node scripts/backup/vault-escrow.mjs --plan
+node scripts/backup/restore-lab.mjs --plan
+```
 
-## Registro obrigatório de evidência
+Somente no runner aprovado, com configuração injetada pelo cofre:
+`node scripts/backup/export.mjs --execute`. A primeira execução permanece
+manual. Agendamento não foi ativado e depende do piloto completo.
 
-| Campo | Valor atual |
+## Restore isolado e aceite
+
+1. Aprovar destino, orçamento, custodiante, janela, origem e projeto vazio de
+   recuperação; dados reais no restore também precisam de autorização.
+2. Preparar projeto isolado com egress bloqueado para e-mail, pagamentos,
+   OAuth, cron e webhooks. Registrar PostgreSQL/extensões/configuração.
+3. Registrar hash do manifesto em canal protegido separado. Baixar ciphertext;
+   verificar hashes, posse das identidades e leitura dos objetos.
+4. Restaurar roles, schema/customizações, histórico e dados conforme guia
+   oficial. Se houver Vault/TCE, transferir a raiz antes da validação de
+   descriptografia; trocar raiz de destino com dados pode torná-los ilegíveis
+   e não é permitido neste ensaio.
+5. Recriar configuração Auth/Storage, subir objetos e comparar hashes e
+   contagens. Testar login sintético/senha preservada, RLS OWNER/STAFF/outra
+   loja, catálogo, estoque, carrinho/pedido e histórico. Não chamar provedores
+   com tokens recuperados. Invalidar sessões conforme plano.
+6. Registrar duração, última cópia íntegra e RPO/RTO observados.
+   Metas propostas: RPO24h/RTO4h; não demonstradas em produção.
+7. Após aceite, aprovar rotina diária e canal de alerta. Alertar em job falho,
+   upload/hash incompleto ou ausência de manifesto verificado há >26h.
+   Simular falha e confirmar recebimento. Registrar restore mensal.
+   Limpeza após retenção é tarefa separada do custodiante, nunca sync --delete.
+
+restore-lab.mjs aceita exclusivamente origem sintética local e destino
+loopback vazio; **não é executor de restore de produção**. A recuperação real
+exige procedimento específico acima, revisado para o destino aprovado.
+
+## Evidências e gate
+
+[CI 40810300128](https://github.com/jonathagandrade-157/Vexo/actions/runs/40810300128),
+commit 9814a61: roundtrip PostgreSQL nativo + age real em 6,96 segundos,
+hash de senha preservado, RLS dono/outra identidade, histórico de migrations,
+binary packaging, chave errada e corrupção rejeitadas. Auth/Vault são fixtures
+SQL/pgcrypto; não são prova dos serviços Supabase nem do transporte externo.
+Uma rodada posterior cobre recusa de escrow ausente e Vault vazio.
+
+| Aceite de produção | Estado |
 | --- | --- |
-| Método e data da cópia | Pendente |
-| Destino protegido e operador | Pendente |
-| Manifesto, tamanho e hash | Pendente |
-| Restore isolado concluído em | Pendente |
-| RPO/RTO medidos | Não demonstrados |
-| Storage e Vault validados | Pendente |
-| Recorrência e alerta testados | Pendente |
+| Destino privado, região, custodiante, custo e aprovação | Pendente |
+| Exportação e readback externos íntegros | Não executados |
+| Restore Supabase isolado com Auth/Storage | Não executado |
+| Vault/TCE quando usado | Escrow obrigatório; atualmente sem dados |
+| Recorrência, retenção e alerta demonstrados | Pendente |
+| RPO/RTO reais | Não medidos |
 
-Referências: [backups](https://supabase.com/docs/guides/platform/backups)
-e [backup/restore via CLI, incluindo Vault e migrations](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).
+Referência: [guia oficial de backup/restore, Vault e migrations](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).

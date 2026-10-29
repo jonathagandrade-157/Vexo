@@ -1,16 +1,58 @@
 # VEXO — relatório de prontidão comercial
 
-Atualizado em 2026-10-28. **NO-GO comercial.** A jornada de compra externa
-já funciona no ambiente controlado. A correção do carrinho ainda precisa
-ser aplicada em produção, e backup/restore, revogação da credencial
-potencialmente exposta e integrações financeiras continuam bloqueadores.
+Atualizado em 2026-10-29. **NO-GO técnico para execução de produção,
+NO-GO beta e NO-GO comercial.** Código candidato e laboratório avançaram;
+backup real restaurado e revogação continuam gates abertos. Homologação
+financeira e fechamento das jornadas essenciais continuam pendentes.
+Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recuperação.
+
+## Sprint de fechamento em andamento
+
+- Implementados export nativo sem Docker Desktop, criptografia age antes de
+  upload, manifesto cifrado, hash/readback, guardas de destino e restore
+  sintético vazio. [Procedimento e custo](runbooks/backup-recovery.md).
+- [CI 40810300128](https://github.com/jonathagandrade-157/Vexo/actions/runs/40810300128),
+  commit 9814a61: quatro jobs verdes; recuperação sintética com pg_dump,
+  criptografia real, senha preservada, RLS, histórico e rejeição de corrupção.
+  Não comprova recuperação dos serviços Supabase ou armazenamento externo.
+- [CI 40807222522](https://github.com/jonathagandrade-157/Vexo/actions/runs/40807222522),
+  commit 7ef05de: 36 jornadas de navegador com chaves modernas realmente
+  emitidas pela stack Supabase local, sem variáveis legadas no Next.
+- Verificador somente leitura de cutover preparado. Exige catálogo moderno
+  funcional e carrinho público negado, além de ambas as chaves legadas 401
+  após revogação. Em baseline local, negação anônima é 401 (não 403);
+  teste foi corrigido sem alterar permissões da aplicação. Nenhuma revogação.
+- Inventário Preview Vercel em 29/10: entradas legadas compartilhadas com
+  produção e sem MERCADO_PAGO_TEST_MODE. Não é sandbox seguro. A
+  [matriz exata de configuração](runbooks/homologation-configuration.md)
+  registra nomes, locais, callbacks e evidência externa ainda necessária.
+- [Release controlado](runbooks/controlled-release.md) preparado, incluindo
+  sequência migration/deploy/revogação, rollback e smoke. Merge-tree sem
+  conflito com main da1ab1d; reconferir main e CI do HEAD antes do GO.
+- Novas jornadas isoladas de categoria/produto/estoque, variantes e OPERATOR
+  estão em validação CI. A plataforma tem OWNER/ADMIN/MANAGER/OPERATOR/SUPPORT;
+  STAFF é tratado pelos papéis de colaborador existentes, sem inventar role.
+- Commit 98e971d corrige estoque base e preservação de variantes; 1.346 testes
+  unitários locais passaram, além de typecheck e lint dos arquivos alterados.
+  CI completo desse conjunto e jornadas novas ainda precisam de conclusão.
+- [CI 40812589057](https://github.com/jonathagandrade-157/Vexo/actions/runs/40812589057)
+  registrou 39/45 E2E aprovados, inclusive OPERATOR nas três larguras.
+  As seis falhas do catálogo pararam no nome acessível do botão Salvar
+  (ícone decorativo incluído no nome); o botão foi corrigido. Não contar
+  esses cenários como prova do estoque. O laboratório também expôs um path
+  incorreto na fixture HTTP de Storage, corrigido conforme o SDK instalado.
+
+Nenhuma exportação real, contratação, alteração de ambiente, OAuth, pagamento,
+mensagem, merge ou deploy foi executado nesta sprint. A recusa de acesso do
+browser à produção foi respeitada. A aprovação genérica anterior não autoriza
+as operações específicas acima.
 
 ## Entrega e ambientes
 
 - PR candidata: [#3](https://github.com/jonathagandrade-157/Vexo/pull/3),
   branch `codex/vexo-launch-blockers`, worktree `.worktrees/vexo-security-hardening`.
-- Revisão de código atual: `2c33600e32aea4dad28611b6d79906f583a0445c`.
-- Código aprovado: [workflow 40802528351](https://github.com/jonathagandrade-157/Vexo/actions/runs/40802528351), commit `2c33600`, todos os jobs verdes.
+- Baseline funcional anterior à sprint: `2c33600e32aea4dad28611b6d79906f583a0445c`.
+- CI desse baseline: [workflow 40802528351](https://github.com/jonathagandrade-157/Vexo/actions/runs/40802528351), todos os jobs verdes. Não substitui CI do HEAD final.
 - Produção: [VEXO](https://vexoecommerce.vercel.app), loja
   [SuperBrands](https://vexoecommerce.vercel.app/loja/superbrands).
 - Último deploy de produção verificado anteriormente: PR #2, merge
@@ -36,6 +78,9 @@ Todas as linhas abaixo pertencem à PR #3, ainda sem rollout de produção.
 | Ícone entra no nome acessível do botão | P2 | Login inclui auto_awesome junto do texto do botão | Ícone decorativo aria-hidden; login real aprovado |
 | Favicon de fallback ausente | P2 | Navegador solicita /favicon.ico durante cadastro/onboarding e recebe 404 | Arquivo ICO gerado da marca existente, com 16/32/48/256 px; regressão HTTP e assinatura do arquivo aprovadas |
 | Carrinho perde contraste com tema claro do app | P2 | Abrir o carrinho com preferência clara; título claro fica sobre o fundo claro herdado do body | Shell da loja pinta o próprio fundo; regressão de contraste real do título e nome nas duas preferências aprovada, com capturas revisadas |
+| Estoque simples falha silenciosamente após adoção de variantes | P1 | Salvar estoque usa ON CONFLICT(product_id), mas o índice agora é parcial; falha de escrita não era verificada | Escrita base com update/insert e retry limitado de concorrência; falha parcial explícita preserva ID criado para não duplicar produto; regressão focada reproduziu o falso sucesso antes da correção |
+| Edição base pode remover estoques das variantes | P1 | Salvar produto com estoque base vazio excluía todas as linhas product_inventory daquele produto | Leitura, update e delete base passam a filtrar variant_id IS NULL; teste de navegador com três variantes/estoques sintéticos em validação |
+| Botão Salvar produto inclui nome do ícone | P2 | Leitor de tela/navegador identifica save + Salvar produto | Ícone decorativo aria-hidden, repetindo o contrato acessível do botão de login; jornada E2E usa nome visível exato |
 
 O antigo banner para `/loja/TESTE` e a hidratação da vitrine foram corrigidos
 na PR #2. O erro #418 encontrado agora era outro, na página de configurações.
@@ -51,7 +96,7 @@ estoque zerado; não são cópias de dados pessoais de produção.
 | Área | Validado no ambiente controlado | Limite ou pendência |
 | --- | --- | --- |
 | Carrinho | Dois produtos, quantidade, remoção, totais, reload e navegação; cookie HttpOnly/Secure/SameSite=Lax e token com hash no banco | Rollout e repetição em produção pendentes |
-| Isolamento | Segredo alterado e cookie reaproveitado em outra loja não revelam itens; carrinho original permanece acessível ao dono | Matriz completa de papéis no navegador ainda pendente |
+| Isolamento | Segredo alterado e cookie reaproveitado em outra loja não revelam itens; carrinho original permanece acessível ao dono; OPERATOR pode ver pedidos e não pode criar produto ou gerir equipe nas três larguras | Matriz completa dos outros papéis no navegador ainda pendente |
 | Variantes e estoque | Seleção por teclado, variante ativa com promoção, bloqueio de variante sem estoque/inativa e produto simples sem estoque; variante/preço/quantidade persistem no carrinho | Checkout completo de variantes e mudanças concorrentes de estoque ainda precisam de E2E de navegador; integração PostgreSQL existente não substitui essa jornada |
 | Checkout | Campos obrigatórios, foco no primeiro campo inválido, complemento opcional, criação em dinheiro e confirmação após reload | PIX/cartão e gateways reais não validados |
 | Pedido | Pedido único no banco, baixa única de estoque, leitura no painel, confirmação manual sintética de pagamento, avanço para PREPARING e histórico; status não baixa estoque novamente | Todos os status, cancelamentos e filtros ainda sem cobertura completa de navegador |
@@ -173,11 +218,21 @@ Procedimentos preparados: [backup e recuperação](runbooks/backup-recovery.md)
 e [rotação de chaves](runbooks/supabase-key-rotation.md). Serviços pagos,
 exportação, revogação, migration e deploy exigem aprovação específica.
 
-## Próximas ações
+## Próximas operações prontas ou em preparação
 
 1. Completar as mutações e jornadas ainda pendentes na matriz, sem expandir
    módulos “em breve” e sem comunicação, OAuth ou transação real.
-2. Receber o destino protegido e preparar a operação de backup para
-   aprovação específica; executar e medir restore isolado.
-3. Validar chaves modernas e sandboxes financeiros; somente então obter GO
-   para migration/deploy, revogação e smoke de produção.
+2. Confirmar bucket/região/custodiante/custo e obter autorização específica
+   para o piloto de backup e restore isolado. Meta RPO24h/RTO4h ainda não medida.
+3. Aprovar configuração moderna e revogação, com consumidor/rollback compatível
+   e prova de acesso antigo negado. Produção permanece sem alteração.
+4. Obter GO técnico específico para migration/deploy e smoke quando os P0
+   estiverem fechados. Homologação Asaas não precisa bloquear esse hotfix.
+5. Separar sandbox e executar homologação financeira autorizada; fechar
+   confirmação de e-mail, jornadas restantes e operação para os primeiros clientes.
+
+| Decisão | Veredito atual | Falta para mudar |
+| --- | --- | --- |
+| GO técnico | NO-GO de execução | Backup real recuperado, troca/revogação aprovadas e verificadas, HEAD CI aprovado e GO de release |
+| GO beta | NO-GO | Gates de segurança/recuperação, hotfix publicado e jornadas essenciais aceitas com limitações explícitas |
+| GO comercial | NO-GO | Beta aceito, MP/Asaas homologados, e-mail/suporte/alertas operacionais e revisão humana das políticas |
