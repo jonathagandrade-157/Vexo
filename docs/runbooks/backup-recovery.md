@@ -9,14 +9,13 @@ Decisão do proprietário em 2026-10-27: backup lógico externo; destino
 protegido será indicado. Esta escolha não autoriza uma exportação para
 destino indefinido. A cópia e o restore ainda não foram executados.
 
-## Decisão necessária do proprietário
+## Informações pendentes do proprietário
 
-Escolher o mecanismo e aprovar destino, acesso, retenção, custo e responsável:
-
-- Backup gerenciado do Supabase, com ponto disponível e restore de teste
-  em projeto separado; avaliar PITR conforme a perda de dados aceitável.
-- Backup lógico recorrente para destino criptografado fora do projeto de
-  origem, com alarme de falha e restore de teste em ambiente isolado.
+O mecanismo escolhido é backup lógico externo. Falta identificar o serviço
+e a pasta/bucket de destino protegido, quem controla o acesso e o responsável
+pela operação. Não enviar senhas, tokens ou chaves pelo chat. Depois da
+verificação do destino, apresentar escopo, retenção e eventual custo para
+aprovação específica antes da exportação.
 
 Proposta operacional para aprovação: cópia diária, retenção diária de 14
 dias, RPO alvo de 24 horas e RTO alvo de 4 horas. São metas propostas,

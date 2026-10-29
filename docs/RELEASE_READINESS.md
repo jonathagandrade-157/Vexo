@@ -1,250 +1,183 @@
-# VEXO — Release Readiness
+# VEXO — relatório de prontidão comercial
 
-Atualizado em 2026-10-27. Este checklist registra o estado executável do
-lançamento. Um item só recebe `[x]` quando existe evidência do ambiente
-correto; histórico de CI não aprova alterações locais posteriores.
+Atualizado em 2026-10-28. **NO-GO comercial.** A jornada de compra externa
+já funciona no ambiente controlado. A correção do carrinho ainda precisa
+ser aplicada em produção, e backup/restore, revogação da credencial
+potencialmente exposta e integrações financeiras continuam bloqueadores.
 
-## Identidade da entrega
+## Entrega e ambientes
 
-- Repositório: `jonathagandrade-157/Vexo`.
-- Worktree ativo: `.worktrees/vexo-security-hardening`.
-- Branch: `codex/vexo-launch-blockers`.
-- Base do hotfix: `d0456e5aea3f3b71bc6cf5f9abfe61d9a74b7a69`.
-- PR anterior: `#2`, mesclado em `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`.
-- PR atual: `#3`, aberto contra `main`; nenhum merge/deploy autorizado.
-- Produção: `https://vexoecommerce.vercel.app`.
-- Supabase: projeto `Vexo`, ref `vqbiurnfqkjkrenigxzv`, região `us-east-1`.
-- O checkout principal está isolado do worktree principal, que contém
-  alterações não relacionadas e não será modificado por esta missão.
+- PR candidata: [#3](https://github.com/jonathagandrade-157/Vexo/pull/3),
+  branch `codex/vexo-launch-blockers`, worktree `.worktrees/vexo-security-hardening`.
+- Revisão de código atual: `2c33600e32aea4dad28611b6d79906f583a0445c`.
+- Código aprovado: [workflow 40802528351](https://github.com/jonathagandrade-157/Vexo/actions/runs/40802528351), commit `2c33600`, todos os jobs verdes.
+- Produção: [VEXO](https://vexoecommerce.vercel.app), loja
+  [SuperBrands](https://vexoecommerce.vercel.app/loja/superbrands).
+- Último deploy de produção verificado anteriormente: PR #2, merge
+  `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`, deployment
+  `dpl_AJnRSLMhKw959n5DtwtemJ52ZkJ1`.
+- Supabase: projeto `Vexo`, ref `vqbiurnfqkjkrenigxzv`, `us-east-1`.
+- A PR #3 não foi mesclada nem publicada. Nenhuma alteração de banco,
+  variável, credencial ou infraestrutura de produção foi feita nesta etapa.
+- As alterações existentes no checkout principal foram preservadas.
 
-## Estado atual por prioridade
+## Correções candidatas e reprodução
 
-### P0 — bloqueia lançamento
+Todas as linhas abaixo pertencem à PR #3, ainda sem rollout de produção.
 
-- [ ] Substituir a chave legada privilegiada potencialmente exposta por
-  `SUPABASE_SECRET_KEY`, validar todos os consumidores e desativar as
-  chaves legadas.
-- [ ] Comprovar um backup recuperável e um restore em ambiente isolado.
-- [x] Remover acesso direto de `anon`/`authenticated` a `carts`,
-  `cart_items` e RPCs privilegiadas. Evidência: migrations
-  `20261026210715` e `20261026210716` registradas em produção no rollout
-  de 2026-10-26; a leitura anônima direta passou a receber acesso negado.
-- [x] Proteger a posse do carrinho com segredo aleatório em cookie
-  `HttpOnly`/`Secure`/`SameSite=Lax`, persistindo somente SHA-256.
-- [x] Tornar o checkout transacional e idempotente por carrinho por meio
-  de `checkout_cart_secure`.
+| Defeito | Severidade | Como reproduzir / efeito | Correção e evidência |
+| --- | --- | --- | --- |
+| Carrinho aparece vazio após inclusão | P1 | Adicionar produto e abrir carrinho; cookie existe, mas a leitura falha. Consulta read-only em produção confirmou SELECT de service_role em products = false | Cliente administrativo usa supabase-js sem sessão SSR; migration mínima concede SELECT em products; join real e jornada de compra passam no Supabase descartável |
+| Cron sem pendências inicializa gateway | P1 | Executar reconciliação sem pagamentos vencidos e sem configuração Mercado Pago | Retorno antecipado antes de instanciar gateway, coberto por regressão unitária |
+| Ações de configurações exportam objeto | P1 | Submeter logout em configurações no build de produção; Next rejeita export de objeto em arquivo use server | Estado inicial movido para schema.ts; salvamento e logout reais aprovados nas três larguras |
+| Hidratação de configurações | P2 | Login e abrir /painel/configuracoes; React #418 nas três larguras | Formulário de logout retirado de dentro do formulário de perfil; não reapareceu após a correção |
+| Nome do produto some ou fica cortado no carrinho mobile | P2 | Abrir carrinho em Pixel 7/360 px | Grid responsivo, nome e variante com quebra de palavras; regressão mede largura e persistência |
+| Link #promocoes não tem alvo | P2 | Abrir loja sem promoções nos cinco templates | Estado vazio legível com ID real e cinco regressões de renderização |
+| Ícone entra no nome acessível do botão | P2 | Login inclui auto_awesome junto do texto do botão | Ícone decorativo aria-hidden; login real aprovado |
+| Favicon de fallback ausente | P2 | Navegador solicita /favicon.ico durante cadastro/onboarding e recebe 404 | Arquivo ICO gerado da marca existente, com 16/32/48/256 px; regressão HTTP e assinatura do arquivo aprovadas |
+| Carrinho perde contraste com tema claro do app | P2 | Abrir o carrinho com preferência clara; título claro fica sobre o fundo claro herdado do body | Shell da loja pinta o próprio fundo; regressão de contraste real do título e nome nas duas preferências aprovada, com capturas revisadas |
 
-### P1 — impede operação comercial
+O antigo banner para `/loja/TESTE` e a hidratação da vitrine foram corrigidos
+na PR #2. O erro #418 encontrado agora era outro, na página de configurações.
 
-- [ ] Corrigir o carrinho que confirma a inclusão, mas abre vazio em
-  produção. Reproduzido em IAB, Chrome e Playwright; o cookie seguro é
-  emitido. Correção do cliente administrativo preparada, ainda não
-  publicada. E2E real mostrou uma segunda causa: o join do carrinho não
-  pode ler `products` como `service_role`. Migration mínima
-  `20261027150000_cart_product_read_grant.sql` preparada; aplicação em
-  produção depende de backup recuperável e aprovação específica.
-- [ ] Validar adição, múltiplos itens, quantidade, remoção, reload,
-  navegação, estoque, indisponibilidade, isolamento e manipulação de
-  identidade em um ambiente controlado.
-- [ ] Validar checkout, pedido e estoque ponta a ponta após corrigir o
-  carrinho.
-- [ ] Publicar a correção do cron que evita inicializar o Mercado Pago
-  quando não há pagamentos pendentes.
-- [ ] Validar Mercado Pago em sandbox: OAuth, PIX, cartão, webhook,
-  duplicidade, falha, cancelamento/reembolso e reconciliação.
-- [ ] Validar Asaas em sandbox: assinatura, webhook, renovação,
-  inadimplência, troca de plano, cancelamento e reativação.
-- [ ] Completar cadastro, confirmação, login, onboarding, publicação e
-  gestão de pedidos do lojista no navegador.
+## Matriz executada
 
-### P2 — qualidade necessária
+Os testes com mutações usam Auth, PostgREST e PostgreSQL reais em uma stack
+Supabase descartável. O runner recusa endpoints fora de loopback e arquivos
+.env locais/de produção, e remove credenciais de integrações externas.
+Quatro produtos sintéticos cobrem produtos simples, variantes/promoção e
+estoque zerado; não são cópias de dados pessoais de produção.
 
-- [ ] Completar smoke autenticado do painel em desktop, 360 px e Pixel 7.
-- [ ] Completar jornada do comprador em desktop, 360 px e Pixel 7.
-- [ ] Confirmar console, erros HTTP, hidratação, teclado, foco, loading,
-  estados vazios e indisponibilidade.
-- [ ] Configurar alertas de checkout, webhook, cron e reconciliação.
-- [ ] Validar rate limits, timeouts e retries dos gateways.
-- [ ] Revisar CSP para evolução controlada de report-only para enforcement.
-
-### P3 — fora desta missão
-
-- Novos módulos, redesenho visual e expansões sem impacto no lançamento.
-
-## Alterações locais em validação
-
-- Compatibilidade zero-downtime com
-  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SECRET_KEY`, mantendo
-  fallback legado temporário.
-- Cliente administrativo alterado de `@supabase/ssr` para
-  `@supabase/supabase-js`, sem persistência, refresh ou detecção de URL.
-- Erros de autorização/leitura do carrinho deixam de virar carrinho vazio
-  silenciosamente e passam a gerar exceção sanitizada no Sentry.
-- Cron de reconciliação retorna sucesso sem instanciar gateway quando não
-  há pagamentos vencidos.
-- Regressão E2E verifica presença, atributos e formato do cookie de posse.
-- Testes unitários novos cobrem chaves modernas, precedência e erro de
-  consulta do carrinho.
-- O diagnóstico temporário que escrevia carrinho em produção foi removido;
-  nenhum teste permanente depende de mutação do ambiente publicado.
-- Runner `test:e2e:supabase` preparado com build de produção e stack
-  loopback descartável. Credenciais de integrações externas são excluídas;
-  `.env` de produção/local impede sua execução. Os 24 cenários foram
-  descobertos, mas execução efetiva ainda está pendente no CI.
-- Corrigido destino `#promocoes` dos cinco templates sem promoções, com
-  estado vazio legível e regressões de renderização. A suíte 360 px passa
-  a usar a opção real `isMobile`, sem depender do nome do projeto.
-
-## Evidências válidas
-
-- PR #2 / commit `d0456e5`: CI verde com `npm audit`, lint, typecheck,
-  validação de rollout, 738 integrações PostgreSQL, 1.314 unitários,
-  build Next.js e testes HTTP isolados de Auth/PostgREST/checkout.
-- Deploy de produção informado: `dpl_AJnRSLMhKw959n5DtwtemJ52ZkJ1`,
-  `READY`, com alias público.
-- Smoke de produção: home, storefront e produto respondem; banner passou
-  a apontar para `/loja/superbrands#produtos`; a hidratação React `#418`
-  não reapareceu nos cenários repetidos.
-- Falha atual do carrinho é uma evidência negativa válida e mantém o gate
-  fechado.
-- Em 2026-10-27, `supabase migration list --project-ref` confirmou todas
-  as versões locais e remotas alinhadas até `20261026210716`, sem migration
-  pendente ou divergente.
-- GitHub Actions do PR #3 (`40441899083`) passou nos três jobs:
-  - `ci`: audit, lint, typecheck, rollout, 51 arquivos/738 integrações,
-    115 arquivos/1.322 unitários e build Next.js/Turbopack;
-  - `supabase-http`: 15/15 testes reais de Auth, PostgREST e checkout em
-    stack Supabase isolada;
-  - `e2e`: 6 testes públicos passaram e 4 storefronts foram pulados porque
-    o job usa Supabase placeholder. Os quatro pulados continuam pendentes
-    em homologação; não são contabilizados como aprovados.
-- O commit `457e9066533991dcca7210befc62a560bee38854` também passou no
-  workflow completo `40442431230`.
-- Workflow `40527025194`: 24 cenários de navegador com Supabase real
-  executados, 8 passaram e 16 falharam. As falhas expuseram leitura de
-  produtos sem grant no BFF, âncora de promoções ausente e seleção
-  incorreta do controle de tema pelo teste em 360 px. Não contam como
-  aprovação do carrinho; correções estão em nova validação.
-- Consulta somente leitura em produção confirmou
-  `has_table_privilege('service_role', 'public.products', 'SELECT')=false`,
-  com `cart_items=true` e `product_variants=true`. Nenhum grant foi aplicado.
-- Workflow `40533027492`: teste HTTP do join passou depois da migration
-  no Supabase descartável (16/16 HTTP). No navegador, 17/24 passaram;
-  persistência desktop e isolamento foram comprovados. As sete falhas
-  restantes mostraram nomes de produtos comprimidos a largura zero no
-  carrinho mobile e uma expectativa incorreta do teste para formulário
-  vazio (a validação nativa bloqueia antes da Server Action). Correções em
-  nova validação. O stub PostgreSQL concede privilégios mais amplos que o
-  Supabase real; o teste de rollout agora reproduz explicitamente o grant
-  ausente antes de aplicar o hotfix no banco local.
-- Nova tentativa de smoke read-only do painel de produção foi recusada
-  pelo controle de permissões do navegador; permanece pendente, sem uso
-  de outra superfície para contornar a recusa.
-- Validação mobile nesta missão usa viewports emulados. Verificação em
-  aparelho físico permanece pendente, sem alegação de teste de hardware.
-- Workflow `40538834877`: job principal verde e 21/24 E2E isolados passaram.
-  Criação de pedido, confirmação/reload e baixa única de estoque passaram
-  nas três larguras; a consulta no painel parou no seletor de login porque
-  um ícone decorativo fazia parte do nome acessível do botão. O ícone agora
-  é `aria-hidden`; nomes/variantes do carrinho mobile também quebram linha
-  sem corte. A nova rodada deve concluir login e leitura do pedido no painel.
-- Workflow `40563637511` verde no commit `3f779a5`: 24/24 E2E com build de
-  produção e Supabase descartável, desktop/Pixel 7/360 px, incluindo
-  login e leitura do pedido no painel. 16/16 HTTP, 738 integrações e
-  1.327 unitários passaram, assim como audit, lint, typecheck, rollout e
-  build. Ampliação para histórico/status e 17 páginas do painel em curso.
-- Smoke read-only do preview protegido da PR #3 em desktop 1440 px e
-  Pixel 7 (412 px): home, os quatro produtos, carrinho vazio e checkout
-  vazio retornaram HTTP 200; nenhum erro JavaScript/hidratação ou HTTP
-  4xx/5xx da aplicação, overflow horizontal na home ou link `/loja/TESTE`.
-  A navegação não criou cookie de carrinho. A toolbar `vercel.live` gerou
-  14 avisos CSP report-only no Pixel 7; não é erro da aplicação nem prova
-  de CSP enforced. Script e token temporários removidos depois do teste.
-- Inventário read-only da Vercel em 2026-10-27, sem leitura de valores:
-  - existem as variáveis legadas `NEXT_PUBLIC_SUPABASE_ANON_KEY` e
-    `SUPABASE_SERVICE_ROLE_KEY`; as modernas ainda não existem;
-  - existem nomes para Mercado Pago e `OAUTH_STATE_SECRET`, mas
-    `MERCADO_PAGO_TEST_MODE` não está definido e validade/modo das
-    credenciais não foram comprovados;
-  - `ASAAS_API_KEY`, `ASAAS_API_URL` e `ASAAS_WEBHOOK_TOKEN` estão ausentes;
-  - Resend, Sentry e `CRON_SECRET` possuem entradas de produção.
-
-## Evidências inválidas ou pendentes
-
-- O `EPERM` inicial do Vitest foi isolado ao diretório temporário do
-  sandbox. Com `TEMP`/`TMP` dentro do worktree, 60/60 testes focados e
-  1.322/1.322 testes unitários passaram.
-- O build Turbopack local continua pendente: três execuções falharam ao
-  criar o worker que lê `instrumentation.ts`/`instrumentation-client.ts`,
-  inclusive fora do sandbox e com temporário no worktree. O build Webpack
-  diagnóstico passou da inicialização/compilação sem reproduzir o erro,
-  mas foi encerrado depois de ficar sem progresso observável. Nenhum dos
-  dois resultados conta como build aprovado; o CI Turbopack permanece gate.
-- O smoke Playwright local também permanece pendente. Fora do sandbox,
-  três cenários públicos passaram antes de o Turbopack entrar em panic ao
-  observar o arquivo `LOCK` do perfil temporário do Chromium. Uma segunda
-  execução isolada com Webpack ficou presa na compilação inicial da landing
-  no worktree do OneDrive e foi encerrada. Nenhuma execução parcial é
-  registrada como E2E aprovado; o job Linux do CI continua sendo a prova.
-- Não há evidência de restore. A verificação read-only foi repetida em
-  2026-10-27 com Supabase CLI 2.115.0 e confirmou `backups: null`,
-  `pitr_enabled: false`, `physical_backup_data: {}` e `walg_enabled: true`;
-  WAL habilitado não é um ponto restaurável disponível para o projeto.
-- Não há credenciais de sandbox configuradas e validadas para Mercado
-  Pago/Asaas neste worktree.
-- O fluxo manual completo de lojista e comprador ainda não foi executado
-  após o deployment atual.
-
-## Gates de release
-
-- [x] Testes unitários atuais: 115 arquivos / 1.322 testes.
-- [x] Testes de integração atuais: 51 arquivos / 738 testes PostgreSQL e
-  15/15 testes HTTP Supabase.
-- [ ] E2E desktop e mobile atuais.
-- [x] Typecheck.
-- [x] Lint.
-- [x] Build de produção no CI Linux/Turbopack.
-- [x] `npm audit --audit-level=moderate`: 0 vulnerabilidades.
-- [ ] Histórico alinhado até `20261026210716`; hotfix local
-  `20261027150000` pendente, separado para aplicação aprovada após backup.
-- [ ] Smoke de homologação.
-- [ ] Backup e restore comprovados.
-- [ ] Monitoramento e rollback revisados.
-- [ ] CI da revisão atual da PR #3: baseline verde no commit `457e906`;
-  execução ampliada do commit `4c1363b` retida na instalação do navegador.
-  Jobs de audit/lint/typecheck/integrações/unitários/build e HTTP passaram.
-  O CI passa a usar o canal Chrome suportado pelo Playwright, já instalado
-  no runner, com versão registrada. Nenhum cenário foi desabilitado para
-  contornar a instalação; a execução ampliada continua pendente.
-- [ ] Aprovação explícita para deployment de produção.
-- [ ] Smoke pós-deploy e logs limpos.
-
-## Bloqueios externos
-
-| Bloqueio | Responsável | Ação necessária |
+| Área | Validado no ambiente controlado | Limite ou pendência |
 | --- | --- | --- |
-| Backup recuperável indisponível | Proprietário do projeto | Opção escolhida: backup lógico externo. Informar o destino protegido para verificar controles e preparar a exportação aprovada. |
-| Rotação real de credenciais | Proprietário + operação | Autorizar a troca depois do smoke com as chaves modernas; nunca copiar valores para relatório. |
-| Mercado Pago sandbox | Proprietário | Fornecer/configurar app, webhook e usuários de teste no ambiente seguro. |
-| Asaas sandbox | Proprietário | Fornecer/configurar API key e token de webhook no ambiente seguro. |
-| Produção | Proprietário | Dar GO específico somente após os gates anteriores. |
+| Carrinho | Dois produtos, quantidade, remoção, totais, reload e navegação; cookie HttpOnly/Secure/SameSite=Lax e token com hash no banco | Rollout e repetição em produção pendentes |
+| Isolamento | Segredo alterado e cookie reaproveitado em outra loja não revelam itens; carrinho original permanece acessível ao dono | Matriz completa de papéis no navegador ainda pendente |
+| Variantes e estoque | Seleção por teclado, variante ativa com promoção, bloqueio de variante sem estoque/inativa e produto simples sem estoque; variante/preço/quantidade persistem no carrinho | Checkout completo de variantes e mudanças concorrentes de estoque ainda precisam de E2E de navegador; integração PostgreSQL existente não substitui essa jornada |
+| Checkout | Campos obrigatórios, foco no primeiro campo inválido, complemento opcional, criação em dinheiro e confirmação após reload | PIX/cartão e gateways reais não validados |
+| Pedido | Pedido único no banco, baixa única de estoque, leitura no painel, confirmação manual sintética de pagamento, avanço para PREPARING e histórico; status não baixa estoque novamente | Todos os status, cancelamentos e filtros ainda sem cobertura completa de navegador |
+| Painel | 17 rotas: HTTP 200, título visível e ausência de overflow/erros de console/hidratação; logout encerra a sessão e acesso posterior volta ao login | Leitura de página não valida todos os controles |
+| Configurações | Nome vazio rejeitado sem alterar o banco; perfil/endereço persistem após reload; valores originais restaurados pela própria UI | Pagamentos, pedidos, entrega, domínio e plano ainda precisam de mutações completas |
+| Cadastro e onboarding | Termos não aceitos e senhas diferentes não criam conta; cadastro cria OWNER e trial único, documento só como HMAC; retomada pelo banco, bloqueio de salto e publicação local; sem erro de console nas três larguras | Confirmação por e-mail não coberta: enable_confirmations=false na stack local |
+| Catálogo e aparência | Home, detalhes de produto, âncoras, estados vazios, página/prévia de aparência e controles de tema | Gestão completa de produtos, categorias, banners, galeria e restauração das opções de aparência ainda pendentes |
+| Equipe e histórico | Rotas de leitura e auditoria do pedido no banco local | Nenhum convite enviado; todos os papéis ainda sem jornada de navegador |
+| Domínio e assinatura | Rotas carregam e bloqueios explícitos são respeitados | Nenhum domínio contratado, OAuth iniciado ou cobrança executada |
+| Mobile | Desktop, Pixel 7 emulado e 360 px; texto do carrinho, overflow e teclado/foco nos cenários descritos | Aparelho físico, acessibilidade e estados de carregamento completos ainda pendentes |
 
-Procedimentos preparados: [rotação de chaves](runbooks/supabase-key-rotation.md)
-e [backup/recuperação](runbooks/backup-recovery.md). Nenhuma execução externa
-dessas operações foi realizada. Storage e criptografia do Vault fazem parte
-do aceite do restore, além de dados, Auth, RLS e migrations.
+Rotas do smoke: painel, pedidos, produtos, categorias, clientes, aparência,
+equipe, histórico, configurações gerais/pedidos/pagamentos/entrega/domínio,
+assinatura, suporte, marketing e VEXO AI. Módulos explicitamente bloqueados
+ou “em breve” não são contados como implementados nem tratados como defeitos.
 
-## Próxima tarefa executável
+## Testes e evidências
 
-1. Executar os testes de navegador contra Supabase descartável no CI,
-   com build de produção, desktop, Pixel 7 e 360 px: carrinho persistente,
-   múltiplos itens, quantidade, remoção, posse/tenant, pedido externo,
-   baixa de estoque e leitura no painel do lojista.
-2. Revisar falhas reais e corrigir o fluxo impactado até a suíte passar.
-3. Completar integrações sandbox e gates externos antes do GO comercial.
+- Baseline integralmente verde: commit `3f779a5`,
+  [workflow 40563637511](https://github.com/jonathagandrade-157/Vexo/actions/runs/40563637511):
+  1.327 unitários, 738 integrações PostgreSQL, 16 HTTP, 24 E2E, audit,
+  lint, typecheck, rollout e build Linux/Turbopack.
+- Commit `5765228`,
+  [workflow 40799257440](https://github.com/jonathagandrade-157/Vexo/actions/runs/40799257440):
+  30/33 E2E aprovados, incluindo as 17 rotas, logout e edição/restauração
+  de configurações. O cadastro novo parou em seletor ambíguo de alerta;
+  foi delimitado ao formulário sem alterar a aplicação.
+- Commit `682aff8`,
+  [workflow 40800515624](https://github.com/jonathagandrade-157/Vexo/actions/runs/40800515624):
+  34/36 E2E aprovados. Variantes/promoção/indisponibilidade passaram nas
+  três larguras; cadastro/onboarding/publicação chegaram ao fim, mas duas
+  execuções registraram o 404 de /favicon.ico. URL exata foi capturada,
+  sem filtrar o erro. Os jobs principal e público passaram.
+- Revisão `fedcbf9`,
+  [workflow 40801482456](https://github.com/jonathagandrade-157/Vexo/actions/runs/40801482456):
+  todos os jobs verdes, 36/36 E2E, 16/16 HTTP, 1.327 unitários e 738
+  integrações PostgreSQL; audit encontrou zero vulnerabilidades, lint,
+  typecheck, rollout e build aprovados.
+- [Nove capturas sintéticas](https://github.com/jonathagandrade-157/Vexo/actions/runs/40801482456/artifacts/12866551945)
+  de configurações, carrinho com variante e loja publicada salvas por sete
+  dias; cópia local em test-results/ci-fedcbf9, fora de Git. Todas foram
+  inspecionadas. A revisão visual encontrou o contraste do título do
+  carrinho, apesar do resultado funcional verde; correção em `2c33600`.
+  A nova captura reposiciona a página no topo para que o cabeçalho fixo
+  represente a posição inicial da tela.
+- Revisão `2c33600`,
+  [workflow 40802528351](https://github.com/jonathagandrade-157/Vexo/actions/runs/40802528351):
+  todos os jobs verdes novamente, 36/36 E2E e 16/16 HTTP aprovados,
+  incluindo contraste em preferências clara e escura. Código, testes e
+  documentação não foram mesclados nem publicados em produção.
+  [Novas capturas](https://github.com/jonathagandrade-157/Vexo/actions/runs/40802528351/artifacts/12867210819)
+  em test-results/ci-2c33600; revisados carrinho desktop/360 px e
+  configurações mobile. O título do carrinho está legível sobre o fundo
+  correto. Barras fixas em capturas de página inteira representam a
+  posição do viewport; não indicam que a barra ocupa aquele ponto do documento.
+- A regressão de contraste usa as cores computadas pelo navegador e alvo
+  conservador de 4,5:1 para o título e texto comum, em tema claro e escuro.
+  Referência: [WCAG 2.2, contraste mínimo](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html).
+  Isso não equivale a uma auditoria integral de acessibilidade.
+- Build/integrações Linux são a referência: as tentativas locais anteriores
+  de Turbopack/Webpack no Windows/OneDrive ficaram parciais ou falharam na
+  criação de workers/junctions. Não foram contabilizadas como aprovação.
+- Preview protegido da PR: smoke read-only anterior em desktop e Pixel 7
+  confirmou home, quatro produtos, carrinho/checkout vazios com HTTP 200,
+  sem erro da aplicação ou link TESTE. Avisos CSP report-only da toolbar
+  Vercel foram registrados separadamente; não demonstram CSP enforced.
+- O smoke autenticado de produção permanece pendente: o controle de
+  permissões do navegador recusou acesso. Nenhuma outra superfície foi
+  usada para contornar essa recusa.
 
-## Veredito
+## Segurança e operação
 
-**NO-GO comercial.** O código possui proteções relevantes e baseline forte,
-mas carrinho, rotação de credencial e recuperação de dados continuam gates
-obrigatórios sem evidência de conclusão.
+Já aplicado em produção na PR #2: bloqueio de acesso direto anon/authenticated
+a carts/cart_items e RPCs privilegiadas, cookie de posse com segredo aleatório
+e hash SHA-256, checkout transacional e idempotente. Histórico de migrations
+foi conferido alinhado até `20261026210716` antes do novo hotfix.
+
+A PR #3 prioriza `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SECRET_KEY`,
+com fallback legado temporário. Isso prepara a migração, mas não revoga a
+credencial potencialmente exposta. O inventário read-only de produção de
+2026-10-27 ainda encontrou apenas os nomes legados. Nenhum valor é incluído
+neste relatório.
+
+A nova migration `20261027150000_cart_product_read_grant.sql` ainda NÃO foi
+aplicada em produção. Concede somente SELECT em products a service_role;
+o teste de rollout reproduz a falta do grant antes de aplicar o hotfix
+no banco descartável e confirma que anon/authenticated continuam bloqueados
+no carrinho. Não alterar migrations antigas para resolver essa diferença.
+
+A auditoria de dependências nos jobs aprovados encontrou zero vulnerabilidades
+conhecidas no momento da execução. Esse resultado e os testes de isolamento
+não constituem garantia de ausência de falhas em toda a plataforma. Permanecem
+pendentes alertas operacionais, revisão de rollback, CSP enforced e validação
+operacional dos limites, timeouts e retries dos provedores.
+
+## Bloqueadores para vender
+
+| Prioridade | Bloqueador | Ação necessária |
+| --- | --- | --- |
+| P0 | Credencial privilegiada potencialmente exposta | Validar consumidores com chaves modernas, autorizar substituição/revogação e comprovar que o acesso antigo deixou de funcionar |
+| P0 | Backup e restore não comprovados | Usuário escolheu backup lógico externo; indicar destino protegido, controle de acesso e responsável; aprovar exportação concreta e demonstrar restore isolado, Storage e Vault |
+| P1 | Carrinho e cron ainda sem correção publicada | Após backup e gates, aprovar migration mínima e deploy da PR revisada; repetir smoke e logs em produção |
+| P1 | Mercado Pago não validado operacionalmente | Configurar sandbox seguro e testar OAuth, PIX/cartão, webhook, duplicidade, falhas, cancelamento/reembolso e reconciliação |
+| P1 | Billing Asaas não validado | Configurar sandbox e testar assinatura, webhook, renovação, inadimplência, plano, cancelamento e reativação |
+| P2 | Cobertura funcional restante | Concluir as jornadas e limitações explícitas da matriz, homologação com chaves modernas e aparelho físico |
+
+Backups read-only em 2026-10-27: backups=null, pitr_enabled=false,
+physical_backup_data vazio e walg_enabled=true. WAL habilitado não comprova
+um ponto de recuperação disponível. Nenhum dump/export foi realizado.
+Proposta de RPO 24 h, RTO 4 h e retenção 14 dias ainda não foi aprovada nem
+medida; não deve virar compromisso comercial sem teste.
+
+Inventário de nomes de variáveis em produção: entradas Mercado Pago e
+OAUTH_STATE_SECRET existem, mas validade/modo não foram comprovados;
+MERCADO_PAGO_TEST_MODE ausente; nomes Asaas ausentes. Resend, Sentry e
+CRON_SECRET presentes. Presença do nome não comprova integração funcional.
+
+Procedimentos preparados: [backup e recuperação](runbooks/backup-recovery.md)
+e [rotação de chaves](runbooks/supabase-key-rotation.md). Serviços pagos,
+exportação, revogação, migration e deploy exigem aprovação específica.
+
+## Próximas ações
+
+1. Completar as mutações e jornadas ainda pendentes na matriz, sem expandir
+   módulos “em breve” e sem comunicação, OAuth ou transação real.
+2. Receber o destino protegido e preparar a operação de backup para
+   aprovação específica; executar e medir restore isolado.
+3. Validar chaves modernas e sandboxes financeiros; somente então obter GO
+   para migration/deploy, revogação e smoke de produção.
