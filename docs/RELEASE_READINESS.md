@@ -8,6 +8,23 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
 
 ## Sprint de fechamento em andamento
 
+- [Rodada 42054094962](https://github.com/jonathagandrade-157/Vexo/actions/runs/42054094962),
+  commit 5251f51: 42/45 E2E aprovados; cadastro/persistência de variantes e
+  preservação de estoque passaram nas três larguras. Os três testes de
+  categoria pararam por dois gatilhos de criação com o mesmo aria-label;
+  o botão de criação volta a herdar o texto visível, preservando o nome
+  específico na edição. Labels/edição aguardam a rodada seguinte.
+- Auditoria de 05/11 encontrou avisos novos em glob e minimatch (13 pacotes
+  diretos/transitivos marcados, duas causas). Overrides limitam glob a
+  14.0.2 e minimatch vulnerável >=7 a 11.0.1, mantendo minimatch 3 e as
+  versões de Next/ESLint/Sentry. Audit local voltou a zero; lint/typecheck
+  passaram. Compatibilidade de build/integração será conferida no CI.
+  Referências: [glob](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) e
+  [minimatch](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+- Inventários somente leitura de 05/11: Preview continua com credenciais
+  legadas compartilhadas com produção e sem modo MP de teste; Supabase
+  continua com PITR desabilitado, lista lógica não informada e metadados
+  físicos vazios. Não existe nova evidência de backup/restore recuperável.
 - Retomada em 05/11: PR #3 permanece aberta no HEAD d6c67a1, sem conflito
   com main da1ab1d. [CI 40813679025](https://github.com/jonathagandrade-157/Vexo/actions/runs/40813679025)
   aprovou 1.346 unitários, 738 integrações, 16 HTTP, build/audit/lint/typecheck,

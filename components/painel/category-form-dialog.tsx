@@ -39,7 +39,7 @@ export function CategoryFormDialog({ trigger, category }: CategoryFormDialogProp
 
   return (
     <>
-      <button aria-label={category ? `Editar categoria ${category.name}` : "Nova categoria"} onClick={() => dialogRef.current?.showModal()} type="button">
+      <button aria-label={category ? `Editar categoria ${category.name}` : undefined} onClick={() => dialogRef.current?.showModal()} type="button">
         {trigger}
       </button>
       <dialog
