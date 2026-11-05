@@ -29,11 +29,12 @@ type SessionCheck = "checking" | "ready" | "invalid";
  * exibido, logado ou repassado para lugar nenhum aqui — só a PRESENÇA de
  * uma sessão é usada para decidir se o formulário aparece.
  */
-export function UpdatePasswordForm() {
+export function UpdatePasswordForm({ invalidLink = false }: { invalidLink?: boolean }) {
   const [sessionCheck, setSessionCheck] = useState<SessionCheck>("checking");
   const [state, formAction] = useActionState(updatePasswordAction, initialUpdatePasswordState);
 
   useEffect(() => {
+    if (invalidLink) return;
     const supabase = createSupabaseBrowserClient();
     let active = true;
 
@@ -54,9 +55,9 @@ export function UpdatePasswordForm() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [invalidLink]);
 
-  if (sessionCheck === "checking") {
+  if (!invalidLink && sessionCheck === "checking") {
     return (
       <div className="flex flex-col items-center gap-3 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6 text-center shadow-2xl md:p-8">
         <p className="font-body text-body-md text-on-surface-variant">Verificando seu link…</p>
@@ -64,7 +65,7 @@ export function UpdatePasswordForm() {
     );
   }
 
-  if (sessionCheck === "invalid") {
+  if (invalidLink || sessionCheck === "invalid") {
     return (
       <div className="flex flex-col items-center gap-4 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6 text-center shadow-2xl md:p-8">
         <span className="material-symbols-outlined text-4xl text-error">link_off</span>

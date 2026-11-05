@@ -67,14 +67,14 @@ describe("resetPasswordRequestAction (D7)", () => {
     vi.mocked(getPublicEnv).mockClear();
   });
 
-  it("1. redirectTo aponta para /redefinir-senha (nunca mais /login)", async () => {
+  it("1. redirectTo exchanges the email code before opening the password form", async () => {
     const { resetPasswordForEmail } = mockAuthClient();
 
     await resetPasswordRequestAction(initialResetPasswordRequestState, formDataOf({ email: "lojista@example.com" }));
 
     expect(resetPasswordForEmail).toHaveBeenCalledWith(
       "lojista@example.com",
-      expect.objectContaining({ redirectTo: "https://vexoecommerce.vercel.app/redefinir-senha" }),
+      expect.objectContaining({ redirectTo: "https://vexoecommerce.vercel.app/auth/confirm?purpose=recovery" }),
     );
   });
 

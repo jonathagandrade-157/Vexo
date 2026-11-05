@@ -173,10 +173,13 @@ jobs:
 
       - name: Start isolated Supabase Auth and PostgREST
         shell: bash
+        env:
+          VEXO_SYNTHETIC_AUTH_ONLY: "1"
         run: |
           set -euo pipefail
+          node tests/e2e/configure-local-auth.mjs
           if ! supabase start \
-            --exclude studio,realtime,storage-api,imgproxy,postgres-meta,mailpit,edge-runtime,logflare,vector,supavisor \
+            --exclude studio,realtime,storage-api,imgproxy,postgres-meta,edge-runtime,logflare,vector,supavisor \
             >"$RUNNER_TEMP/supabase-start.log" 2>&1; then
             echo "The isolated Supabase stack failed to start. Output was withheld because the CLI includes local API keys."
             exit 1

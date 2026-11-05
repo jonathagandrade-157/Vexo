@@ -53,15 +53,15 @@ export default async function CadastroPage() {
         <div className="relative z-10 w-full max-w-[480px]">
           <div className="mb-10 text-center lg:text-left">
             <h1 className="mb-2 font-headline text-headline-md text-on-surface">
-              Crie sua conta
+              {user?.email_confirmed_at ? "Conclua o cadastro da sua loja" : "Crie sua conta"}
             </h1>
             <p className="font-body text-body-md text-on-surface-variant">
-              Preencha seus dados para começar a usar a VEXO.
+              {user?.email_confirmed_at ? "Seu e-mail está confirmado. Preencha os dados da loja para continuar." : "Preencha seus dados para começar a usar a VEXO."}
             </p>
           </div>
 
-          <SignUpForm />
-          <SignInLink />
+          <SignUpForm resume={Boolean(user?.email_confirmed_at)} />
+          {!user ? <SignInLink /> : null}
         </div>
       </main>
     </div>

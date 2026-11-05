@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import pg from "pg";
+import { localAuthEmail } from "./local-auth-mail";
 
 const isolated = process.env.E2E_ISOLATED_SUPABASE === "1";
 const slug = process.env.E2E_STOREFRONT_SLUG;
@@ -302,6 +303,22 @@ test.describe("comércio com Supabase descartável", () => {
     expect((await query("select count(*)::int as total from auth.users where email = $1", [email])).rows[0].total).toBe(0);
     await page.getByLabel("Confirmar senha", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Começar teste grátis", exact: true }).click();
+    if (process.env.E2E_EMAIL_CONFIRMATION === "1") {
+      await expect(page).toHaveURL(/\/confirmar-email$/);
+      expect((await query("select count(*)::int as total from public.tenants t join auth.users u on u.id=t.created_by where u.email=$1", [email])).rows[0].total).toBe(0);
+      const pending = (await page.context().cookies()).find((cookie) => cookie.name === "vexo_pending_signup");
+      expect(pending?.httpOnly).toBe(true);
+      expect(pending?.value).not.toContain(document);
+      const firstEmail = await localAuthEmail(email);
+      await query("update auth.users set confirmation_sent_at=now()-interval '2 hours' where email=$1", [email]);
+      await page.goto(firstEmail.link);
+      await expect(page.getByRole("alert")).toContainText("inválido, expirou ou já foi utilizado");
+      await page.getByLabel("E-mail", { exact: true }).fill(email);
+      await page.getByRole("button", { name: "Reenviar confirmação", exact: true }).click();
+      await expect(page.getByRole("status")).toContainText("confirmação pendente");
+      const resent = await localAuthEmail(email, firstEmail.id);
+      await page.goto(resent.link);
+    }
     await expect(page).toHaveURL(/\/trial\/sucesso\?tenant=/);
     await expect(page.getByRole("heading", { name: /seu teste grátis começou/i })).toBeVisible();
     const tenantId = new URL(page.url()).searchParams.get("tenant")!;

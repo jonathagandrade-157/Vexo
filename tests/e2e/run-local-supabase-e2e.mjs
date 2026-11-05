@@ -42,6 +42,12 @@ for (const value of [apiUrl, databaseUrl]) {
   }
 }
 
+const authSettings = await fetch(`${apiUrl}/auth/v1/settings`, { headers: { apikey: required("PUBLISHABLE_KEY") } }).then((response) => response.json());
+const confirmationRequired = authSettings.mailer_autoconfirm === false;
+if (process.env.CI === "true" && !confirmationRequired) throw new Error("CI email journeys require actual Auth email confirmation enabled.");
+const mailUrl = confirmationRequired ? required("INBUCKET_URL", "MAILPIT_URL") : "";
+if (mailUrl && !["127.0.0.1", "localhost", "[::1]"].includes(new URL(mailUrl).hostname)) throw new Error("Email tests only accept loopback Mailpit.");
+
 const publicKey = required("PUBLISHABLE_KEY");
 const secretKey = required("SECRET_KEY");
 if (!publicKey.startsWith("sb_publishable_") || !secretKey.startsWith("sb_secret_")) {
@@ -166,6 +172,8 @@ Object.assign(env, {
   E2E_OWNER_EMAIL: email,
   E2E_OWNER_PASSWORD: password,
   E2E_OPERATOR_EMAIL: operatorEmail,
+  E2E_EMAIL_CONFIRMATION: confirmationRequired ? "1" : "0",
+  E2E_MAIL_API_URL: mailUrl,
   DATABASE_URL: databaseUrl,
 });
 

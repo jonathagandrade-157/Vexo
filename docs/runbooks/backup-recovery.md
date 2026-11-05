@@ -1,6 +1,6 @@
 # Backup e recuperação do VEXO
 
-Atualização: 2026-10-29. **P0 aberto.** Implementação preparada e laboratório
+Atualização: 2026-11-05. **P0 aberto.** Implementação preparada e laboratório
 sintético aprovado; nenhuma cópia de produção foi exportada. A escolha
 anterior de backup lógico externo não autoriza destino, custo ou exportação.
 
@@ -10,6 +10,13 @@ Destino recomendado: bucket privado Backblaze B2 compatível com S3, exclusivo
 do proprietário, prefixo `vexo/production`. Nome final, região, titular e
 custodiante precisam ser definidos. Alternativa: bucket S3 privado existente
 que satisfaça as mesmas verificações. Não foi criada conta nem contratado serviço.
+
+Decisão recebida em 05/11: **usar a proposta B2**. Proposta concreta:
+região US East, bucket privado sugerido `vexo-backups-producao` (disponibilidade
+a confirmar) e prefixo `vexo/production`. A escolha não autoriza contratação,
+ativação irreversível de Object Lock ou exportação. Faltam custodiante e cofre
+da identidade privada, conta/destino efetivo e aprovação específica do piloto.
+O canal de suporte/alertas também foi solicitado, sem pedir credenciais por chat.
 
 - Criptografia local com age antes do upload, inclusive manifesto, paths do
   Storage, SQL e código implantado. Nenhum SQL em claro no disco.

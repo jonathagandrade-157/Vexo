@@ -114,11 +114,27 @@ async function signUp(label: string): Promise<AuthSession> {
     },
     body: JSON.stringify({ email, password: `VexoHttp-${runId}-A9!` }),
   });
-  const body = (await response.json()) as { access_token?: unknown; user?: { id?: unknown }; msg?: unknown };
-  if (!response.ok || typeof body.access_token !== "string" || typeof body.user?.id !== "string") {
+  let body = (await response.json()) as { access_token?: unknown; id?: unknown; user?: { id?: unknown }; msg?: unknown };
+  const id = body.user?.id ?? body.id;
+  if (!response.ok || typeof id !== "string") {
     throw new Error(`Local Supabase Auth signup failed with HTTP ${response.status}`);
   }
-  return { accessToken: body.access_token, userId: body.user.id };
+  if (typeof body.access_token !== "string") {
+    // This suite needs verified fixture actors, not an email-flow bypass
+    // in the app. Browser tests separately follow actual Mailpit emails.
+    const confirmed = await fetch(`${apiUrl}/auth/v1/admin/users/${id}`, {
+      method: "PUT", headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ email_confirm: true }),
+    });
+    if (!confirmed.ok) throw new Error("Could not confirm disposable HTTP fixture user.");
+    const signedIn = await fetch(`${apiUrl}/auth/v1/token?grant_type=password`, {
+      method: "POST", headers: { apikey: anonKey, authorization: `Bearer ${anonKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ email, password: `VexoHttp-${runId}-A9!` }),
+    });
+    body = await signedIn.json();
+    if (!signedIn.ok || typeof body.access_token !== "string") throw new Error("Disposable verified HTTP fixture could not sign in.");
+  }
+  return { accessToken: body.access_token as string, userId: id };
 }
 
 function expectDenied(result: HttpResult): void {

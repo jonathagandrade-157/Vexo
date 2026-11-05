@@ -6,11 +6,13 @@ import { getPublicEnv, getServerEnv } from "@/lib/env";
 import { hashDocument } from "@/lib/security/hash-identifier";
 import {
   createSupabaseServerClient,
-  createSupabaseServiceRoleClient,
 } from "@/lib/supabase/server";
-import { slugify, slugifyWithSuffix } from "@/lib/utils/slugify";
 import { resolvePostLoginDestination } from "./post-login-destination";
+import { completeEnrollment } from "./enrollment";
+import type { EnrollmentInput } from "./pending-signup";
+import { pendingSignupForUser, rememberPendingSignup } from "./pending-signup-cookie";
 import {
+  completeSignupSchema,
   resetPasswordRequestSchema,
   signInSchema,
   signUpSchema,
@@ -24,10 +26,6 @@ import {
   type UpdatePasswordInput,
 } from "./schema";
 
-interface TenantRow {
-  id: string;
-  status: string;
-}
 
 /**
  * Full signup flow (architecture §13, §24 Etapa 3):
@@ -45,6 +43,12 @@ interface TenantRow {
  * surface (architecture §25.1 reasoning applied to a new case — see
  * docs/architecture/etapa-3-auth-trial.md).
  */
+async function submitEnrollment(input: EnrollmentInput): Promise<SignUpActionState> {
+  const result = await completeEnrollment(input);
+  if (result.status === "complete") redirect(result.destination);
+  return result;
+}
+
 export async function signUpAction(
   _prevState: SignUpActionState,
   formData: FormData,
@@ -80,6 +84,7 @@ export async function signUpAction(
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email,
     password,
+    options: { emailRedirectTo: `${getPublicEnv().NEXT_PUBLIC_SITE_URL}/auth/confirm?purpose=signup` },
   });
 
   if (signUpError || !signUpData.user) {
@@ -95,78 +100,43 @@ export async function signUpAction(
     };
   }
 
-  // Enrich the profile the Etapa 2 signup trigger already created (just
-  // id + email). cpf_hash is UNIQUE — a collision here means this
-  // document already backs another account, which is the same
-  // "already used" outcome as a trial_eligibility collision.
-  const { error: profileError } = await supabase
-    .from("profiles")
-    .update({ full_name: fullName, phone, cpf_hash: documentHash })
-    .eq("id", signUpData.user.id);
-
-  if (profileError) {
-    if (profileError.code === "23505") {
-      redirect("/trial/ja-utilizado");
-    }
-    return {
-      status: "error",
-      message: "Não foi possível salvar seus dados. Tente novamente.",
-    };
+  const enrollment = { userId: signUpData.user.id, storeName, fullName, phone, documentHash };
+  if (!signUpData.session) {
+    await rememberPendingSignup(enrollment);
+    redirect("/confirmar-email");
   }
+  return submitEnrollment(enrollment);
+}
 
-  let tenant: TenantRow | null = null;
-  for (const slugAttempt of [slugify(storeName), slugifyWithSuffix(storeName)]) {
-    const { data, error } = await supabase.rpc("create_tenant", {
-      p_name: storeName,
-      p_slug: slugAttempt,
-    });
-
-    if (!error) {
-      tenant = data as unknown as TenantRow;
-      break;
-    }
-    // 23505 = unique_violation on tenants.slug — try once more with a
-    // random suffix before giving up (see slugifyWithSuffix).
-    if (error.code !== "23505") {
-      return {
-        status: "error",
-        message: "Não foi possível criar sua loja. Tente novamente.",
-      };
-    }
+export async function completeSignupAction(_prevState: SignUpActionState, formData: FormData): Promise<SignUpActionState> {
+  const parsed = completeSignupSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const fieldErrors: SignUpActionState["fieldErrors"] = {};
+    for (const issue of parsed.error.issues) fieldErrors[issue.path[0] as keyof SignUpInput] ??= issue.message;
+    return { status: "error", fieldErrors, message: "Verifique os campos destacados." };
   }
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email_confirmed_at) return { status: "error", message: "Entre na conta com o e-mail confirmado para continuar." };
+  return submitEnrollment({ storeName: parsed.data.storeName, fullName: parsed.data.fullName, phone: parsed.data.phone, userId: user.id,
+    documentHash: hashDocument(parsed.data.document, getServerEnv().TRIAL_HASH_SECRET) });
+}
 
-  if (!tenant) {
-    return {
-      status: "error",
-      message: "Não foi possível criar sua loja. Tente novamente.",
-    };
-  }
+export async function finishPendingSignupAction(_prevState: SignUpActionState, _formData: FormData): Promise<SignUpActionState> {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const input = user?.email_confirmed_at ? await pendingSignupForUser(user.id) : null;
+  if (!input) return { status: "error", message: "Entre na conta e preencha novamente os dados da loja para concluir o cadastro." };
+  return submitEnrollment(input);
+}
 
-  // service_role, not the session-bound `supabase` client: this RPC's
-  // p_document_hash must never be reachable directly by `authenticated`
-  // (see the migration's header comment for why) — only this server-side
-  // call, made after the hash above was computed from the real,
-  // checksum-validated document, is trusted to invoke it.
-  const { error: trialError } = await createSupabaseServiceRoleClient().rpc(
-    "start_trial_for_tenant",
-    {
-      p_user_id: signUpData.user.id,
-      p_tenant_id: tenant.id,
-      p_document_hash: documentHash,
-    },
-  );
-
-  if (trialError) {
-    if (trialError.code === "VX001") {
-      redirect("/trial/ja-utilizado");
-    }
-    return {
-      status: "error",
-      message: "Não foi possível iniciar seu período de teste. Tente novamente.",
-    };
-  }
-
-  redirect(`/trial/sucesso?tenant=${tenant.id}`);
+export async function resendConfirmationAction(_prevState: ResetPasswordRequestState, formData: FormData): Promise<ResetPasswordRequestState> {
+  const parsed = resetPasswordRequestSchema.safeParse({ email: formData.get("email") });
+  if (!parsed.success) return { status: "error", message: "Informe um e-mail válido." };
+  const supabase = await createSupabaseServerClient();
+  await supabase.auth.resend({ type: "signup", email: parsed.data.email,
+    options: { emailRedirectTo: `${getPublicEnv().NEXT_PUBLIC_SITE_URL}/auth/confirm?purpose=signup` } });
+  return { status: "success", message: "Se houver uma confirmação pendente para este e-mail, você receberá um novo link." };
 }
 
 export async function signInAction(
@@ -199,6 +169,9 @@ export async function signInAction(
   // /master, sem tenant → /cadastro, onboarding pendente do OWNER →
   // /onboarding, senão /painel), em vez de sempre "/". Ver
   // resolvePostLoginDestination para a decisão completa.
+  const { data: { user } } = await supabase.auth.getUser();
+  const pending = user?.email_confirmed_at ? await pendingSignupForUser(user.id) : null;
+  if (pending) await submitEnrollment(pending);
   redirect(await resolvePostLoginDestination());
 }
 
@@ -227,7 +200,7 @@ export async function resetPasswordRequestAction(
   // clicava no link do e-mail e não tinha como definir a nova senha em
   // lugar nenhum. Agora aponta para a página dedicada de redefinição.
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${NEXT_PUBLIC_SITE_URL}/redefinir-senha`,
+    redirectTo: `${NEXT_PUBLIC_SITE_URL}/auth/confirm?purpose=recovery`,
   });
 
   return {
