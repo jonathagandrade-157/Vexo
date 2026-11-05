@@ -2,7 +2,7 @@
 
 Atualização: 2026-11-05. **P0 aberto.** Implementação preparada e laboratório
 sintético aprovado; nenhuma cópia de produção foi exportada. A escolha
-anterior de backup lógico externo não autoriza destino, custo ou exportação.
+de B2 registra o provedor; não autoriza custo, provisionamento ou exportação.
 
 ## Proposta concreta para aprovação
 
@@ -34,7 +34,7 @@ O canal de suporte/alertas também foi solicitado, sem pedir credenciais por cha
 - Staging efêmero fora de Git/OneDrive, permissões 0700/0600, executor sem
   set -x, sem upload automático de diretórios de backup como artefatos CI.
 
-Preço consultado em 29/10: B2 US$6,95/TB/mês, primeiros 10 GB gratuitos.
+Preço reconferido em 05/11: B2 US$6,95/TB/mês, primeiros 10 GB gratuitos.
 Exemplo de 5 GB por cópia ×14 =70 GB: aproximadamente **US$0,42/mês de
 armazenamento** após franquia. Exclui impostos, câmbio, runner, chamadas não
 gratuitas e egress Supabase. Não é proposta comercial fechada.
@@ -49,6 +49,10 @@ Fontes: [preço B2](https://www.backblaze.com/cloud-storage/pricing),
 [egress Supabase](https://supabase.com/docs/guides/platform/manage-your-usage/egress).
 
 ## Implementação e limites
+
+Ficha concreta do piloto, escopo, campos de aprovação e aceite:
+[backup-pilot-b2.md](backup-pilot-b2.md). Nenhum destino externo foi configurado
+ou validado nesta etapa.
 
 scripts/backup/export.mjs: snapshot read-only compartilhado entre schema e
 dados; roles, schema/data filtrados pela CLI oficial, histórico de migrations,

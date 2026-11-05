@@ -1,6 +1,6 @@
 # Homologação isolada: configuração e aceite
 
-Inventário somente de nomes, 29/10/2026. Nenhum valor foi lido ou alterado.
+Inventário de nomes reconferido em 05/11/2026. Nenhum valor foi baixado ou alterado.
 Preview Vercel do projeto `vexo.ecommerce` contém entradas compartilhadas
 Production/Preview de Supabase legado, Mercado Pago, TRIAL_HASH_SECRET e
 OAUTH_STATE_SECRET. Não há modo de teste MP nem URL explícita de homologação.
@@ -41,7 +41,9 @@ Não enviar valores por chat. Configurar diretamente no cofre/Vercel. SMTP
 do Supabase Auth é configuração separada (Authentication → Email/SMTP);
 RESEND_API_KEY da aplicação não ativa confirmação de cadastro no Auth.
 Definir Site URL/redirect allowlist e template de confirmação compatíveis com
-o fluxo implementado, ainda pendente de jornada com confirmação habilitada.
+o fluxo implementado. Jornadas com confirmação habilitada estão implementadas
+na stack local/Mailpit; entrega SMTP externa segue pendente. Procedimento em
+[auth-email-release.md](auth-email-release.md).
 
 ## Endpoints existentes e autorização de execução
 
@@ -51,10 +53,13 @@ Mercado Pago: registrar callback
 Asaas: webhook `https://HOST-HOMOLOGACAO/api/webhooks/asaas`, com o token
 configurado nesse ambiente. Não apontar webhooks de teste para produção.
 
-Configuração não é autorização para abrir OAuth, enviar e-mail, efetuar
-transações, cancelar ou reembolsar. A execução externa requer GO específico
-com contas e destinatários sintéticos aprovados. Nenhuma dessas operações
-foi executada nesta sprint. Testes unitários/PostgreSQL com mocks não
+O pedido atual autoriza homologar os fluxos utilizados em sandbox, sem dinheiro
+real. Isso não autoriza usar as credenciais compartilhadas com produção,
+provisionar serviços pagos ou enviar comunicações a destinatários não definidos.
+Faltam ambiente isolado e contas/credenciais de teste configuradas no cofre.
+O OAuth antes proibido não foi iniciado; confirmar a conta de teste e seu
+escopo antes do vínculo. Nenhuma operação financeira externa foi executada.
+Testes unitários/PostgreSQL com mocks não
 substituem recibo/ID do evento sandbox e correlação com o estado no VEXO.
 
 ## Matriz de aceite financeiro
@@ -74,6 +79,34 @@ substituem recibo/ID do evento sandbox e correlação com o estado no VEXO.
 Para cada linha: commit/deployment, conta sandbox (ID, nunca token), request/
 event ID, horário, status, linhas sintéticas afetadas e evidência sanitizada.
 Atualmente as linhas externas estão **pendentes**, não homologadas.
+
+### Evidência controlada disponível em 05/11
+
+Mercado Pago recebe pagamentos de pedidos das lojas; Asaas trata cobrança e
+assinatura dos lojistas pelo SaaS. Não misturar credenciais nem interpretar
+o recebimento de um pedido como quitação da assinatura.
+
+Na revisão `27fc263`, o job principal do CI 42111772873 aprovou as suítes
+existentes com mocks de HTTP e PostgreSQL real. Elas verificam assinatura e
+payload do webhook MP, vínculo de tenant/pedido/moeda/vendedor/valor,
+duplicidade, retry em timeout/erro de banco, OAuth state/PKCE e reconciliação.
+Para Asaas verificam autenticação do webhook, confirmação/falha/estorno,
+assinatura, duplicidade e erros; o adaptador cobre create/update/cancel e
+normalização de planos. Isso não comprova execução no sandbox dos provedores.
+
+Arquivos de evidência: `tests/unit/mercadopago-webhook-route.test.ts`,
+`mercadopago-oauth-callback-route.test.ts`, `mercadopago-gateway.test.ts`,
+`asaas-webhook.test.ts`, `asaas-gateway.test.ts` e integrações
+`billing-webhook-event.test.ts`, `payments.test.ts`,
+`reconcile-stale-payments.test.ts`. Não foi necessário repetir essas suítes
+isoladamente depois do job verde da mesma revisão.
+
+Pendência técnica específica para homologação Asaas: o parser de dateCreated
+assume -03:00 para o formato sem offset. A documentação oficial consultada
+em 05/11 mostra esse formato, mas não esclarece o fuso nessa página; não
+declarar a hipótese confirmada. Conferir evento sandbox com horário conhecido
+ou obter confirmação do provedor antes do aceite da ordenação de eventos.
+[Formato oficial do evento](https://docs.asaas.com/docs/eventos-de-webhooks).
 
 ## Primeira venda: operação humana pendente
 

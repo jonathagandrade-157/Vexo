@@ -42,9 +42,25 @@ com o proprietário antes da revogação.
 
 ## Sequência de execução após aprovação específica
 
+Inspeção de metadados em 05/11 encontrou chaves modernas já emitidas:
+publishable `29900830-208d-4288-98ef-a68527825db7` e secret
+`f2a85b58-485d-4965-bf76-9f97a33eb9bc`, além de `anon` e `service_role`
+legadas. IDs não comprovam validade nem revogação. Vercel Production/Preview
+ainda contém os nomes legados e não os nomes modernos. Não é necessário criar
+outra chave apenas porque o código passou a suportá-la; obter a existente
+diretamente no cofre/painel autorizado, sem copiar valores por chat.
+
+Novos consumidores Auth da PR: `/auth/confirm` usa o cliente SSR público e a
+sessão verificada; o trial de `features/auth/enrollment.ts` usa o cliente
+administrativo centralizado. Ambos herdam a preferência moderna existente.
+Não há credencial literal nesses módulos. Consumidores externos ao repositório
+permanecem sem confirmação do proprietário. `functions list` no projeto alvo
+retornou **zero Edge Functions** em 05/11; isso fecha esse item do inventário,
+mas não prova ausência de jobs, webhooks ou aplicações fora do projeto.
+
 1. Confirmar projeto, ambientes, operador e commit aprovado. Registrar
    somente nomes/IDs de chaves e horários. Nunca guardar valores no relatório.
-2. Criar/obter as chaves modernas na área API Keys do projeto. Configurar
+2. Obter as chaves modernas existentes na área API Keys do projeto. Configurar
    os dois nomes novos diretamente no cofre de variáveis do ambiente de
    homologação. Chave secreta nunca recebe prefixo `NEXT_PUBLIC_`.
 3. Rebuildar e validar homologação com os nomes legados ausentes: login,

@@ -1,6 +1,6 @@
 # PR #3 — release controlado
 
-Preparado em 29/10/2026. Nenhum merge, migration ou deploy autorizado por
+Atualizado em 05/11/2026. Nenhum merge, migration ou deploy autorizado por
 este documento. Tratar GO técnico, beta e comercial como decisões distintas.
 
 ## Gates antes de solicitar GO técnico
@@ -19,6 +19,10 @@ este documento. Tratar GO técnico, beta e comercial como decisões distintas.
    Se existir outra pendência, interromper e revisar; não usar push cego.
 5. Registrar operador, janela, deployment atual, candidato e rollback,
    configuração (nomes/IDs), smoke, gatilhos de interrupção e GO explícito.
+6. Conferir Auth Site URL/redirects/SMTP conforme `auth-email-release.md`.
+   Confirmação está desativada em produção; habilitá-la exige mudança de
+   configuração explicitamente incluída no GO, com entrega sintética aceita
+   no ambiente isolado. Não presumir que a chave Resend ativa SMTP do Auth.
 
 Asaas não bloqueia um hotfix técnico quando esses gates estiverem satisfeitos.
 Beta exige recuperação/segurança e limitações explícitas; comercial exige
@@ -74,6 +78,9 @@ não restaurar produção indiscriminadamente por falha visual.
 - Checkout: validações até antes da confirmação; pedido sintético completo
   somente no ambiente e escopo especificamente aprovados.
 - Lojista: login/sessão nova, painel, produtos, pedidos e configurações.
+- Auth: cadastro/retomada e recuperação no escopo sintético autorizado,
+  link inválido/expirado, reenvio e senha anterior negada após troca; não
+  criar contas nem enviar e-mails reais fora da janela/destinatário aprovados.
 - Cron sem pagamentos pendentes: resposta vazia normal, sem inicializar MP.
 - Console/hidratação, HTTP, logs, autorização e páginas desktop/Pixel 7.
 - Probe: moderno funcional e público sem acesso direto a carrinhos;

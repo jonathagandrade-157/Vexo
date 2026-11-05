@@ -3,10 +3,73 @@
 Atualizado em 2026-11-05. **NO-GO técnico para execução de produção,
 NO-GO beta e NO-GO comercial.** Código candidato e laboratório avançaram;
 backup real restaurado e revogação continuam gates abertos. Homologação
-financeira e fechamento das jornadas essenciais continuam pendentes.
+financeira, entrega SMTP e operação com suporte/alertas continuam pendentes.
 Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recuperação.
 
-## Sprint de fechamento em andamento
+## Estado atual verificado — 05/11
+
+- Código candidato: `27fc2630840bf0c1cfc9a3ece05115ce9c3568c9`,
+  [PR #3](https://github.com/jonathagandrade-157/Vexo/pull/3) aberta, branch
+  `codex/vexo-launch-blockers`. Main remoto permanece
+  `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`; sem merge nesta etapa.
+- Correções novas: cadastro espera confirmação antes de criar loja/trial;
+  callback PKCE/OTP, reenvio, expiração, recuperação e retomada autenticada
+  em outro navegador; cookie cifrado sem senha/CPF em claro; metadados Auth
+  editáveis não autorizam o trial. Retry após falha de trial reutiliza a loja
+  incompleta do OWNER em vez de duplicá-la. Commits `47dfd67` e `27fc263`.
+- CI da revisão:
+  [42111772873](https://github.com/jonathagandrade-157/Vexo/actions/runs/42111772873).
+  **Quatro jobs aprovados:** 1.357 unitários, 738 integrações PostgreSQL,
+  16 testes HTTP e **51/51 jornadas de navegador**, sem retries, em desktop,
+  Pixel 7 emulado e 360 px. Audit sem vulnerabilidades conhecidas,
+  lint/typecheck/build, rollout e recovery-lab aprovados.
+  Local: 21 regressões Auth e typecheck/lint passaram. Os resultados são
+  vinculados a esse SHA, sem extrapolar para o banco/deployment de produção.
+- [Evidências sintéticas da revisão](https://github.com/jonathagandrade-157/Vexo/actions/runs/42111772873/artifacts/13454982362),
+  15 capturas disponíveis até 12/11. Cópia local ignorada pelo Git em
+  `test-results/ci-27fc263`; revisadas visualmente loja recém-publicada no
+  Pixel 7, variantes no mobile 360 e carrinho desktop. As jornadas Auth são
+  comprovadas pelos testes/estado no banco; não houve entrega de e-mail real.
+- A rodada anterior do novo Auth, commit `47dfd67`,
+  [42109530181](https://github.com/jonathagandrade-157/Vexo/actions/runs/42109530181),
+  passou em 48/51 E2E; três pararam por seletor de alerta que também encontrava
+  o anunciador de rotas do Next. Seletor delimitado ao main; todos os 51
+  passaram em 27fc263. Nenhum erro da aplicação foi filtrado para obter verde.
+- Preview automático do código, READY:
+  [27fc263](https://vexoecommerce-n4ugs9arg-vexo5.vercel.app).
+  Deployment `dpl_2E7iL8i5Gwq6HNJb4XhwdRXjTzmZ`, SHA correlacionado pela
+  listagem Vercel; inspeção individual confirmou ID/estado/target Preview.
+  Esse Preview compartilha credenciais de produção e não é sandbox para
+  mutações ou finanças. Build pronto não equivale a smoke autenticado aprovado.
+- Produção conferida via Vercel: `dpl_AJnRSLMhKw959n5DtwtemJ52ZkJ1`, READY,
+  [vexoecommerce-29yh2fret](https://vexoecommerce-29yh2fret-vexo5.vercel.app).
+  A PR #3 continua sem publicação em produção; nenhuma migration aplicada.
+- Banco somente leitura: PostgreSQL 17.6, última migration
+  `20261026210716`, grant SELECT de service_role em products ainda ausente;
+  9 arquivos Storage/1.471.843 bytes, Vault 0 e labels TCE 0. PITR desabilitado,
+  lista de backups não informada e metadados físicos vazios. WAL habilitado
+  não comprova cópia recuperável.
+- Auth de produção consultado sem ler usuários: cadastro/e-mail habilitados,
+  confirmação de e-mail **desativada**. SMTP/entregabilidade hospedada não
+  demonstrados. [Configuração de release](runbooks/auth-email-release.md).
+- Metadados de API keys: publishable/secret modernas já existem no projeto;
+  nomes modernos ainda ausentes no Vercel Production/Preview. Valores não
+  são publicados nem incluídos em commits. Zero Edge Functions no inventário
+  do projeto alvo; consumidores externos ainda não confirmados. Nenhuma
+  troca/revogação executada.
+- B2 escolhido pelo proprietário; ficha concreta preparada em
+  [piloto B2](runbooks/backup-pilot-b2.md). Faltam custodiante/cofre, destino
+  efetivo, restaurador/orçamento e aprovação específica. Nenhuma exportação
+  real nem contratação. Nenhum destino de backup apareceu no inventário
+  acessível do executor/Vercel; isso não inventaria contas externas do titular.
+- Inventário de nomes Vercel reconferido: credenciais Supabase legadas e MP
+  compartilhadas Production/Preview; sem modo MP de teste e sem Asaas.
+  Resend/Sentry/CRON_SECRET presentes só em Production; presença não prova
+  operação. Homologação externa aguarda ambiente e contas isolados no cofre.
+- Perguntas já enviadas e ainda pendentes: custodiante/cofre da chave privada
+  e canal/responsável reais de suporte e alertas. Não pedir segredos por chat.
+
+## Evidência histórica — não substitui validação da revisão acima
 
 - **Conjunto funcional aprovado em 05/11:** commit f96086e,
   [CI 42055415140](https://github.com/jonathagandrade-157/Vexo/actions/runs/42055415140),
@@ -76,7 +139,8 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
   incorreto na fixture HTTP de Storage, corrigido conforme o SDK instalado.
 
 Nenhuma exportação real, contratação, alteração de ambiente, OAuth, pagamento,
-mensagem, merge ou deploy foi executado nesta sprint. A recusa de acesso do
+mensagem, merge ou deploy de produção foi executado nesta sprint. Pushes da
+PR geram Previews automaticamente, identificados separadamente. A recusa de acesso do
 browser à produção foi respeitada. A aprovação genérica anterior não autoriza
 as operações específicas acima.
 
@@ -92,7 +156,7 @@ as operações específicas acima.
   `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`, deployment
   `dpl_AJnRSLMhKw959n5DtwtemJ52ZkJ1`.
 - Supabase: projeto `Vexo`, ref `vqbiurnfqkjkrenigxzv`, `us-east-1`.
-- A PR #3 não foi mesclada nem publicada. Nenhuma alteração de banco,
+- A PR #3 não foi mesclada nem publicada em produção. Nenhuma alteração de banco,
   variável, credencial ou infraestrutura de produção foi feita nesta etapa.
 - As alterações existentes no checkout principal foram preservadas.
 
@@ -116,6 +180,8 @@ Todas as linhas abaixo pertencem à PR #3, ainda sem rollout de produção.
 | Botão Salvar produto inclui nome do ícone | P2 | Leitor de tela/navegador identifica save + Salvar produto | Ícone decorativo aria-hidden, repetindo o contrato acessível do botão de login; jornada E2E usa nome visível exato |
 | Labels de categoria apontam para outro diálogo | P2 | Abrir edição após criar categoria; ids name/description repetidos associam label ao campo oculto de outro modal | useId por formulário, nome acessível do diálogo e do gatilho; reprodução falhou nas três larguras antes da correção |
 | Cadastro pode navegar antes de persistir variantes | P1 | Galeria vazia termina enquanto configuração ainda está idle; abertura de edição pode encontrar zero variantes | Navegação passa a usar o mesmo computeSaveStatus da confirmação visual e exige done; reprodução mobile e regressão do estado idle |
+| Cadastro com confirmação de e-mail tenta gravar sem sessão | P1 | Auth retorna usuário sem sessão; ação antiga atualiza perfil antes da confirmação e falha | Aguarda confirmação, callback PKCE/OTP e retomada autenticada; regressão unitária falhou antes da correção |
+| Falha ao iniciar trial deixa cadastro sem caminho de retomada | P1 | Loja foi criada, RPC do trial falha; retry antigo pula para onboarding sem trial | Reusa apenas loja incompleta do OWNER sem assinatura; elegibilidade continua no RPC; regressão demonstra erro temporário seguido de sucesso sem create_tenant adicional |
 
 O antigo banner para `/loja/TESTE` e a hidratação da vitrine foram corrigidos
 na PR #2. O erro #418 encontrado agora era outro, na página de configurações.
@@ -137,7 +203,8 @@ estoque zerado; não são cópias de dados pessoais de produção.
 | Pedido | Pedido único no banco, baixa única de estoque, leitura no painel, confirmação manual sintética de pagamento, avanço para PREPARING e histórico; status não baixa estoque novamente | Todos os status, cancelamentos e filtros ainda sem cobertura completa de navegador |
 | Painel | 17 rotas: HTTP 200, título visível e ausência de overflow/erros de console/hidratação; logout encerra a sessão e acesso posterior volta ao login | Leitura de página não valida todos os controles |
 | Configurações | Nome vazio rejeitado sem alterar o banco; perfil/endereço persistem após reload; valores originais restaurados pela própria UI | Pagamentos, pedidos, entrega, domínio e plano ainda precisam de mutações completas |
-| Cadastro e onboarding | Termos não aceitos e senhas diferentes não criam conta; cadastro cria OWNER e trial único, documento só como HMAC; retomada pelo banco, bloqueio de salto e publicação local; sem erro de console nas três larguras | Confirmação por e-mail não coberta: enable_confirmations=false na stack local |
+| Cadastro e onboarding | Termos/senhas, OWNER/trial único, documento HMAC, retomada, bloqueio de salto e publicação; confirmação habilitada com Mailpit seguindo links efetivamente emitidos nas três larguras, CI 42111772873 | SMTP/entrega externos e configuração hospedada seguem pendentes |
+| E-mail Auth e recuperação | PKCE e token_hash, expiração real de timestamp sintético, reenvio, reutilização negada, senha antiga negada/nova aceita e retomada em outro navegador; cookie cifrado/tamper/usuário/TTL e metadados falsificados | Mailpit local, sem e-mail externo; não equivale a homologação SMTP. Ver CI da revisão atual |
 | Catálogo e aparência | Home/detalhes/âncoras, estados vazios, leitura/prévia de aparência; categoria criada, renomeada, desativada e reativada; produto simples criado e editado com categoria, preço e estoque 8→3 preservados após reload | Banners, upload/galeria e restauração completa da aparência ainda pendentes; não houve exclusões de dados existentes |
 | Equipe e histórico | Rotas de leitura, auditoria do pedido e OPERATOR autorizado a pedidos e bloqueado em criação de produtos/equipe | Nenhum convite enviado; outros papéis ainda sem jornada completa de navegador |
 | Domínio e assinatura | Rotas carregam e bloqueios explícitos são respeitados | Nenhum domínio contratado, OAuth iniciado ou cobrança executada |
@@ -232,7 +299,7 @@ operacional dos limites, timeouts e retries dos provedores.
 | Prioridade | Bloqueador | Ação necessária |
 | --- | --- | --- |
 | P0 | Credencial privilegiada potencialmente exposta | Validar consumidores com chaves modernas, autorizar substituição/revogação e comprovar que o acesso antigo deixou de funcionar |
-| P0 | Backup e restore não comprovados | Usuário escolheu backup lógico externo; indicar destino protegido, controle de acesso e responsável; aprovar exportação concreta e demonstrar restore isolado, Storage e Vault |
+| P0 | Backup e restore não comprovados | B2 escolhido; preencher custodiante/cofre e destino efetivo da ficha, aprovar piloto específico e demonstrar restore Auth/Storage e Vault quando aplicável |
 | P1 | Carrinho e cron ainda sem correção publicada | Após backup e gates, aprovar migration mínima e deploy da PR revisada; repetir smoke e logs em produção |
 | P1 | Mercado Pago não validado operacionalmente | Configurar sandbox seguro e testar OAuth, PIX/cartão, webhook, duplicidade, falhas, cancelamento/reembolso e reconciliação |
 | P1 | Billing Asaas não validado | Configurar sandbox e testar assinatura, webhook, renovação, inadimplência, plano, cancelamento e reativação |
@@ -257,17 +324,18 @@ exportação, revogação, migration e deploy exigem aprovação específica.
 
 1. Completar as mutações e jornadas ainda pendentes na matriz, sem expandir
    módulos “em breve” e sem comunicação, OAuth ou transação real.
-2. Confirmar bucket/região/custodiante/custo e obter autorização específica
+2. Concluir a ficha B2 com bucket/custodiante/cofre/custo e obter autorização específica
    para o piloto de backup e restore isolado. Meta RPO24h/RTO4h ainda não medida.
 3. Aprovar configuração moderna e revogação, com consumidor/rollback compatível
    e prova de acesso antigo negado. Produção permanece sem alteração.
 4. Obter GO técnico específico para migration/deploy e smoke quando os P0
    estiverem fechados. Homologação Asaas não precisa bloquear esse hotfix.
-5. Separar sandbox e executar homologação financeira autorizada; fechar
-   confirmação de e-mail, jornadas restantes e operação para os primeiros clientes.
+5. Separar sandbox e executar homologação financeira autorizada; validar
+   SMTP hospedado, jornadas restantes e operação para os primeiros clientes.
 
 | Decisão | Veredito atual | Falta para mudar |
 | --- | --- | --- |
+| Demonstração | Permitida no laboratório sintético; Preview apenas com limites de leitura | Não usar demonstração como prova de recuperação/produção ou como autorização para inserir dados de clientes |
 | GO técnico | NO-GO de execução | Backup real recuperado, troca/revogação aprovadas e verificadas, HEAD CI aprovado e GO de release |
-| GO beta | NO-GO | Gates de segurança/recuperação, hotfix publicado e jornadas essenciais aceitas com limitações explícitas |
+| Beta gratuito supervisionado | NO-GO com dados reais | Gates de segurança/recuperação, hotfix publicado e jornadas essenciais aceitas com limitações explícitas; não depende de habilitar cobranças reais |
 | GO comercial | NO-GO | Beta aceito, MP/Asaas homologados, e-mail/suporte/alertas operacionais e revisão humana das políticas |
