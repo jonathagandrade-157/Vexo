@@ -135,9 +135,15 @@ export function ProductForm({ categories, product, galleryImages, inventory, ini
   /** D20.7/D20.8 — só navega quando TODO staging pendente (imagens E opções/valores/variantes) chegou a um estado terminal sem falha — nunca antes, nunca com uma falha pendente (o lojista precisa ver o que falhou e poder tentar de novo, ainda nesta tela). */
   function attemptNavigate() {
     if (hasNavigatedRef.current || !effectiveProductId) return;
-    if (state.stockSaveFailed) return;
-    if (!gallerySettledRef.current || galleryHasFailureRef.current) return;
-    if (configStatusRef.current === "pending" || configStatusRef.current === "error") return;
+    const status = computeSaveStatus({
+      isEditMode: false,
+      justCreated: true,
+      gallerySettled: gallerySettledRef.current,
+      galleryHasFailure: galleryHasFailureRef.current,
+      configStatus: configStatusRef.current,
+      stockSaveFailed: state.stockSaveFailed,
+    });
+    if (status !== "done") return;
     hasNavigatedRef.current = true;
     router.push(`/painel/produtos/${effectiveProductId}/editar`);
   }

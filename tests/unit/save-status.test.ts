@@ -38,6 +38,13 @@ describe("computeSaveStatus", () => {
     ).toBe("persisting");
   });
 
+  it("galeria termina antes da configuração iniciar: ainda bloqueia a navegação", () => {
+    const input = { ...base, justCreated: true, gallerySettled: true };
+    expect(computeSaveStatus(input)).toBe("persisting");
+    expect(computeSaveStatus({ ...input, configStatus: "pending" })).toBe("persisting");
+    expect(computeSaveStatus({ ...input, configStatus: "success" })).toBe("done");
+  });
+
   it("produto criado, config sem opções staged (success imediato), galeria ainda não settled: 'persisting'", () => {
     expect(computeSaveStatus({ ...base, justCreated: true, gallerySettled: false, configStatus: "success" })).toBe("persisting");
   });

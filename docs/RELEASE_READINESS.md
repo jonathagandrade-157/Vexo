@@ -1,6 +1,6 @@
 # VEXO — relatório de prontidão comercial
 
-Atualizado em 2026-10-29. **NO-GO técnico para execução de produção,
+Atualizado em 2026-11-05. **NO-GO técnico para execução de produção,
 NO-GO beta e NO-GO comercial.** Código candidato e laboratório avançaram;
 backup real restaurado e revogação continuam gates abertos. Homologação
 financeira e fechamento das jornadas essenciais continuam pendentes.
@@ -8,6 +8,14 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
 
 ## Sprint de fechamento em andamento
 
+- Retomada em 05/11: PR #3 permanece aberta no HEAD d6c67a1, sem conflito
+  com main da1ab1d. [CI 40813679025](https://github.com/jonathagandrade-157/Vexo/actions/runs/40813679025)
+  aprovou 1.346 unitários, 738 integrações, 16 HTTP, build/audit/lint/typecheck,
+  smoke público e recovery-lab; navegador ficou em 41/45. Três falhas
+  demonstraram IDs repetidos nos diálogos de categoria; uma corrida mobile
+  mostrou navegação antes da persistência das variantes. Correções usam
+  useId e o estado único de salvamento para liberar a navegação somente
+  após sucesso. Regressões desktop/mobile aguardam a rodada atualizada.
 - Implementados export nativo sem Docker Desktop, criptografia age antes de
   upload, manifesto cifrado, hash/readback, guardas de destino e restore
   sintético vazio. [Procedimento e custo](runbooks/backup-recovery.md).
@@ -81,6 +89,8 @@ Todas as linhas abaixo pertencem à PR #3, ainda sem rollout de produção.
 | Estoque simples falha silenciosamente após adoção de variantes | P1 | Salvar estoque usa ON CONFLICT(product_id), mas o índice agora é parcial; falha de escrita não era verificada | Escrita base com update/insert e retry limitado de concorrência; falha parcial explícita preserva ID criado para não duplicar produto; regressão focada reproduziu o falso sucesso antes da correção |
 | Edição base pode remover estoques das variantes | P1 | Salvar produto com estoque base vazio excluía todas as linhas product_inventory daquele produto | Leitura, update e delete base passam a filtrar variant_id IS NULL; teste de navegador com três variantes/estoques sintéticos em validação |
 | Botão Salvar produto inclui nome do ícone | P2 | Leitor de tela/navegador identifica save + Salvar produto | Ícone decorativo aria-hidden, repetindo o contrato acessível do botão de login; jornada E2E usa nome visível exato |
+| Labels de categoria apontam para outro diálogo | P2 | Abrir edição após criar categoria; ids name/description repetidos associam label ao campo oculto de outro modal | useId por formulário, nome acessível do diálogo e do gatilho; reprodução falhou nas três larguras antes da correção |
+| Cadastro pode navegar antes de persistir variantes | P1 | Galeria vazia termina enquanto configuração ainda está idle; abertura de edição pode encontrar zero variantes | Navegação passa a usar o mesmo computeSaveStatus da confirmação visual e exige done; reprodução mobile e regressão do estado idle |
 
 O antigo banner para `/loja/TESTE` e a hidratação da vitrine foram corrigidos
 na PR #2. O erro #418 encontrado agora era outro, na página de configurações.

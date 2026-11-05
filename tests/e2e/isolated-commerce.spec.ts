@@ -362,8 +362,10 @@ test.describe("comércio com Supabase descartável", () => {
     await expect(dialog).not.toBeVisible();
     await expect(page.getByText(`${categoryName} inicial`, { exact: true })).toBeVisible();
     await page.reload();
+    const categoryInputIds = await page.locator('dialog input[name="name"]').evaluateAll((inputs) => inputs.map((input) => input.id));
+    expect(new Set(categoryInputIds).size).toBe(categoryInputIds.length);
     const initialRow = page.getByText(`${categoryName} inicial`, { exact: true }).locator("xpath=../..");
-    await initialRow.getByTitle("Editar", { exact: true }).click();
+    await initialRow.getByRole("button", { name: `Editar categoria ${categoryName} inicial`, exact: true }).click();
     await dialog.getByLabel("Nome da categoria", { exact: true }).fill(categoryName);
     await dialog.getByRole("button", { name: "Salvar alterações", exact: true }).click();
     await expect(dialog).not.toBeVisible();
@@ -418,6 +420,7 @@ test.describe("comércio com Supabase descartável", () => {
     await page.getByLabel("Preço de venda", { exact: true }).fill("95");
     await page.getByRole("button", { name: /voltagem/i }).click();
     await page.getByRole("button", { name: /gerar 3 variantes/i }).click();
+    await expect(page.getByText("3 combinação(ões) gerada(s).", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
     await expect(page).toHaveURL(/\/painel\/produtos\/[a-f0-9-]+\/editar$/);
     const productId = new URL(page.url()).pathname.split("/")[3]!;
