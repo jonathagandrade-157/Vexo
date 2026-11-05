@@ -3,10 +3,20 @@ import { expect, test } from "@playwright/test";
 import pg from "pg";
 import { localAuthAdmin, localAuthEmail, syntheticDocument } from "./local-auth-mail";
 
-async function query(sql: string, values: unknown[]) {
+async function query(sql: string, values: unknown[], actorId?: string) {
   if (process.env.E2E_ISOLATED_SUPABASE !== "1" || !["127.0.0.1", "localhost"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Auth mutations require a disposable loopback database.");
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect(); try { return await client.query(sql, values); } finally { await client.end(); }
+  await client.connect();
+  try {
+    if (actorId) {
+      await client.query("begin");
+      await client.query("set local role authenticated");
+      await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: actorId, role: "authenticated" })]);
+    }
+    const result = await client.query(sql, values);
+    if (actorId) await client.query("commit");
+    return result;
+  } finally { await client.end(); }
 }
 test.describe("e-mails Auth locais", () => {
   test.skip(process.env.E2E_ISOLATED_SUPABASE !== "1" || process.env.E2E_EMAIL_CONFIRMATION !== "1", "Requires isolated Auth and local Mailpit.");
@@ -40,7 +50,7 @@ test.describe("e-mails Auth locais", () => {
     await expect(page.getByLabel("Nova senha", { exact: true })).toHaveCount(0);
   });
 
-  test("finaliza conta confirmada em outro navegador sem confiar em metadados editáveis", async ({ page }) => {
+  test("retoma em outro navegador e após perder cookies sem duplicar loja nem confiar em metadados editáveis", async ({ page }) => {
     const nonce = randomBytes(6).toString("hex"); const email = `resume-${nonce}@example.test`;
     const forgedHash = "0".repeat(64);
     const generated = await localAuthAdmin().auth.admin.generateLink({ type: "signup", email, password: "Synthetic-resume-A9!", options: { data: { document_hash: forgedHash, cpf_hash: forgedHash } } });
@@ -48,6 +58,16 @@ test.describe("e-mails Auth locais", () => {
     await page.goto(`/auth/confirm?type=signup&token_hash=${generated.data.properties!.hashed_token}`);
     await expect(page.getByRole("heading", { name: "Conclua o cadastro da sua loja" })).toBeVisible();
     await expect(page.getByLabel("Senha", { exact: true })).toHaveCount(0);
+    // Reproduce a committed create_tenant followed by a failed trial. Then
+    // lose every browser cookie before a new login; only the DB can resume.
+    const interrupted = await query("select (public.create_tenant($1, $2)).id as id", [`Retomada ${nonce}`, `retomada-${nonce}`], generated.data.user!.id);
+    const originalTenantId = interrupted.rows[0].id;
+    await page.context().clearCookies();
+    await page.goto("/login");
+    await page.getByLabel("E-mail", { exact: true }).fill(email);
+    await page.getByLabel("Senha", { exact: true }).fill("Synthetic-resume-A9!");
+    await page.getByRole("button", { name: "Entrar no VEXO", exact: true }).click();
+    await expect(page).toHaveURL(/\/cadastro$/);
     await page.getByLabel("Nome da loja", { exact: true }).fill(`Retomada ${nonce}`);
     await page.getByLabel("Nome completo", { exact: true }).fill("Conta sintética retomada");
     await page.getByLabel("Telefone", { exact: true }).fill("11999999999");
@@ -55,6 +75,7 @@ test.describe("e-mails Auth locais", () => {
     await page.locator('input[name="acceptTerms"]').check();
     await page.getByRole("button", { name: "Concluir cadastro", exact: true }).click();
     await expect(page).toHaveURL(/\/trial\/sucesso\?tenant=/);
+    expect(new URL(page.url()).searchParams.get("tenant")).toBe(originalTenantId);
     const count = await query("select count(*)::int as total from public.tenants t join auth.users u on t.created_by=u.id where u.email=$1", [email]);
     expect(count.rows[0].total).toBe(1);
     const profile = await query("select cpf_hash from public.profiles p join auth.users u on p.id=u.id where u.email=$1", [email]);

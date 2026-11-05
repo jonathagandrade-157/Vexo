@@ -34,7 +34,7 @@ export default async function CadastroPage({ searchParams }: { searchParams: Pro
   // para a página em que já está).
   if (user) {
     const destination = await resolvePostLoginDestination();
-    if (destination !== "/cadastro" && !(destination === "/onboarding" && notice === "enrollment_retry")) redirect(destination);
+    if (destination !== "/cadastro") redirect(destination);
   }
 
   return (

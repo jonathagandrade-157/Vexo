@@ -13,7 +13,7 @@ const input = { userId, storeName: "Synthetic", fullName: "Synthetic", phone: "1
 const tenantRpc = vi.fn(); const trialRpc = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(resolvePostLoginDestination).mockResolvedValue("/onboarding");
+  vi.mocked(resolvePostLoginDestination).mockResolvedValue("/cadastro");
   vi.mocked(getCurrentMembership).mockResolvedValue({ roleKey: "OWNER", tenant: { id: tenantId, status: "pending", onboarding_completed_at: null } } as never);
   vi.mocked(createSupabaseServerClient).mockResolvedValue({
     auth: { getUser: async () => ({ data: { user: { id: userId, email_confirmed_at: "2026-01-01" } }, error: null }) },

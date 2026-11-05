@@ -13,6 +13,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getCurrentPlatformAdmin = vi.fn();
 const getCurrentMembership = vi.fn();
+const subscriptionResult = vi.fn();
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: async () => ({
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: subscriptionResult }) }) }),
+  }),
+}));
 
 vi.mock("@/features/master/current-admin", () => ({
   getCurrentPlatformAdmin: (...args: unknown[]) => getCurrentPlatformAdmin(...args),
@@ -25,6 +31,7 @@ vi.mock("@/features/painel/current-tenant", () => ({
 describe("resolvePostLoginDestination", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    subscriptionResult.mockResolvedValue({ data: { id: "trial-subscription" }, error: null });
   });
 
   it("MASTER goes to /master, without even checking membership", async () => {
@@ -71,6 +78,22 @@ describe("resolvePostLoginDestination", () => {
 
     const { resolvePostLoginDestination } = await import("@/features/auth/post-login-destination");
     await expect(resolvePostLoginDestination()).resolves.toBe("/painel");
+  });
+
+  it("resumes enrollment from database state when the pending cookie is gone and no subscription exists", async () => {
+    getCurrentPlatformAdmin.mockResolvedValue(null);
+    getCurrentMembership.mockResolvedValue({ roleKey: "OWNER", tenant: { id: "incomplete-store", onboarding_completed_at: null } });
+    subscriptionResult.mockResolvedValue({ data: null, error: null });
+    const { resolvePostLoginDestination } = await import("@/features/auth/post-login-destination");
+    await expect(resolvePostLoginDestination()).resolves.toBe("/cadastro");
+  });
+
+  it("does not skip enrollment when subscription lookup fails", async () => {
+    getCurrentPlatformAdmin.mockResolvedValue(null);
+    getCurrentMembership.mockResolvedValue({ roleKey: "OWNER", tenant: { id: "incomplete-store", onboarding_completed_at: null } });
+    subscriptionResult.mockResolvedValue({ data: null, error: { code: "temporary" } });
+    const { resolvePostLoginDestination } = await import("@/features/auth/post-login-destination");
+    await expect(resolvePostLoginDestination()).resolves.toBe("/cadastro");
   });
 
   it("a non-OWNER member (e.g. ADMIN) with pending onboarding still goes to /painel — mirrors app/painel/layout.tsx, which never sends a non-OWNER to /onboarding", async () => {

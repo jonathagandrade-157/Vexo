@@ -17,19 +17,21 @@ export async function completeEnrollment(input: EnrollmentInput): Promise<SignUp
   }
   const destination = await resolvePostLoginDestination();
   let tenant: TenantRow | null = null;
-  if (destination !== "/cadastro") {
-    if (destination === "/onboarding") {
-      const membership = await getCurrentMembership();
-      if (membership?.roleKey === "OWNER" && membership.tenant.onboarding_completed_at === null) {
-        const { data: subscription, error: subscriptionError } = await supabase.from("subscriptions").select("id").eq("tenant_id", membership.tenant.id).maybeSingle();
-        if (subscriptionError) return { status: "error", message: "Não foi possível verificar seu cadastro. Tente novamente." };
-        // A previous create_tenant may have committed before the trial RPC
-        // failed. Reuse it; eligibility remains enforced by the trial RPC.
-        if (!subscription) tenant = { id: membership.tenant.id, status: membership.tenant.status };
+  if (destination === "/cadastro" || destination === "/onboarding") {
+    const membership = await getCurrentMembership();
+    if (membership?.roleKey === "OWNER" && membership.tenant.onboarding_completed_at === null) {
+      const { data: subscription, error: subscriptionError } = await supabase.from("subscriptions").select("id").eq("tenant_id", membership.tenant.id).maybeSingle();
+      if (subscriptionError) return { status: "error", message: "Não foi possível verificar seu cadastro. Tente novamente." };
+      // A previous create_tenant may have committed before the trial RPC
+      // failed. Reuse it; eligibility remains enforced by the trial RPC.
+      if (subscription) {
+        await clearPendingSignup();
+        return { status: "complete", destination: "/onboarding" };
       }
+      tenant = { id: membership.tenant.id, status: membership.tenant.status };
     }
-    if (!tenant) { await clearPendingSignup(); return { status: "complete", destination }; }
   }
+  if (destination !== "/cadastro" && !tenant) { await clearPendingSignup(); return { status: "complete", destination }; }
   const { storeName, fullName, phone, documentHash } = input;
   // Enrich the profile the Etapa 2 signup trigger already created (just
   // id + email). cpf_hash is UNIQUE — a collision here means this
