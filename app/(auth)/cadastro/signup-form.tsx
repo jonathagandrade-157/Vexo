@@ -5,11 +5,11 @@ import Link from "next/link";
 
 import { TextField } from "@/components/ui/text-field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { signUpAction } from "@/features/auth/actions";
+import { completeSignupAction, signUpAction } from "@/features/auth/actions";
 import { initialSignUpState } from "@/features/auth/schema";
 
-export function SignUpForm() {
-  const [state, formAction] = useActionState(signUpAction, initialSignUpState);
+export function SignUpForm({ resume = false }: { resume?: boolean }) {
+  const [state, formAction] = useActionState(resume ? completeSignupAction : signUpAction, initialSignUpState);
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -22,7 +22,7 @@ export function SignUpForm() {
     const form = event.currentTarget;
     const termsAccepted = (form.elements.namedItem("acceptTerms") as HTMLInputElement | null)?.checked ?? false;
 
-    if (password !== confirmPassword) {
+    if (!resume && password !== confirmPassword) {
       event.preventDefault();
       return;
     }
@@ -64,7 +64,7 @@ export function SignUpForm() {
           autoComplete="name"
           error={state.fieldErrors?.fullName}
         />
-        <TextField
+        {!resume ? <TextField
           id="email"
           name="email"
           label="E-mail"
@@ -73,7 +73,7 @@ export function SignUpForm() {
           placeholder="maria@empresa.com"
           autoComplete="email"
           error={state.fieldErrors?.email}
-        />
+        /> : null}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <TextField
             id="phone"
@@ -94,6 +94,7 @@ export function SignUpForm() {
             error={state.fieldErrors?.document}
           />
         </div>
+        {!resume ? <>
         <TextField
           id="password"
           name="password"
@@ -130,6 +131,7 @@ export function SignUpForm() {
           placeholder="••••••••"
           type={showPassword ? "text" : "password"}
         />
+        </> : null}
         <label className="flex items-start gap-2.5">
           <input
             className="mt-0.5 h-4 w-4 rounded border-surface-container-highest bg-surface-container-lowest text-primary focus:ring-1 focus:ring-primary"
@@ -163,8 +165,8 @@ export function SignUpForm() {
       ) : null}
 
       <div className="pt-4">
-        <SubmitButton pendingLabel="Criando sua conta…">
-          Começar teste grátis
+        <SubmitButton pendingLabel={resume ? "Concluindo cadastro…" : "Criando sua conta…"}>
+          {resume ? "Concluir cadastro" : "Começar teste grátis"}
         </SubmitButton>
       </div>
 

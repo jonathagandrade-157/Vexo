@@ -23,6 +23,7 @@ export function SubmitButton({
       ) : (
         <>
           <span
+            aria-hidden="true"
             className="material-symbols-outlined text-sm"
             style={{ fontVariationSettings: "'FILL' 1" }}
           >

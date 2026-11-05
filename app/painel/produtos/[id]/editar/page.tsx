@@ -58,6 +58,7 @@ export default async function EditarProdutoPage({ params }: PageProps) {
         .select("stock_quantity, low_stock_threshold")
         .eq("tenant_id", tenant.id)
         .eq("product_id", id)
+        .is("variant_id", null)
         .maybeSingle(),
       // D20.6 Fase 3.3 — opções+valores e variantes já geradas (Fases 3.1/3.2), mesmas funções de leitura já testadas, nenhuma query nova.
       getProductOptionsWithValues(supabase, tenant.id, id),

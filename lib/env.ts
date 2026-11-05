@@ -208,6 +208,11 @@ export function getPublicEnv(): PublicEnv {
   // and only derive the HTTPS URL when it is absent.
   const source = {
     ...process.env,
+    // Prefer the modern opaque key while preserving the legacy output
+    // property so existing callers can migrate without a flag day.
+    NEXT_PUBLIC_SUPABASE_ANON_KEY:
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_SITE_URL:
       process.env.NEXT_PUBLIC_SITE_URL ??
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined),
@@ -230,7 +235,19 @@ export function getServerEnv(): ServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getServerEnv() must never be called from the browser.");
   }
-  cachedServerEnv ??= readSchema(serverSchema, process.env, "server");
+  cachedServerEnv ??= readSchema(
+    serverSchema,
+    {
+      ...process.env,
+      // Same zero-downtime normalization as the public key. The modern
+      // secret is authoritative once configured; the legacy JWT remains
+      // a temporary rollback path until it is disabled at Supabase.
+      SUPABASE_SERVICE_ROLE_KEY:
+        process.env.SUPABASE_SECRET_KEY ??
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+    },
+    "server",
+  );
   return cachedServerEnv;
 }
 

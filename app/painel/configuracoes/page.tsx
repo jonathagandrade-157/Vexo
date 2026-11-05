@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { StoreAddressForm } from "@/components/painel/store-address-form";
+import { LogoutButton } from "@/components/painel/logout-button";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { getTenantCommercialContext, hasFeature } from "@/features/commercial/tenant-plan";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -86,16 +87,21 @@ export default async function ConfiguracoesPage() {
         </Link>
       </div>
 
-      <StoreProfileForm
-        canEdit={Boolean(canEdit)}
-        defaultValues={{
-          storeName: tenant.name,
-          segment: tenant.segment ?? "",
-          description: tenant.description ?? "",
-          instagram: tenant.instagram_handle ?? "",
-          email: tenant.contact_email ?? "",
-        }}
-      />
+      <div className="flex flex-col gap-3">
+        <StoreProfileForm
+          canEdit={Boolean(canEdit)}
+          defaultValues={{
+            storeName: tenant.name,
+            segment: tenant.segment ?? "",
+            description: tenant.description ?? "",
+            instagram: tenant.instagram_handle ?? "",
+            email: tenant.contact_email ?? "",
+          }}
+        />
+        <div className="ml-auto w-full max-w-[220px] md:hidden">
+          <LogoutButton variant="settings" />
+        </div>
+      </div>
 
       <StoreAddressForm
         canEdit={Boolean(canEdit)}

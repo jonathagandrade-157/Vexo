@@ -71,14 +71,15 @@ export function createSupabaseServiceRoleClient() {
   const { NEXT_PUBLIC_SUPABASE_URL } = getPublicEnv();
   const { SUPABASE_SERVICE_ROLE_KEY } = getServerEnv();
 
-  return createServerClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    cookies: {
-      getAll() {
-        return [];
-      },
-      setAll() {
-        // Service-role client is never tied to a user session/cookie.
-      },
+  // Administrative access must use the base client, never the SSR client:
+  // an SSR user session can replace Authorization and unexpectedly restore
+  // RLS. This also supports the modern opaque `sb_secret_*` key, which is
+  // server-only and must not be treated as a user JWT.
+  return createClient(NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
     },
   });
 }

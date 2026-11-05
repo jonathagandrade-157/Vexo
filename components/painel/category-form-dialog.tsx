@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useId, useRef } from "react";
 import { useFormStatus } from "react-dom";
 
 import { TextField } from "@/components/ui/text-field";
@@ -28,6 +28,7 @@ interface CategoryFormDialogProps {
 
 /** Cria OU edita — mesmo form, Action escolhida por `mode` (prompt Etapa 7 §18: reaproveitar, não duplicar componente). */
 export function CategoryFormDialog({ trigger, category }: CategoryFormDialogProps) {
+  const formId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const action = category ? updateCategoryAction : createCategoryAction;
   const [state, formAction] = useActionState(action, initialCategoryState);
@@ -38,15 +39,16 @@ export function CategoryFormDialog({ trigger, category }: CategoryFormDialogProp
 
   return (
     <>
-      <button onClick={() => dialogRef.current?.showModal()} type="button">
+      <button aria-label={category ? `Editar categoria ${category.name}` : undefined} onClick={() => dialogRef.current?.showModal()} type="button">
         {trigger}
       </button>
       <dialog
+        aria-labelledby={`${formId}-title`}
         className="w-full max-w-[480px] rounded-xl border border-surface-container-highest bg-surface-container-low p-0 text-on-surface backdrop:bg-black/60"
         ref={dialogRef}
       >
         <form action={formAction} className="flex flex-col gap-5 p-6" noValidate>
-          <h2 className="font-headline text-headline-sm text-on-surface">
+          <h2 className="font-headline text-headline-sm text-on-surface" id={`${formId}-title`}>
             {category ? "Editar categoria" : "Nova categoria"}
           </h2>
 
@@ -56,7 +58,7 @@ export function CategoryFormDialog({ trigger, category }: CategoryFormDialogProp
             defaultValue={category?.name}
             error={state.fieldErrors?.name}
             icon="sell"
-            id="name"
+            id={`${formId}-name`}
             label="Nome da categoria"
             name="name"
             placeholder="Ex: Perfumes"
@@ -64,7 +66,7 @@ export function CategoryFormDialog({ trigger, category }: CategoryFormDialogProp
           <TextareaField
             defaultValue={category?.description ?? undefined}
             error={state.fieldErrors?.description}
-            id="description"
+            id={`${formId}-description`}
             label="Descrição (opcional)"
             name="description"
           />

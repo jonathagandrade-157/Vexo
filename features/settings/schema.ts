@@ -36,3 +36,12 @@ export const storeProfileSchema = z.object({
 });
 
 export type StoreProfileInput = z.infer<typeof storeProfileSchema>;
+
+export interface StoreProfileActionState {
+  status: "idle" | "error" | "success";
+  message?: string;
+  fieldErrors?: Partial<Record<keyof StoreProfileInput, string>>;
+}
+
+// A "use server" module may export only async actions at runtime.
+export const initialStoreProfileState: StoreProfileActionState = { status: "idle" };

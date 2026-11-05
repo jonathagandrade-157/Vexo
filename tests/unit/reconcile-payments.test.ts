@@ -54,6 +54,7 @@ describe("reconcileStalePendingPayments (JON-15)", () => {
 
     expect(result).toEqual({ checked: 0, reconciled: 0 });
     expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(getGateway).not.toHaveBeenCalled();
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 

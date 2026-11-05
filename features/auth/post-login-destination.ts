@@ -2,6 +2,7 @@ import "server-only";
 
 import { getCurrentPlatformAdmin } from "@/features/master/current-admin";
 import { getCurrentMembership } from "@/features/painel/current-tenant";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type PostLoginDestination = "/master" | "/painel" | "/onboarding" | "/cadastro";
 
@@ -35,7 +36,13 @@ export async function resolvePostLoginDestination(): Promise<PostLoginDestinatio
   if (!membership) return "/cadastro";
 
   const onboardingPending = membership.tenant.onboarding_completed_at === null;
-  if (onboardingPending && membership.roleKey === "OWNER") return "/onboarding";
+  if (onboardingPending && membership.roleKey === "OWNER") {
+    // create_tenant and start_trial are separate transactions. The browser
+    // cookie may have expired before the owner retries in a new session.
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.from("subscriptions").select("id").eq("tenant_id", membership.tenant.id).maybeSingle();
+    return error || !data ? "/cadastro" : "/onboarding";
+  }
 
   return "/painel";
 }

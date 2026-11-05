@@ -13,6 +13,7 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL,
+    channel: process.env.E2E_BROWSER_CHANNEL === "chrome" ? "chrome" : undefined,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
