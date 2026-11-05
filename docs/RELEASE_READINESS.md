@@ -8,17 +8,25 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
 
 ## Sprint de fechamento em andamento
 
+- **Conjunto funcional aprovado em 05/11:** commit f96086e,
+  [CI 42055415140](https://github.com/jonathagandrade-157/Vexo/actions/runs/42055415140),
+  quatro jobs verdes: 1.347 unitários, 738 integrações PostgreSQL, 16 HTTP,
+  45/45 jornadas de navegador, laboratório de recuperação, audit zero,
+  lint/typecheck/build e validação do rollout do carrinho. Categorias,
+  produto/estoque, variantes e OPERATOR passaram nas três larguras.
+  [Capturas sintéticas](https://github.com/jonathagandrade-157/Vexo/actions/runs/42055415140/artifacts/13429182357)
+  disponíveis até 12/11; os resultados de produção continuam pendentes.
 - [Rodada 42054094962](https://github.com/jonathagandrade-157/Vexo/actions/runs/42054094962),
   commit 5251f51: 42/45 E2E aprovados; cadastro/persistência de variantes e
   preservação de estoque passaram nas três larguras. Os três testes de
   categoria pararam por dois gatilhos de criação com o mesmo aria-label;
   o botão de criação volta a herdar o texto visível, preservando o nome
-  específico na edição. Labels/edição aguardam a rodada seguinte.
+  específico na edição. Labels/edição passaram na rodada 42055415140.
 - Auditoria de 05/11 encontrou avisos novos em glob e minimatch (13 pacotes
   diretos/transitivos marcados, duas causas). Overrides limitam glob a
   14.0.2 e minimatch vulnerável >=7 a 11.0.1, mantendo minimatch 3 e as
   versões de Next/ESLint/Sentry. Audit local voltou a zero; lint/typecheck
-  passaram. Compatibilidade de build/integração será conferida no CI.
+  passaram. Compatibilidade de build/integração confirmada no CI 42055415140.
   Referências: [glob](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) e
   [minimatch](https://github.com/advisories/GHSA-g3hv-75wg-m249).
 - Inventários somente leitura de 05/11: Preview continua com credenciais
@@ -32,7 +40,7 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
   demonstraram IDs repetidos nos diálogos de categoria; uma corrida mobile
   mostrou navegação antes da persistência das variantes. Correções usam
   useId e o estado único de salvamento para liberar a navegação somente
-  após sucesso. Regressões desktop/mobile aguardam a rodada atualizada.
+  após sucesso. Regressões desktop/mobile passaram na rodada 42055415140.
 - Implementados export nativo sem Docker Desktop, criptografia age antes de
   upload, manifesto cifrado, hash/readback, guardas de destino e restore
   sintético vazio. [Procedimento e custo](runbooks/backup-recovery.md).
@@ -55,11 +63,11 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
   sequência migration/deploy/revogação, rollback e smoke. Merge-tree sem
   conflito com main da1ab1d; reconferir main e CI do HEAD antes do GO.
 - Novas jornadas isoladas de categoria/produto/estoque, variantes e OPERATOR
-  estão em validação CI. A plataforma tem OWNER/ADMIN/MANAGER/OPERATOR/SUPPORT;
+  passaram no CI 42055415140. A plataforma tem OWNER/ADMIN/MANAGER/OPERATOR/SUPPORT;
   STAFF é tratado pelos papéis de colaborador existentes, sem inventar role.
 - Commit 98e971d corrige estoque base e preservação de variantes; 1.346 testes
   unitários locais passaram, além de typecheck e lint dos arquivos alterados.
-  CI completo desse conjunto e jornadas novas ainda precisam de conclusão.
+  CI completo desse conjunto e jornadas novas passou na rodada 42055415140.
 - [CI 40812589057](https://github.com/jonathagandrade-157/Vexo/actions/runs/40812589057)
   registrou 39/45 E2E aprovados, inclusive OPERATOR nas três larguras.
   As seis falhas do catálogo pararam no nome acessível do botão Salvar
@@ -104,7 +112,7 @@ Todas as linhas abaixo pertencem à PR #3, ainda sem rollout de produção.
 | Favicon de fallback ausente | P2 | Navegador solicita /favicon.ico durante cadastro/onboarding e recebe 404 | Arquivo ICO gerado da marca existente, com 16/32/48/256 px; regressão HTTP e assinatura do arquivo aprovadas |
 | Carrinho perde contraste com tema claro do app | P2 | Abrir o carrinho com preferência clara; título claro fica sobre o fundo claro herdado do body | Shell da loja pinta o próprio fundo; regressão de contraste real do título e nome nas duas preferências aprovada, com capturas revisadas |
 | Estoque simples falha silenciosamente após adoção de variantes | P1 | Salvar estoque usa ON CONFLICT(product_id), mas o índice agora é parcial; falha de escrita não era verificada | Escrita base com update/insert e retry limitado de concorrência; falha parcial explícita preserva ID criado para não duplicar produto; regressão focada reproduziu o falso sucesso antes da correção |
-| Edição base pode remover estoques das variantes | P1 | Salvar produto com estoque base vazio excluía todas as linhas product_inventory daquele produto | Leitura, update e delete base passam a filtrar variant_id IS NULL; teste de navegador com três variantes/estoques sintéticos em validação |
+| Edição base pode remover estoques das variantes | P1 | Salvar produto com estoque base vazio excluía todas as linhas product_inventory daquele produto | Leitura, update e delete base filtram variant_id IS NULL; três estoques de variantes preservados nas três larguras no CI 42055415140 |
 | Botão Salvar produto inclui nome do ícone | P2 | Leitor de tela/navegador identifica save + Salvar produto | Ícone decorativo aria-hidden, repetindo o contrato acessível do botão de login; jornada E2E usa nome visível exato |
 | Labels de categoria apontam para outro diálogo | P2 | Abrir edição após criar categoria; ids name/description repetidos associam label ao campo oculto de outro modal | useId por formulário, nome acessível do diálogo e do gatilho; reprodução falhou nas três larguras antes da correção |
 | Cadastro pode navegar antes de persistir variantes | P1 | Galeria vazia termina enquanto configuração ainda está idle; abertura de edição pode encontrar zero variantes | Navegação passa a usar o mesmo computeSaveStatus da confirmação visual e exige done; reprodução mobile e regressão do estado idle |
@@ -124,14 +132,14 @@ estoque zerado; não são cópias de dados pessoais de produção.
 | --- | --- | --- |
 | Carrinho | Dois produtos, quantidade, remoção, totais, reload e navegação; cookie HttpOnly/Secure/SameSite=Lax e token com hash no banco | Rollout e repetição em produção pendentes |
 | Isolamento | Segredo alterado e cookie reaproveitado em outra loja não revelam itens; carrinho original permanece acessível ao dono; OPERATOR pode ver pedidos e não pode criar produto ou gerir equipe nas três larguras | Matriz completa dos outros papéis no navegador ainda pendente |
-| Variantes e estoque | Seleção por teclado, variante ativa com promoção, bloqueio de variante sem estoque/inativa e produto simples sem estoque; variante/preço/quantidade persistem no carrinho | Checkout completo de variantes e mudanças concorrentes de estoque ainda precisam de E2E de navegador; integração PostgreSQL existente não substitui essa jornada |
+| Variantes e estoque | Seleção por teclado, variante ativa com promoção, bloqueio de variante sem estoque/inativa e produto simples sem estoque; variante/preço/quantidade persistem no carrinho; três variantes montadas antes do cadastro persistem com preço correto e seus estoques sobrevivem à edição base | Checkout completo de variantes e mudanças concorrentes de estoque ainda precisam de E2E de navegador; integração PostgreSQL existente não substitui essa jornada |
 | Checkout | Campos obrigatórios, foco no primeiro campo inválido, complemento opcional, criação em dinheiro e confirmação após reload | PIX/cartão e gateways reais não validados |
 | Pedido | Pedido único no banco, baixa única de estoque, leitura no painel, confirmação manual sintética de pagamento, avanço para PREPARING e histórico; status não baixa estoque novamente | Todos os status, cancelamentos e filtros ainda sem cobertura completa de navegador |
 | Painel | 17 rotas: HTTP 200, título visível e ausência de overflow/erros de console/hidratação; logout encerra a sessão e acesso posterior volta ao login | Leitura de página não valida todos os controles |
 | Configurações | Nome vazio rejeitado sem alterar o banco; perfil/endereço persistem após reload; valores originais restaurados pela própria UI | Pagamentos, pedidos, entrega, domínio e plano ainda precisam de mutações completas |
 | Cadastro e onboarding | Termos não aceitos e senhas diferentes não criam conta; cadastro cria OWNER e trial único, documento só como HMAC; retomada pelo banco, bloqueio de salto e publicação local; sem erro de console nas três larguras | Confirmação por e-mail não coberta: enable_confirmations=false na stack local |
-| Catálogo e aparência | Home, detalhes de produto, âncoras, estados vazios, página/prévia de aparência e controles de tema | Gestão completa de produtos, categorias, banners, galeria e restauração das opções de aparência ainda pendentes |
-| Equipe e histórico | Rotas de leitura e auditoria do pedido no banco local | Nenhum convite enviado; todos os papéis ainda sem jornada de navegador |
+| Catálogo e aparência | Home/detalhes/âncoras, estados vazios, leitura/prévia de aparência; categoria criada, renomeada, desativada e reativada; produto simples criado e editado com categoria, preço e estoque 8→3 preservados após reload | Banners, upload/galeria e restauração completa da aparência ainda pendentes; não houve exclusões de dados existentes |
+| Equipe e histórico | Rotas de leitura, auditoria do pedido e OPERATOR autorizado a pedidos e bloqueado em criação de produtos/equipe | Nenhum convite enviado; outros papéis ainda sem jornada completa de navegador |
 | Domínio e assinatura | Rotas carregam e bloqueios explícitos são respeitados | Nenhum domínio contratado, OAuth iniciado ou cobrança executada |
 | Mobile | Desktop, Pixel 7 emulado e 360 px; texto do carrinho, overflow e teclado/foco nos cenários descritos | Aparelho físico, acessibilidade e estados de carregamento completos ainda pendentes |
 
