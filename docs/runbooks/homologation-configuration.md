@@ -86,7 +86,7 @@ Mercado Pago recebe pagamentos de pedidos das lojas; Asaas trata cobrança e
 assinatura dos lojistas pelo SaaS. Não misturar credenciais nem interpretar
 o recebimento de um pedido como quitação da assinatura.
 
-Na revisão `27fc263`, o job principal do CI 42111772873 aprovou as suítes
+Na revisão `c9e5256`, o job principal do CI 42113857556 aprovou as suítes
 existentes com mocks de HTTP e PostgreSQL real. Elas verificam assinatura e
 payload do webhook MP, vínculo de tenant/pedido/moeda/vendedor/valor,
 duplicidade, retry em timeout/erro de banco, OAuth state/PKCE e reconciliação.

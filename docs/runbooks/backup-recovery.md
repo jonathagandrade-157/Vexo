@@ -6,10 +6,9 @@ de B2 registra o provedor; não autoriza custo, provisionamento ou exportação.
 
 ## Proposta concreta para aprovação
 
-Destino recomendado: bucket privado Backblaze B2 compatível com S3, exclusivo
-do proprietário, prefixo `vexo/production`. Nome final, região, titular e
-custodiante precisam ser definidos. Alternativa: bucket S3 privado existente
-que satisfaça as mesmas verificações. Não foi criada conta nem contratado serviço.
+Destino escolhido: bucket privado Backblaze B2 compatível com S3, exclusivo
+do proprietário, prefixo `vexo/production`. Faltam conta/bucket efetivos,
+custodiante e cofre. Não foi criada conta nem contratado serviço.
 
 Decisão recebida em 05/11: **usar a proposta B2**. Proposta concreta:
 região US East, bucket privado sugerido `vexo-backups-producao` (disponibilidade

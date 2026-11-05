@@ -8,7 +8,7 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
 
 ## Estado atual verificado — 05/11
 
-- Código candidato: `27fc2630840bf0c1cfc9a3ece05115ce9c3568c9`,
+- Código candidato: `c9e525621ecb514df97b9736949c418e0a586e28`,
   [PR #3](https://github.com/jonathagandrade-157/Vexo/pull/3) aberta, branch
   `codex/vexo-launch-blockers`. Main remoto permanece
   `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`; sem merge nesta etapa.
@@ -16,8 +16,21 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
   callback PKCE/OTP, reenvio, expiração, recuperação e retomada autenticada
   em outro navegador; cookie cifrado sem senha/CPF em claro; metadados Auth
   editáveis não autorizam o trial. Retry após falha de trial reutiliza a loja
-  incompleta do OWNER em vez de duplicá-la. Commits `47dfd67` e `27fc263`.
-- CI da revisão:
+  incompleta do OWNER em vez de duplicá-la. Mesmo sem cookie, novo login
+  identifica a loja sem assinatura e oferece retomada pelo banco. Commits
+  `47dfd67`, `27fc263` e `c9e5256`. Duas regressões do destino de login falharam
+  antes desta última correção; 29 testes Auth focados e typecheck/lint passaram.
+- Validação da última correção:
+  [42113857556](https://github.com/jonathagandrade-157/Vexo/actions/runs/42113857556),
+  **quatro jobs aprovados**: 1.359 unitários, 738 integrações PostgreSQL,
+  16 HTTP e **51/51 E2E**, sem retries, desktop/Pixel 7/360 px;
+  audit zero, lint/typecheck/build, rollout e recuperação aprovados.
+  O E2E de retomada perde todos os cookies após criar a loja sem trial, faz
+  novo login e exige o mesmo tenant após concluir o cadastro: passou nas
+  três larguras. Não extrapolar esse resultado para produção.
+  [Capturas dessa revisão](https://github.com/jonathagandrade-157/Vexo/actions/runs/42113857556/artifacts/13454064918),
+  disponíveis até 12/11.
+- Validação anterior do novo Auth (`27fc263`):
   [42111772873](https://github.com/jonathagandrade-157/Vexo/actions/runs/42111772873).
   **Quatro jobs aprovados:** 1.357 unitários, 738 integrações PostgreSQL,
   16 testes HTTP e **51/51 jornadas de navegador**, sem retries, em desktop,
@@ -25,7 +38,7 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
   lint/typecheck/build, rollout e recovery-lab aprovados.
   Local: 21 regressões Auth e typecheck/lint passaram. Os resultados são
   vinculados a esse SHA, sem extrapolar para o banco/deployment de produção.
-- [Evidências sintéticas da revisão](https://github.com/jonathagandrade-157/Vexo/actions/runs/42111772873/artifacts/13454982362),
+- [Evidências sintéticas anteriores de 27fc263](https://github.com/jonathagandrade-157/Vexo/actions/runs/42111772873/artifacts/13454982362),
   15 capturas disponíveis até 12/11. Cópia local ignorada pelo Git em
   `test-results/ci-27fc263`; revisadas visualmente loja recém-publicada no
   Pixel 7, variantes no mobile 360 e carrinho desktop. As jornadas Auth são
@@ -36,8 +49,8 @@ Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recupera�
   o anunciador de rotas do Next. Seletor delimitado ao main; todos os 51
   passaram em 27fc263. Nenhum erro da aplicação foi filtrado para obter verde.
 - Preview automático do código, READY:
-  [27fc263](https://vexoecommerce-n4ugs9arg-vexo5.vercel.app).
-  Deployment `dpl_2E7iL8i5Gwq6HNJb4XhwdRXjTzmZ`, SHA correlacionado pela
+  [c9e5256](https://vexoecommerce-czleb399t-vexo5.vercel.app).
+  Deployment `dpl_8ubGHGyCpjaRXWRntJxVJmc93SyU`, SHA correlacionado pela
   listagem Vercel; inspeção individual confirmou ID/estado/target Preview.
   Esse Preview compartilha credenciais de produção e não é sandbox para
   mutações ou finanças. Build pronto não equivale a smoke autenticado aprovado.
@@ -181,7 +194,7 @@ Todas as linhas abaixo pertencem à PR #3, ainda sem rollout de produção.
 | Labels de categoria apontam para outro diálogo | P2 | Abrir edição após criar categoria; ids name/description repetidos associam label ao campo oculto de outro modal | useId por formulário, nome acessível do diálogo e do gatilho; reprodução falhou nas três larguras antes da correção |
 | Cadastro pode navegar antes de persistir variantes | P1 | Galeria vazia termina enquanto configuração ainda está idle; abertura de edição pode encontrar zero variantes | Navegação passa a usar o mesmo computeSaveStatus da confirmação visual e exige done; reprodução mobile e regressão do estado idle |
 | Cadastro com confirmação de e-mail tenta gravar sem sessão | P1 | Auth retorna usuário sem sessão; ação antiga atualiza perfil antes da confirmação e falha | Aguarda confirmação, callback PKCE/OTP e retomada autenticada; regressão unitária falhou antes da correção |
-| Falha ao iniciar trial deixa cadastro sem caminho de retomada | P1 | Loja foi criada, RPC do trial falha; retry antigo pula para onboarding sem trial | Reusa apenas loja incompleta do OWNER sem assinatura; elegibilidade continua no RPC; regressão demonstra erro temporário seguido de sucesso sem create_tenant adicional |
+| Falha ao iniciar trial deixa cadastro sem caminho de retomada | P1 | Loja foi criada, RPC do trial falha; retry ou novo login após perder cookie pula para onboarding sem trial | Login consulta assinatura no banco; reusa apenas loja incompleta do OWNER sem assinatura; elegibilidade continua no RPC; regressão de erro temporário e perda de estado sem create_tenant adicional |
 
 O antigo banner para `/loja/TESTE` e a hidratação da vitrine foram corrigidos
 na PR #2. O erro #418 encontrado agora era outro, na página de configurações.
@@ -203,7 +216,7 @@ estoque zerado; não são cópias de dados pessoais de produção.
 | Pedido | Pedido único no banco, baixa única de estoque, leitura no painel, confirmação manual sintética de pagamento, avanço para PREPARING e histórico; status não baixa estoque novamente | Todos os status, cancelamentos e filtros ainda sem cobertura completa de navegador |
 | Painel | 17 rotas: HTTP 200, título visível e ausência de overflow/erros de console/hidratação; logout encerra a sessão e acesso posterior volta ao login | Leitura de página não valida todos os controles |
 | Configurações | Nome vazio rejeitado sem alterar o banco; perfil/endereço persistem após reload; valores originais restaurados pela própria UI | Pagamentos, pedidos, entrega, domínio e plano ainda precisam de mutações completas |
-| Cadastro e onboarding | Termos/senhas, OWNER/trial único, documento HMAC, retomada, bloqueio de salto e publicação; confirmação habilitada com Mailpit seguindo links efetivamente emitidos nas três larguras, CI 42111772873 | SMTP/entrega externos e configuração hospedada seguem pendentes |
+| Cadastro e onboarding | Termos/senhas, OWNER/trial único, documento HMAC, retomada sem cookie, bloqueio de salto e publicação; confirmação habilitada com Mailpit seguindo links efetivamente emitidos nas três larguras, CI 42113857556 | SMTP/entrega externos e configuração hospedada seguem pendentes |
 | E-mail Auth e recuperação | PKCE e token_hash, expiração real de timestamp sintético, reenvio, reutilização negada, senha antiga negada/nova aceita e retomada em outro navegador; cookie cifrado/tamper/usuário/TTL e metadados falsificados | Mailpit local, sem e-mail externo; não equivale a homologação SMTP. Ver CI da revisão atual |
 | Catálogo e aparência | Home/detalhes/âncoras, estados vazios, leitura/prévia de aparência; categoria criada, renomeada, desativada e reativada; produto simples criado e editado com categoria, preço e estoque 8→3 preservados após reload | Banners, upload/galeria e restauração completa da aparência ainda pendentes; não houve exclusões de dados existentes |
 | Equipe e histórico | Rotas de leitura, auditoria do pedido e OPERATOR autorizado a pedidos e bloqueado em criação de produtos/equipe | Nenhum convite enviado; outros papéis ainda sem jornada completa de navegador |

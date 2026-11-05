@@ -1,6 +1,6 @@
 # Confirmação de e-mail e recuperação — configuração do release
 
-Revisão de código: `27fc2630840bf0c1cfc9a3ece05115ce9c3568c9`, PR #3.
+Revisão de código: `c9e525621ecb514df97b9736949c418e0a586e28`, PR #3.
 Inspeção em 05/11/2026: Auth de produção permite cadastro/e-mail e está com
 confirmação **desativada** (`mailer_autoconfirm=true`). Nenhuma configuração
 Auth/SMTP foi alterada. A presença de RESEND_API_KEY no Vercel não comprova
@@ -20,7 +20,9 @@ SMTP do Supabase nem entrega de confirmação/recuperação.
 - Em outro navegador, conta confirmada conclui os dados em formulário
   autenticado. Metadados editáveis do Auth não autorizam hash/trial.
 - Falha após criar loja permite retomar o trial na mesma loja incompleta do
-  OWNER, mantendo elegibilidade no RPC. Não criar uma segunda loja no retry.
+  OWNER, mantendo elegibilidade no RPC. O login consulta o estado no banco
+  mesmo sem cookie; não depende de um parâmetro da URL para liberar retomada.
+  Não criar uma segunda loja no retry.
 - Recuperação estabelece sessão, altera somente a senha do usuário verificado
   e encerra a sessão. Links legados implícitos de convite continuam suportados;
   nenhum convite externo foi enviado nesta etapa.
