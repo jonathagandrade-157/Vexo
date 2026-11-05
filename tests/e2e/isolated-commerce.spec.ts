@@ -312,7 +312,7 @@ test.describe("comércio com Supabase descartável", () => {
       const firstEmail = await localAuthEmail(email);
       await query("update auth.users set confirmation_sent_at=now()-interval '2 hours' where email=$1", [email]);
       await page.goto(firstEmail.link);
-      await expect(page.getByRole("alert")).toContainText("inválido, expirou ou já foi utilizado");
+      await expect(page.locator("main").getByRole("alert")).toContainText("inválido, expirou ou já foi utilizado");
       await page.getByLabel("E-mail", { exact: true }).fill(email);
       await page.getByRole("button", { name: "Reenviar confirmação", exact: true }).click();
       await expect(page.getByRole("status")).toContainText("confirmação pendente");

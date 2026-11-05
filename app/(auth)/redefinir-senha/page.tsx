@@ -7,20 +7,8 @@ export const metadata: Metadata = {
   title: "Redefinir senha — VEXO",
 };
 
-/**
- * D7 — página de destino do link de recuperação de senha (`redirectTo` de
- * `resetPasswordRequestAction`). Mesmo shell visual de `/recuperar-senha`/
- * `/login` (prompt: reaproveitar padrão existente, não inventar um novo).
- *
- * Deliberadamente NÃO é um Server Component que já checa a sessão aqui:
- * o Supabase entrega a sessão de recovery como fragmento de URL
- * (`#access_token=...`), que o servidor nunca recebe (fragmentos de URL
- * não são enviados em requisições HTTP) — só o client-side, via
- * `createSupabaseBrowserClient()` (`detectSessionInUrl`, padrão do
- * `@supabase/ssr`), consegue processar isso. Por isso toda a checagem de
- * "existe uma sessão de recovery válida?" vive em
- * `UpdatePasswordForm` (Client Component).
- */
+/** New recovery links establish a session through /auth/confirm. The
+ * browser initializer also supports existing implicit invite links. */
 export default async function RedefinirSenhaPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
   return (

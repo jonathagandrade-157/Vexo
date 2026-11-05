@@ -2,6 +2,7 @@ import "server-only";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { slugify, slugifyWithSuffix } from "@/lib/utils/slugify";
 import { resolvePostLoginDestination } from "./post-login-destination";
+import { getCurrentMembership } from "@/features/painel/current-tenant";
 import { clearPendingSignup } from "./pending-signup-cookie";
 import type { EnrollmentInput } from "./pending-signup";
 import type { SignUpActionState } from "./schema";
@@ -15,7 +16,20 @@ export async function completeEnrollment(input: EnrollmentInput): Promise<SignUp
     return { status: "error", message: "Confirme seu e-mail e entre na conta para concluir o cadastro." };
   }
   const destination = await resolvePostLoginDestination();
-  if (destination !== "/cadastro") { await clearPendingSignup(); return { status: "complete", destination }; }
+  let tenant: TenantRow | null = null;
+  if (destination !== "/cadastro") {
+    if (destination === "/onboarding") {
+      const membership = await getCurrentMembership();
+      if (membership?.roleKey === "OWNER" && membership.tenant.onboarding_completed_at === null) {
+        const { data: subscription, error: subscriptionError } = await supabase.from("subscriptions").select("id").eq("tenant_id", membership.tenant.id).maybeSingle();
+        if (subscriptionError) return { status: "error", message: "Não foi possível verificar seu cadastro. Tente novamente." };
+        // A previous create_tenant may have committed before the trial RPC
+        // failed. Reuse it; eligibility remains enforced by the trial RPC.
+        if (!subscription) tenant = { id: membership.tenant.id, status: membership.tenant.status };
+      }
+    }
+    if (!tenant) { await clearPendingSignup(); return { status: "complete", destination }; }
+  }
   const { storeName, fullName, phone, documentHash } = input;
   // Enrich the profile the Etapa 2 signup trigger already created (just
   // id + email). cpf_hash is UNIQUE — a collision here means this
@@ -28,6 +42,7 @@ export async function completeEnrollment(input: EnrollmentInput): Promise<SignUp
 
   if (profileError) {
     if (profileError.code === "23505") {
+      await clearPendingSignup();
       return { status: "complete", destination: "/trial/ja-utilizado" };
     }
     return {
@@ -36,8 +51,7 @@ export async function completeEnrollment(input: EnrollmentInput): Promise<SignUp
     };
   }
 
-  let tenant: TenantRow | null = null;
-  for (const slugAttempt of [slugify(storeName), slugifyWithSuffix(storeName)]) {
+  for (const slugAttempt of tenant ? [] : [slugify(storeName), slugifyWithSuffix(storeName)]) {
     const { data, error } = await supabase.rpc("create_tenant", {
       p_name: storeName,
       p_slug: slugAttempt,
@@ -67,8 +81,8 @@ export async function completeEnrollment(input: EnrollmentInput): Promise<SignUp
   // service_role, not the session-bound `supabase` client: this RPC's
   // p_document_hash must never be reachable directly by `authenticated`
   // (see the migration's header comment for why) — only this server-side
-  // call, made after the hash above was computed from the real,
-  // checksum-validated document, is trusted to invoke it.
+  // call receives a hash computed by the signup action from the validated
+  // document, or recovered from the authenticated encrypted signup cookie.
   const { error: trialError } = await createSupabaseServiceRoleClient().rpc(
     "start_trial_for_tenant",
     {
@@ -80,6 +94,7 @@ export async function completeEnrollment(input: EnrollmentInput): Promise<SignUp
 
   if (trialError) {
     if (trialError.code === "VX001") {
+      await clearPendingSignup();
       return { status: "complete", destination: "/trial/ja-utilizado" };
     }
     return {

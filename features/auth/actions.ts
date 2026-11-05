@@ -4,9 +4,7 @@ import { redirect } from "next/navigation";
 
 import { getPublicEnv, getServerEnv } from "@/lib/env";
 import { hashDocument } from "@/lib/security/hash-identifier";
-import {
-  createSupabaseServerClient,
-} from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolvePostLoginDestination } from "./post-login-destination";
 import { completeEnrollment } from "./enrollment";
 import type { EnrollmentInput } from "./pending-signup";
@@ -171,20 +169,15 @@ export async function signInAction(
   // resolvePostLoginDestination para a decisão completa.
   const { data: { user } } = await supabase.auth.getUser();
   const pending = user?.email_confirmed_at ? await pendingSignupForUser(user.id) : null;
-  if (pending) await submitEnrollment(pending);
+  if (pending) {
+    await submitEnrollment(pending);
+    redirect("/cadastro?notice=enrollment_retry");
+  }
   redirect(await resolvePostLoginDestination());
 }
 
-/**
- * Usa `supabase.auth.resetPasswordForEmail` — o fluxo de recuperação de
- * senha JÁ existe no Supabase Auth (arquitetura §13 Etapa 3), esta ação
- * só o expõe no frontend (prompt Etapa 15 §4). Nenhum sistema novo de
- * autenticação, nenhuma tabela nova.
- *
- * Sempre retorna sucesso, exista ou não o e-mail — mesmo princípio já
- * aplicado em `signInAction`: nunca confirmar/negar se um e-mail está
- * cadastrado.
- */
+/** Requests a recovery email without disclosing account existence.
+ * The callback exchanges PKCE/OTP before opening the password form. */
 export async function resetPasswordRequestAction(
   _prevState: ResetPasswordRequestState,
   formData: FormData,
@@ -196,9 +189,7 @@ export async function resetPasswordRequestAction(
 
   const supabase = await createSupabaseServerClient();
   const { NEXT_PUBLIC_SITE_URL } = getPublicEnv();
-  // D7 (correção) — apontava para /login, um beco sem saída: o usuário
-  // clicava no link do e-mail e não tinha como definir a nova senha em
-  // lugar nenhum. Agora aponta para a página dedicada de redefinição.
+  // Exchange the email code server-side before rendering the form.
   await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${NEXT_PUBLIC_SITE_URL}/auth/confirm?purpose=recovery`,
   });
@@ -209,29 +200,9 @@ export async function resetPasswordRequestAction(
   };
 }
 
-/**
- * D7 — último passo do fluxo de recuperação de senha. Nunca recebe
- * user_id/tenant_id do navegador: a identidade vem inteiramente da sessão
- * de recovery do Supabase Auth, a mesma que `app/(auth)/redefinir-senha/
- * update-password-form.tsx` já deixou estabelecida via
- * `createSupabaseBrowserClient()` (o link de recuperação do Supabase
- * entrega a sessão como fragmento de URL — `#access_token=...&type=
- * recovery` — que só o client-side consegue ler; `detectSessionInUrl`,
- * padrão do `@supabase/ssr`, processa isso automaticamente ao montar o
- * client e grava a sessão nos cookies, os mesmos que este Server Action
- * lê via `createSupabaseServerClient()`).
- *
- * Por isso `supabase.auth.getUser()` é checado ANTES de qualquer coisa:
- * sem uma sessão válida (link expirado, inválido, já usado, ou a página
- * aberta sem ter vindo do e-mail), `updateUser` nunca é chamado — nunca
- * client-role/service-role bypass, sempre o mecanismo oficial do GoTrue,
- * que só altera a senha do PRÓPRIO usuário da sessão corrente.
- *
- * Sempre desloga a sessão de recovery depois de trocar a senha (mesmo em
- * caso de sucesso) — o usuário entra de novo normalmente com a senha
- * nova pelo `/login` de sempre, nunca fica "logado por acidente" a partir
- * de um link de e-mail.
- */
+/** Changes only the verified session user's password, then signs out.
+ * New links arrive through /auth/confirm; legacy implicit invite links
+ * remain supported by the browser initializer on /redefinir-senha. */
 export async function updatePasswordAction(
   _prevState: UpdatePasswordActionState,
   formData: FormData,

@@ -42,7 +42,8 @@ test.describe("e-mails Auth locais", () => {
 
   test("finaliza conta confirmada em outro navegador sem confiar em metadados editáveis", async ({ page }) => {
     const nonce = randomBytes(6).toString("hex"); const email = `resume-${nonce}@example.test`;
-    const generated = await localAuthAdmin().auth.admin.generateLink({ type: "signup", email, password: "Synthetic-resume-A9!" });
+    const forgedHash = "0".repeat(64);
+    const generated = await localAuthAdmin().auth.admin.generateLink({ type: "signup", email, password: "Synthetic-resume-A9!", options: { data: { document_hash: forgedHash, cpf_hash: forgedHash } } });
     expect(generated.error).toBeNull();
     await page.goto(`/auth/confirm?type=signup&token_hash=${generated.data.properties!.hashed_token}`);
     await expect(page.getByRole("heading", { name: "Conclua o cadastro da sua loja" })).toBeVisible();
@@ -56,6 +57,9 @@ test.describe("e-mails Auth locais", () => {
     await expect(page).toHaveURL(/\/trial\/sucesso\?tenant=/);
     const count = await query("select count(*)::int as total from public.tenants t join auth.users u on t.created_by=u.id where u.email=$1", [email]);
     expect(count.rows[0].total).toBe(1);
+    const profile = await query("select cpf_hash from public.profiles p join auth.users u on p.id=u.id where u.email=$1", [email]);
+    expect(profile.rows[0].cpf_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(profile.rows[0].cpf_hash).not.toBe(forgedHash);
     await page.goto("/cadastro");
     await expect(page).toHaveURL(/\/onboarding\/segmento$/);
   });

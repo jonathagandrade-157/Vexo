@@ -16,7 +16,8 @@ export const metadata: Metadata = {
  * pt-BR to match the rest of the product (the export itself mixed English
  * labels with a Portuguese footer note).
  */
-export default async function CadastroPage() {
+export default async function CadastroPage({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
+  const { notice } = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -33,7 +34,7 @@ export default async function CadastroPage() {
   // para a página em que já está).
   if (user) {
     const destination = await resolvePostLoginDestination();
-    if (destination !== "/cadastro") redirect(destination);
+    if (destination !== "/cadastro" && !(destination === "/onboarding" && notice === "enrollment_retry")) redirect(destination);
   }
 
   return (
@@ -60,6 +61,7 @@ export default async function CadastroPage() {
             </p>
           </div>
 
+          {notice === "enrollment_retry" ? <p role="alert" className="mb-4 text-error">Não foi possível concluir o cadastro. Confirme os dados abaixo para tentar novamente.</p> : null}
           <SignUpForm resume={Boolean(user?.email_confirmed_at)} />
           {!user ? <SignInLink /> : null}
         </div>
