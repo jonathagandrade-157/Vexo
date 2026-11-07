@@ -110,11 +110,15 @@ export async function replayAction(page: Page, request: import("@playwright/test
     data: request.postDataBuffer()!, maxRedirects: 0,
   });
 }
-export async function lockedInventory(productId: string) {
-  if (process.env.E2E_ISOLATED_SUPABASE !== "1" || !["127.0.0.1", "localhost"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Only disposable inventory locks.");
+/** Hold both carts at the RPC entry point before releasing the concurrent checkouts.
+ * Holding inventory can stall preflight work before the actual checkout request. */
+export async function lockCheckoutCarts(cartIds: string[]) {
+  if (process.env.E2E_ISOLATED_SUPABASE !== "1" || !["127.0.0.1", "localhost"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Only disposable checkout locks.");
+  if(new Set(cartIds).size!==2) throw new Error("Two independent buyer carts are required.");
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await db.connect(); await db.query("begin");
-  await db.query("select id from public.product_inventory where product_id=$1 for update", [productId]);
+  const locked=await db.query("select id from public.carts where id=any($1::uuid[]) order by id for update",[cartIds]);
+  if(locked.rowCount!==2) {await db.query("rollback");await db.end();throw new Error("Both disposable carts must exist.");}
   const pid=Number((await db.query("select pg_backend_pid() as pid")).rows[0].pid);
   return { pid, release: async () => { await db.query("commit"); await db.end(); } };
 }

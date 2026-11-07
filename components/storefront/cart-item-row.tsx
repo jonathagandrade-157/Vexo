@@ -48,24 +48,24 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
         <form action={quantityAction} className="col-start-2 row-start-2 flex items-center justify-self-start rounded-lg border border-outline-variant/50">
           <button
             aria-label="Diminuir quantidade"
-            className="px-2 py-1.5 text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-40"
+            className="flex h-9 w-8 shrink-0 items-center justify-center text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-40"
             disabled={isPending}
             name="quantity"
             value={item.quantity - 1}
             type="submit"
           >
-            <span className="material-symbols-outlined text-[16px]">remove</span>
+            <span aria-hidden className="material-symbols-outlined text-[16px]">remove</span>
           </button>
-          <span className="w-8 text-center font-label text-label-sm text-on-surface">{item.quantity}</span>
+          <span className="w-8 shrink-0 text-center font-label text-label-sm text-on-surface">{item.quantity}</span>
           <button
             aria-label="Aumentar quantidade"
-            className="px-2 py-1.5 text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-40"
+            className="flex h-9 w-8 shrink-0 items-center justify-center text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-40"
             disabled={isPending || item.quantity >= CART_ITEM_MAX_QUANTITY}
             name="quantity"
             value={item.quantity + 1}
             type="submit"
           >
-            <span className="material-symbols-outlined text-[16px]">add</span>
+            <span aria-hidden className="material-symbols-outlined text-[16px]">add</span>
           </button>
         </form>
       ) : null}

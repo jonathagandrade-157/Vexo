@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { actionRequest, addBuyerProduct, fillCheckout, lockedInventory, login, otherSlug, query, replayAction, seedBuyerProduct, slug, unique, visual, watchErrors } from "./local-commerce";
+import { actionRequest, addBuyerProduct, fillCheckout, lockCheckoutCarts, login, otherSlug, query, replayAction, seedBuyerProduct, slug, unique, visual, watchErrors } from "./local-commerce";
 
 test.describe("carrinho após adicionar produto", () => {
   test.skip(process.env.E2E_ISOLATED_SUPABASE !== "1", "Only disposable loopback services.");
@@ -16,6 +16,8 @@ test.describe("carrinho após adicionar produto", () => {
       const persisted = await query("select ci.quantity,p.name from public.cart_items ci join public.products p on p.id=ci.product_id where ci.cart_id=$1", [cartId]);
       expect(persisted.rows).toEqual([{ quantity: 1, name: "Produto E2E principal" }]);
       await page.locator('header a[href="/loja/' + slug + '/carrinho"]').click();
+      await expect(page).toHaveURL("/loja/"+slug+"/carrinho");
+      await expect(page.getByRole("heading",{name:"Seu carrinho",exact:true})).toBeVisible();
       await expect(page.getByText("Produto E2E principal", { exact: true })).toBeVisible();
       await expect(page.getByText(/R\$\s*100,00/).first()).toBeVisible();
       await page.reload();
@@ -41,6 +43,7 @@ test.describe("checkout e estoque isolados", () => {
     await addBuyerProduct(page, item.productSlug, true);
     await page.goto("/loja/" + slug + "/carrinho");
     await page.getByRole("button", { name: "Aumentar quantidade", exact: true }).click();
+    await expect(page.getByText(/R\$\s*180,00/).first()).toBeVisible();
     await page.reload();
     await expect(page.getByText("Preto", { exact: true })).toBeVisible();
     await expect(page.getByText(/R\$\s*180,00/).first()).toBeVisible();
@@ -89,7 +92,8 @@ test.describe("checkout e estoque isolados", () => {
     try {
       await Promise.all([addBuyerProduct(page,item.productSlug),addBuyerProduct(other,item.productSlug)]);
       await Promise.all([fillCheckout(page),fillCheckout(other)]);
-      const lock=await lockedInventory(item.productId);
+      const carts=await Promise.all([page,other].map(async p=>(await p.context().cookies()).find(c=>c.name==="vexo_cart_"+slug)!.value.split(".")[1]!));
+      const lock=await lockCheckoutCarts(carts);
       const submits=[page,other].map(p=>p.getByRole("button",{name:"Continuar no WhatsApp",exact:true}).click());
       try {
         // Both requests must actually wait on the controlled DB lock.
@@ -135,12 +139,20 @@ test("controles do carrinho funcionam por formulário sem JavaScript",async({pag
     const plain=await context.newPage();
     await plain.goto("/loja/"+slug+"/carrinho");
     await expect(plain.getByText(item.name,{exact:true})).toBeVisible();
-    await plain.getByRole("button",{name:"Aumentar quantidade",exact:true}).click();
+    const update=plain.waitForResponse(response=>response.request().method()==="POST");
+    await plain.getByRole("button",{name:"Aumentar quantidade",exact:true}).click({noWaitAfter:true});
+    const response=await update;
+    console.log("VEXO_NATIVE_CART:"+JSON.stringify({status:response.status(),type:response.headers()["content-type"]}));
+    await plain.waitForLoadState("domcontentloaded");
     await expect(plain.getByText(/R\$\s*240,00/).first()).toBeVisible();
     await plain.reload();
     await expect(plain.getByText(/R\$\s*240,00/).first()).toBeVisible();
-    await plain.getByRole("button",{name:"Remover",exact:true}).click();
+    await plain.getByRole("button",{name:"Remover",exact:true}).click({noWaitAfter:true});
     await expect(plain.getByRole("heading",{name:/carrinho está vazio/i})).toBeVisible();
+  } catch(error) {
+    const plain=context.pages()[0];
+    if(plain) { console.log("VEXO_NATIVE_FAILURE:"+JSON.stringify({path:new URL(plain.url()).pathname,body:(await plain.locator("body").innerText()).slice(0,3000)})); await visual(plain,info,"falha-carrinho-sem-js"); }
+    throw error;
   } finally { await context.close(); }
 });
 

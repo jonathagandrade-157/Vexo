@@ -33,9 +33,9 @@ test.describe("mídia e aparência com Storage real isolado", () => {
     await page.reload();
     await expect(card(prefix + " editado")).toBeVisible();
     await card(prefix + "B").getByRole("button", { name: "Desativar", exact: true }).click();
-    await expect(card(prefix + "B").getByText("Inativo", { exact: true })).toBeVisible();
+    await expect(card(prefix + "B").locator("span").filter({hasText:/^Inativo$/})).toBeVisible();
     await page.reload();
-    await expect(card(prefix + "B").getByText("Inativo", { exact: true })).toBeVisible();
+    await expect(card(prefix + "B").locator("span").filter({hasText:/^Inativo$/})).toBeVisible();
     await visual(page, info, "banners-persistidos");
     for (const title of [prefix + "B", prefix + " editado"]) {
       await card(title).getByTitle("Excluir", { exact: true }).click();
@@ -113,7 +113,8 @@ test.describe("mídia e aparência com Storage real isolado", () => {
     await media.getByLabel("Adicionar imagens", { exact: true }).setInputFiles(tooLarge);
     await expect(media.getByRole("alert")).toContainText("5MB");
     expect((await images()).rows).toHaveLength(3);
-    await page.reload(); await visual(page, info, "produto-galeria");
+    await page.reload(); await media.scrollIntoViewIfNeeded();
+    await visual(page, info, "produto-galeria");
     for (let remaining = 3; remaining > 0; remaining -= 1) {
       await media.getByTitle("Excluir", { exact: true }).first().click();
       await page.getByRole("dialog").getByRole("button", { name: "Excluir", exact: true }).click();

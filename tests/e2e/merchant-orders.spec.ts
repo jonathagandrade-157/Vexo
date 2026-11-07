@@ -58,7 +58,7 @@ test.describe("pedidos completos no painel isolado",()=>{
     await visual(page,info,"pedido-entregue-historico");
     expect(errors).toEqual([]);
   });
-  test("cancelamento e replay respeitam a regra atual de não repor estoque automaticamente",async({page},info)=>{
+  test("cancelamento repõe estoque uma vez, inclusive com replay",async({page},info)=>{
     const errors=watchErrors(page); const order=await createOrder(page);
     await login(page); await page.goto("/painel/pedidos/"+order.orderId);
     await page.getByLabel("Novo status",{exact:true}).selectOption("CANCELLED");
@@ -72,7 +72,7 @@ test.describe("pedidos completos no painel isolado",()=>{
     const response=await replayAction(page,request);
     expect(response.status()).toBeLessThan(500);
     expect(await response.text()).toContain("transição");
-    expect((await query("select stock_quantity from public.product_inventory where product_id=$1",[order.productId])).rows[0].stock_quantity).toBe(2);
+    expect((await query("select stock_quantity from public.product_inventory where product_id=$1",[order.productId])).rows[0].stock_quantity).toBe(3);
     expect((await query("select count(*)::int as total from public.audit_logs where resource_id=$1 and action='ORDER_STATUS_CHANGED'",[order.orderId])).rows[0].total).toBe(1);
     await visual(page,info,"pedido-cancelado");
     expect(errors).toEqual([]);

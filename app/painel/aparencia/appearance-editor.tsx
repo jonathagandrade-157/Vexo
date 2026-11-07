@@ -153,7 +153,7 @@ export function AppearanceEditor({
           <p className="mb-4 border-b border-surface-container-highest pb-4 font-body text-body-sm text-on-surface-variant">
             Nome e descrição são editados em Configurações — aqui você cuida só da logo.
           </p>
-          <LogoUploader initialLogoPath={initialLogoPath} onDisplayUrlChange={setLogoUrl} onPaletteExtracted={setSuggestedPalette} />
+          <LogoUploader canEdit={canEdit} initialLogoPath={initialLogoPath} onDisplayUrlChange={setLogoUrl} onPaletteExtracted={setSuggestedPalette} />
         </section>
 
         <section className="rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6">

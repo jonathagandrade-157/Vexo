@@ -43,7 +43,10 @@ test.describe("matriz real de permissões da equipe", () => {
         await expect(page.getByRole("button",{name:/enviar convite/i})).toHaveCount(0);
       }
       await page.goto("/painel/configuracoes/pagamentos");
-      await expect(page.getByRole("button",{name:"Conectar Mercado Pago",exact:true})).toHaveCount(entry.payments?1:0);
+      const connect=page.getByRole("button",{name:"Conectar Mercado Pago",exact:true});
+      if(entry.payments) await expect(connect).toBeEnabled();
+      else if(entry.role==="MANAGER") await expect(connect).toBeDisabled();
+      else await expect(connect).toHaveCount(0);
       await page.goto("/painel/aparencia");
       const color=page.getByLabel("Cor primária",{exact:true});
       if(entry.settings) await expect(color).toBeEnabled(); else await expect(color).toBeDisabled();
@@ -58,7 +61,10 @@ test.describe("matriz real de permissões da equipe", () => {
     await page.getByLabel("E-mail",{exact:true}).fill(email);
     await page.getByLabel("Função",{exact:true}).selectOption("OPERATOR");
     await page.getByRole("button",{name:/enviar convite/i}).click();
-    await expect(page.getByText("Convite enviado com sucesso.",{exact:true})).toBeVisible();
+    const outcome=page.getByText("Convite enviado com sucesso.",{exact:true});
+    await expect(outcome.or(page.getByRole("alert"))).toBeVisible();
+    if(!await outcome.isVisible()) console.log("VEXO_INVITE_FAILURE:"+JSON.stringify({message:await page.getByRole("alert").innerText(),grants:(await query("select has_table_privilege('service_role','public.tenant_members','INSERT') as service_insert,has_table_privilege('authenticated','public.tenant_members','INSERT') as session_insert")).rows}));
+    await expect(outcome).toBeVisible();
     const message=await localAuthEmail(email);
     const invitedContext=await browser.newContext({baseURL:"http://127.0.0.1:3100"});
     const invitedPage=await invitedContext.newPage();
