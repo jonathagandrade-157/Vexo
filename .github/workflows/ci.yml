@@ -179,7 +179,7 @@ jobs:
           set -euo pipefail
           node tests/e2e/configure-local-auth.mjs
           if ! supabase start \
-            --exclude studio,realtime,storage-api,imgproxy,postgres-meta,edge-runtime,logflare,vector,supavisor \
+            --exclude studio,realtime,imgproxy,postgres-meta,edge-runtime,logflare,vector,supavisor \
             >"$RUNNER_TEMP/supabase-start.log" 2>&1; then
             echo "The isolated Supabase stack failed to start. Output was withheld because the CLI includes local API keys."
             exit 1
@@ -191,6 +191,11 @@ jobs:
 
       - name: Verify installed Chrome for isolated commerce flow
         run: google-chrome --version
+
+      - name: Inspect installed Next.js media and action documentation
+        run: |
+          cat node_modules/next/dist/docs/01-app/03-api-reference/02-components/image.md
+          cat node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/serverActions.md
 
       - name: Browser to database commerce tests (desktop, Pixel 7, 360 px)
         run: npm run test:e2e:supabase
