@@ -511,7 +511,10 @@ test.describe("comércio com Supabase descartável", () => {
     await page.locator('input[name="paymentPreference"][value="cash"]').check();
     await page.getByRole("button", { name: "Continuar no WhatsApp", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Pedido criado com sucesso!" })).toBeVisible();
-    const orderId = page.url().split("/").at(-1)!;
+    const confirmationUrl = new URL(page.url());
+    const orderId = confirmationUrl.pathname.split("/").at(-1)!;
+    // O link legítimo da confirmação carrega a prova assinada de posse.
+    expect(confirmationUrl.searchParams.get("acesso")).toMatch(/^[0-9a-z]+\.[A-Za-z0-9_-]{43}$/);
     await page.reload();
     await expect(page.getByRole("heading", { name: "Pedido criado com sucesso!" })).toBeVisible();
 
