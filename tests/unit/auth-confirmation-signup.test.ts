@@ -1,5 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
+// Limites de Auth têm testes próprios (auth-rate-limit.test.ts); aqui o foco é o fluxo.
+vi.mock("@/features/auth/rate-limit", () => ({ isAuthAttemptLimited: vi.fn(async () => false), AUTH_RATE_LIMIT_MESSAGE: "limited" }));
 vi.mock("@/lib/env", () => ({
   getPublicEnv: () => ({ NEXT_PUBLIC_SITE_URL: "http://127.0.0.1:3100" }),
   getServerEnv: () => ({ TRIAL_HASH_SECRET: "synthetic-confirmation-secret-not-production" }),

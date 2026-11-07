@@ -14,6 +14,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * Mesmo padrão de mock de `tests/unit/melhorenvio-callback-route.test.ts`
  * (client Supabase e `getPublicEnv` mockados via `vi.mock`).
  */
+// Limites de Auth têm testes próprios (auth-rate-limit.test.ts); aqui o foco é o fluxo.
+vi.mock("@/features/auth/rate-limit", () => ({ isAuthAttemptLimited: vi.fn(async () => false), AUTH_RATE_LIMIT_MESSAGE: "limited" }));
 vi.mock("@/lib/env", () => ({
   getPublicEnv: vi.fn(() => ({ NEXT_PUBLIC_SITE_URL: "https://vexoecommerce.vercel.app" })),
   getServerEnv: vi.fn(),

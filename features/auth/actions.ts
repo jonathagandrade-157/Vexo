@@ -9,6 +9,7 @@ import { resolvePostLoginDestination } from "./post-login-destination";
 import { completeEnrollment } from "./enrollment";
 import type { EnrollmentInput } from "./pending-signup";
 import { pendingSignupForUser, rememberPendingSignup } from "./pending-signup-cookie";
+import { AUTH_RATE_LIMIT_MESSAGE, isAuthAttemptLimited } from "./rate-limit";
 import {
   completeSignupSchema,
   resetPasswordRequestSchema,
@@ -75,6 +76,7 @@ export async function signUpAction(
   }
 
   const { storeName, fullName, email, phone, document, password } = parsed.data;
+  if (await isAuthAttemptLimited("sign_up", email)) return { status: "error", message: AUTH_RATE_LIMIT_MESSAGE };
   const documentHash = hashDocument(document, getServerEnv().TRIAL_HASH_SECRET);
 
   const supabase = await createSupabaseServerClient();
@@ -131,6 +133,7 @@ export async function finishPendingSignupAction(_prevState: SignUpActionState, _
 export async function resendConfirmationAction(_prevState: ResetPasswordRequestState, formData: FormData): Promise<ResetPasswordRequestState> {
   const parsed = resetPasswordRequestSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) return { status: "error", message: "Informe um e-mail válido." };
+  if (await isAuthAttemptLimited("resend_confirmation", parsed.data.email)) return { status: "error", message: AUTH_RATE_LIMIT_MESSAGE };
   const supabase = await createSupabaseServerClient();
   await supabase.auth.resend({ type: "signup", email: parsed.data.email,
     options: { emailRedirectTo: `${getPublicEnv().NEXT_PUBLIC_SITE_URL}/auth/confirm?purpose=signup` } });
@@ -154,6 +157,8 @@ export async function signInAction(
     }
     return { status: "error", fieldErrors };
   }
+
+  if (await isAuthAttemptLimited("sign_in", parsed.data.email)) return { status: "error", message: AUTH_RATE_LIMIT_MESSAGE };
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
@@ -186,6 +191,8 @@ export async function resetPasswordRequestAction(
   if (!parsed.success) {
     return { status: "error", message: "Informe um e-mail válido." };
   }
+
+  if (await isAuthAttemptLimited("password_reset", parsed.data.email)) return { status: "error", message: AUTH_RATE_LIMIT_MESSAGE };
 
   const supabase = await createSupabaseServerClient();
   const { NEXT_PUBLIC_SITE_URL } = getPublicEnv();
