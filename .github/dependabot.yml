@@ -1,0 +1,19 @@
+# Alertas e PRs de atualização de segurança (gratuito, nativo do GitHub).
+# Só passa a agir depois de mesclado na branch padrão. Atualizações de
+# versão são agrupadas e semanais para não gerar ruído; correções de
+# segurança continuam chegando assim que publicadas.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
