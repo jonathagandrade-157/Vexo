@@ -108,6 +108,7 @@ test.describe("checkout e estoque isolados", () => {
       const loser=[page,other].find(p=>!p.url().includes("/pedido/"))!;
       await expect(loser.locator("form").getByRole("alert").first()).toContainText(/estoque|finalizar|disponível/i);
       expect((await query("select stock_quantity from public.product_inventory where product_id=$1",[item.productId])).rows[0].stock_quantity).toBe(0);
+      await loser.locator("form").getByRole("alert").first().scrollIntoViewIfNeeded();
       await visual(loser,info,"ultima-unidade-negada");
       expect(errors.flat()).toEqual([]);
     } finally { await second.close(); }
@@ -151,7 +152,11 @@ test("controles do carrinho funcionam por formulário sem JavaScript",async({pag
     await expect(plain.getByRole("heading",{name:/carrinho está vazio/i})).toBeVisible();
   } catch(error) {
     const plain=context.pages()[0];
-    if(plain) { console.log("VEXO_NATIVE_FAILURE:"+JSON.stringify({path:new URL(plain.url()).pathname,body:(await plain.locator("body").innerText()).slice(0,3000)})); await visual(plain,info,"falha-carrinho-sem-js"); }
+    if(plain) {
+      const body=await plain.locator("body").innerText({timeout:1500}).catch(()=>"[document still navigating]");
+      console.log("VEXO_NATIVE_FAILURE:"+JSON.stringify({cause:String(error),path:new URL(plain.url()).pathname,body:body.slice(0,3000)}));
+      if(body!=="[document still navigating]") await visual(plain,info,"falha-carrinho-sem-js");
+    }
     throw error;
   } finally { await context.close(); }
 });

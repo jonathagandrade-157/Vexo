@@ -1,12 +1,139 @@
 # VEXO — relatório de prontidão comercial
 
-Atualizado em 2026-11-05. **NO-GO técnico para execução de produção,
-NO-GO beta e NO-GO comercial.** Código candidato e laboratório avançaram;
-backup real restaurado e revogação continuam gates abertos. Homologação
-financeira, entrega SMTP e operação com suporte/alertas continuam pendentes.
-Asaas, isoladamente, não bloqueia hotfix após os gates de segurança/recuperação.
+Atualizado em 2026-11-07. **PR em validação; sem liberação de produção,
+beta com dados reais ou operação comercial.** A rodada atual amplia testes
+de lojista/comprador no executor GitHub Actions com Supabase/Storage/Auth/
+Mailpit descartáveis. Não utiliza o computador do titular nem o Preview
+com credenciais de produção. Nenhum merge, migration de produção, envio
+externo, cobrança, exportação real ou revogação foi executado nesta rodada.
 
-## Estado atual verificado — 05/11
+## Revisão de 07/11 — execução atual
+
+- Main remoto conferido em `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`;
+  [PR #3](https://github.com/jonathagandrade-157/Vexo/pull/3) aberta e sem merge.
+  Candidato funcional atual: `f53da035556f6197a50de785667bb564c34d4f49`.
+  [CI 42387709919](https://github.com/jonathagandrade-157/Vexo/actions/runs/42387709919):
+  ci (1.363 unitários, 738 PostgreSQL, audit zero, lint/typecheck/build e rollout),
+  smoke público, recovery-lab e 16 HTTP aprovados. Navegador: **99/108 aprovados,
+  nove falhas**, sem retries. Carrinho com JavaScript passou para visitante e
+  lojista nas três larguras, com POST/quantidade=2 no banco e total persistente.
+  O ajuste posterior de resposta ao formulário sem JavaScript, incluído neste
+  documento/commit, ainda aguarda CI; não declarar o conjunto inteiro aprovado.
+- Relato prioritário do proprietário: adicionar produto e encontrar carrinho vazio.
+  A correção candidata já troca o cliente administrativo SSR por cliente sem
+  sessão, trata erro de consulta explicitamente e inclui o SELECT mínimo de
+  products para service_role. Está **na PR, não publicada em produção**.
+  O último inventário do banco publicado (05/11, histórico abaixo) ainda
+  não tinha esse grant; esta rodada não modifica esse banco.
+- Novos commits cloud: `ffe97de` (Storage real no laboratório e regressões),
+  `0493243` (controles do carrinho por formulário, tratamento de erro,
+  pipeline de mídia isolado), `3e19f11` (IDs únicos nos banners e jornadas
+  de equipe/pedidos) e `f53da03` (sincronização de navegação nos testes,
+  controles de logo restritos à permissão e dimensões fixas dos botões).
+- Documentação Next instalada foi lida nos logs do executor antes das mudanças
+  de configuração. A permissão de imagens de loopback exige simultaneamente CI,
+  marcador de laboratório e URL Supabase exatamente local. Quatro regressões
+  verificam que produção/host remoto/marcador ausente não habilitam isso.
+
+### Evidência executada e limites
+
+| Jornada | Evidência confirmada nesta rodada | Limite atual |
+| --- | --- | --- |
+| Carrinho e catálogo existentes | As jornadas anteriores continuam exercitadas no browser contra banco descartável, incluindo recarga, variantes e tentativa de cookie entre lojas | Inclusão, ícone, quantidade e recarga aprovados em seis cenários de f53da03; sem publicação em produção |
+| Galeria de produto | PNG/JPEG/WebP, persistência, ordem, principal, rejeição acima de 5 MB e remoção passaram nas três larguras em 0493243 e 3e19f11 | Falha/retry de transporte, limite de oito e ataque de escrita entre lojas ainda não completos |
+| Logo | Troca nos três formatos, reload, remoção e campo nulo no banco passaram nas três larguras | Arquivos válidos entre 1 e 5 MB ainda precisam teste; não declarar todo limite homologado |
+| Aparência | Cor/modelo persistidos, loja pública conferida e valores originais restaurados nas três larguras | Todos os modelos não foram auditados individualmente |
+| Banners | Criação consecutiva, edição e ordenação chegaram ao banco; falha de fechamento e IDs repetidos foram reproduzidos e corrigidos | CRUD completo, ordem, status, remoção de registros e arquivos aprovados em f53da03 nas três larguras |
+| Equipe | OWNER/ADMIN e negativas de escrita de outras funções exercitados; controle de logo indevido reproduzido para OPERATOR/SUPPORT e corrigido; matriz dos cinco papéis aprovada nas três larguras em f53da03 | Convite/aceite integral ainda falhou; diagnóstico novo não envia mensagens externas |
+| Pedidos | Filtros, confirmação manual sintética, rejeição de salto de status, evolução até DELIVERED, histórico e estoque passaram em 3e19f11 nas três larguras | Cancelamento devolveu estoque uma vez, inclusive com replay, nas três larguras em f53da03; esta revisão reforça as assertivas antes/depois |
+| Comprador | Mudança de preço/indisponibilidade e duplo envio/replay sem duplicar pedido/baixa passaram nas três larguras | Última unidade passou nas três larguras com dois checkouts bloqueados na entrada da RPC e liberados juntos; isolamento da confirmação continua falhando |
+| E-mail/Auth | Confirmação, expiração/reuso, reenvio, recuperação e retomada seguem no laboratório Mailpit | Não comprova SMTP/entregabilidade hospedada |
+| Recuperação | Recovery-lab sintético aprovado novamente | Nenhuma exportação/restore de dados reais nem B2 homologado |
+
+- [CI 42385977507](https://github.com/jonathagandrade-157/Vexo/actions/runs/42385977507),
+  SHA `3e19f11`: **75/108 E2E aprovados e 33 falhas**, sem retries.
+  Esse total não representa 33 defeitos de produto: inclui seletor encontrando
+  option oculta, pressuposto incorreto sobre botão desabilitado do MANAGER,
+  regra antiga de cancelamento e recarga antes da navegação do Link terminar.
+  As falhas continuam registradas; os testes foram ajustados ao contrato real
+  sem filtrar console ou enfraquecer as verificações de persistência.
+- A captura/DOM da falha do carrinho mostrou a **página do produto**, não a
+  página do carrinho: o teste clicava no Link e recarregava antes de aguardar
+  a mudança de URL. O teste atual exige URL e título do carrinho, envio da
+  alteração, quantidade no banco e total após recarga.
+- O ci desse SHA teve 737/738 integrações aprovadas: a falha foi colisão
+  aleatória na geração do número de pedido da fixture de pagamentos.
+  A fixture agora usa UUID; a integração do SHA f53da03 passou inteira.
+- [CI 42384579072](https://github.com/jonathagandrade-157/Vexo/actions/runs/42384579072),
+  SHA `0493243`: 66/81 E2E; ci, smoke e recovery-lab aprovados. Mantido
+  como evidência intermediária, não como validação final.
+- [Artefato sintético de 3e19f11](https://github.com/jonathagandrade-157/Vexo/actions/runs/42385977507/artifacts/13579848567),
+  confirmado pelo SHA do run e disponível até 14/11. Evidências PNG sintéticas estão nos artefatos desses runs. Foram revisadas
+  visualmente capturas 360 px de confirmação de variante, aparência pública e
+  logo. A captura de viewport da galeria não enquadrava as imagens; o teste atual
+  passa a rolar até o título da mídia antes de capturar. [Artefato de f53da03](https://github.com/jonathagandrade-157/Vexo/actions/runs/42387709919/artifacts/13580791741),
+  SHA conferido e disponível até 14/11. Carrinho visitante/autenticado 360 px
+  revisado visualmente: quantidade, total e controles legíveis, sem sobreposição.
+  Emulação não é aparelho físico.
+
+### Pendências novas reproduzidas
+
+- **P1 — confirmação sem prova adicional de posse:** no laboratório, outro
+  contexto sem cookies abre a confirmação ao conhecer a URL do pedido e vê
+  nome/endereço e itens. O UUID é não sequencial, mas atua sozinho como
+  credencial. A função pública get_order_confirmation(uuid,uuid) mantém esse
+  contrato. A regressão de isolamento permanece vermelha. Preparar mudança
+  de privilégios na PR depende da resposta já solicitada sobre a exceção à
+  proibição de novas migrations; nenhuma foi criada/aplicada. A correção precisa
+  cobrir página, RPC e links legítimos, sem bloquear o próprio comprador após
+  abrir um novo carrinho. Proposta técnica: prova assinada com tenant/pedido/
+  expiração nos redirects e e-mails, verificação no servidor e leitura da RPC
+  administrativa; testar também troca de loja, adulteração, expiração, acesso
+  direto à RPC e recibo antigo após criar novo carrinho.
+- **P2 — logo exibindo mutadores a funções sem settings.update:** reproduzido
+  no browser; servidor já recusava a operação. O controle agora acompanha canEdit;
+  matriz de permissões aprovada em f53da03.
+- **P2 — banners:** criar um segundo banner deixava diálogo aberto porque
+  o efeito observava apenas status=success; vários diálogos também repetiam IDs.
+  Corrigidos observando o novo resultado da ação e usando useId.
+- **P1/P2 — convite integral local bloqueado:** falhou nas três larguras.
+  O catálogo real do laboratório confirmou ausência de INSERT de service_role
+  em tenant_members. A inspeção de migrations também mostra SELECT de roles
+  somente para authenticated, enquanto a ação de convite consulta esse catálogo
+  com service_role; falta confirmar a mensagem de erro delimitada ao main.
+  Não habilitar INSERT de authenticated: a ausência de policy é intencional.
+  A correção completa precisa de privilégios mínimos via migration revisada,
+  incluindo conferir UPDATE/DELETE de authenticated sob as RLS já existentes.
+  Nenhuma alteração desses privilégios foi criada/aplicada nesta rodada.
+- **P2 — resposta nativa do carrinho:** os três testes sem JavaScript falharam.
+  O banco confirmou quantidade=2, mas o documento não concluiu navegação.
+  As ações de formulário agora redirecionam para o carrinho canônico após
+  sucesso, com replace para não empilhar alterações de quantidade no histórico.
+  Esse ajuste ainda precisa passar no CI. Erros da ação continuam exibidos no
+  fluxo com JavaScript; não declarar validados todos os erros sem JavaScript.
+- A concorrência da última unidade está comprovada no laboratório em f53da03:
+  dois carrinhos reais bloqueados na entrada da RPC, liberação conjunta,
+  apenas um pedido, estoque zero e negativa para o segundo comprador.
+  Nenhum teste foi retirado nem a exigência de unicidade foi reduzida.
+
+### Prontidão e decisões humanas
+
+Demonstração com dados sintéticos é possível em ambiente isolado.
+**Beta com dados reais e operação comercial continuam NO-GO.** A PR não pode
+ser tratada como release verde enquanto as regressões atuais e os gates abaixo
+estiverem abertos.
+
+Continuam pendentes os aceites específicos já registrados: piloto B2 real
+(destino efetivo, custodiante/cofre, custo, retenção/restore e aprovação);
+cutover/revogação comprovada de credenciais; publicação/migration/smoke após
+pré-requisitos; sandbox financeiro isolado de MP/Asaas; SMTP hospedado e
+canais/responsáveis reais de suporte/alertas. B2 escolhido não autoriza exportar
+dados reais. Nenhum segredo deve ser enviado pelo chat.
+
+## Inventário histórico verificado em 05/11
+
+Os números, credenciais por nome, estado Supabase e deployments abaixo foram
+conferidos em 05/11; não equivalem a uma nova inspeção de produção em 07/11.
 
 - Código candidato: `c9e525621ecb514df97b9736949c418e0a586e28`,
   [PR #3](https://github.com/jonathagandrade-157/Vexo/pull/3) aberta, branch

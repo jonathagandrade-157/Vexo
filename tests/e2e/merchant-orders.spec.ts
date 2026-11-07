@@ -60,6 +60,7 @@ test.describe("pedidos completos no painel isolado",()=>{
   });
   test("cancelamento repõe estoque uma vez, inclusive com replay",async({page},info)=>{
     const errors=watchErrors(page); const order=await createOrder(page);
+    expect((await query("select stock_quantity from public.product_inventory where product_id=$1",[order.productId])).rows[0].stock_quantity).toBe(2);
     await login(page); await page.goto("/painel/pedidos/"+order.orderId);
     await page.getByLabel("Novo status",{exact:true}).selectOption("CANCELLED");
     await page.getByLabel("Nota interna (opcional)",{exact:true}).fill("Cancelamento sintético.");
@@ -69,6 +70,7 @@ test.describe("pedidos completos no painel isolado",()=>{
     await expect.poll(async()=>(await query("select status from public.orders where id=$1",[order.orderId])).rows[0].status).toBe("CANCELLED");
     await page.reload();
     await expect(page.getByText("Este pedido está em um status final — nenhuma transição disponível.",{exact:true})).toBeVisible();
+    expect((await query("select stock_quantity from public.product_inventory where product_id=$1",[order.productId])).rows[0].stock_quantity).toBe(3);
     const response=await replayAction(page,request);
     expect(response.status()).toBeLessThan(500);
     expect(await response.text()).toContain("transição");

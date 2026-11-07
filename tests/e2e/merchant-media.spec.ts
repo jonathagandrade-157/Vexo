@@ -113,7 +113,7 @@ test.describe("mídia e aparência com Storage real isolado", () => {
     await media.getByLabel("Adicionar imagens", { exact: true }).setInputFiles(tooLarge);
     await expect(media.getByRole("alert")).toContainText("5MB");
     expect((await images()).rows).toHaveLength(3);
-    await page.reload(); await media.scrollIntoViewIfNeeded();
+    await page.reload(); await media.getByRole("heading",{name:/Mídia/}).scrollIntoViewIfNeeded();
     await visual(page, info, "produto-galeria");
     for (let remaining = 3; remaining > 0; remaining -= 1) {
       await media.getByTitle("Excluir", { exact: true }).first().click();

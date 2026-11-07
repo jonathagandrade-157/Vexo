@@ -62,8 +62,9 @@ test.describe("matriz real de permissões da equipe", () => {
     await page.getByLabel("Função",{exact:true}).selectOption("OPERATOR");
     await page.getByRole("button",{name:/enviar convite/i}).click();
     const outcome=page.getByText("Convite enviado com sucesso.",{exact:true});
-    await expect(outcome.or(page.getByRole("alert"))).toBeVisible();
-    if(!await outcome.isVisible()) console.log("VEXO_INVITE_FAILURE:"+JSON.stringify({message:await page.getByRole("alert").innerText(),grants:(await query("select has_table_privilege('service_role','public.tenant_members','INSERT') as service_insert,has_table_privilege('authenticated','public.tenant_members','INSERT') as session_insert")).rows}));
+    const inviteError=page.locator("main").getByRole("alert");
+    await expect(outcome.or(inviteError)).toBeVisible();
+    if(!await outcome.isVisible()) console.log("VEXO_INVITE_FAILURE:"+JSON.stringify({message:await inviteError.innerText(),grants:(await query("select has_table_privilege('service_role','public.tenant_members','INSERT') as service_insert,has_table_privilege('authenticated','public.tenant_members','INSERT') as session_insert")).rows}));
     await expect(outcome).toBeVisible();
     const message=await localAuthEmail(email);
     const invitedContext=await browser.newContext({baseURL:"http://127.0.0.1:3100"});
