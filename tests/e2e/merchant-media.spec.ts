@@ -124,3 +124,10 @@ test.describe("mídia e aparência com Storage real isolado", () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.afterEach(async({page},info)=>{
+  if(info.status!==info.expectedStatus && info.project.name==="mobile-360") {
+    await visual(page,info,"falha-midia");
+    console.log("VEXO_FAILED_PAGE:"+(await page.locator("body").innerText()).slice(0,4000));
+  }
+});

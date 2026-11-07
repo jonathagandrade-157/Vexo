@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { SelectField } from "@/components/ui/select-field";
@@ -35,6 +35,7 @@ function SaveButton({ label, pendingLabel }: { label: string; pendingLabel: stri
  */
 export function BannerFormDialog({ trigger, banner }: { trigger: React.ReactNode; banner?: StaffBanner }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const formId = useId();
   const action = banner ? updateBannerAction : createBannerAction;
   const [state, formAction] = useActionState(action, initialBannerActionState);
   const [previewUrl, setPreviewUrl] = useState<string | null>(banner ? getTenantMediaPublicUrl(banner.image_path) : null);
@@ -63,11 +64,12 @@ export function BannerFormDialog({ trigger, banner }: { trigger: React.ReactNode
         {trigger}
       </button>
       <dialog
+        aria-labelledby={formId + "-heading"}
         className="w-full max-w-[480px] rounded-xl border border-surface-container-highest bg-surface-container-low p-0 text-on-surface backdrop:bg-black/60"
         ref={dialogRef}
       >
         <form action={formAction} className="flex flex-col gap-5 p-6" noValidate>
-          <h2 className="font-headline text-headline-sm text-on-surface">{banner ? "Editar banner" : "Novo banner"}</h2>
+          <h2 id={formId + "-heading"} className="font-headline text-headline-sm text-on-surface">{banner ? "Editar banner" : "Novo banner"}</h2>
 
           {banner ? <input name="bannerId" type="hidden" value={banner.id} /> : null}
 
@@ -93,7 +95,7 @@ export function BannerFormDialog({ trigger, banner }: { trigger: React.ReactNode
             defaultValue={banner?.title ?? ""}
             error={state.fieldErrors?.title}
             icon="title"
-            id="bannerTitle"
+            id={formId + "-title"}
             label="Título (opcional)"
             name="title"
             required={false}
@@ -103,7 +105,7 @@ export function BannerFormDialog({ trigger, banner }: { trigger: React.ReactNode
             defaultValue={banner?.link_url ?? ""}
             error={state.fieldErrors?.linkUrl}
             icon="link"
-            id="bannerLink"
+            id={formId + "-link"}
             label="Link (opcional)"
             name="linkUrl"
             placeholder="#promocoes ou https://…"
@@ -113,7 +115,7 @@ export function BannerFormDialog({ trigger, banner }: { trigger: React.ReactNode
           <SelectField
             defaultValue={banner?.status ?? "active"}
             error={state.fieldErrors?.status}
-            id="bannerStatus"
+            id={formId + "-status"}
             label="Status"
             name="status"
             options={STATUS_OPTIONS}

@@ -115,5 +115,6 @@ export async function lockedInventory(productId: string) {
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await db.connect(); await db.query("begin");
   await db.query("select id from public.product_inventory where product_id=$1 for update", [productId]);
-  return { release: async () => { await db.query("commit"); await db.end(); } };
+  const pid=Number((await db.query("select pg_backend_pid() as pid")).rows[0].pid);
+  return { pid, release: async () => { await db.query("commit"); await db.end(); } };
 }

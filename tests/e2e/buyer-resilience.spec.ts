@@ -20,7 +20,11 @@ test.describe("carrinho após adicionar produto", () => {
       await expect(page.getByText(/R\$\s*100,00/).first()).toBeVisible();
       await page.reload();
       await expect(page.getByText("Produto E2E principal", { exact: true })).toBeVisible();
+      const updateResponse=page.waitForResponse(response=>response.request().method()==="POST" && new URL(response.url()).pathname==="/loja/"+slug+"/carrinho",{timeout:15000});
       await page.getByRole("button", { name: "Aumentar quantidade", exact: true }).click();
+      const submitted=await updateResponse;
+      console.log("VEXO_CART_UPDATE:"+JSON.stringify({status:submitted.status(),rows:(await query("select quantity from public.cart_items where cart_id=$1",[cartId])).rows}));
+
       await expect(page.getByText(/R\$\s*200,00/).first()).toBeVisible();
       await page.reload();
       expect((await query("select quantity from public.cart_items where cart_id=$1", [cartId])).rows).toEqual([{ quantity: 2 }]);
@@ -53,11 +57,14 @@ test.describe("checkout e estoque isolados", () => {
     const stranger = await browser.newContext({ baseURL: "http://127.0.0.1:3100" });
     try {
       const other = await stranger.newPage();
-      expect((await other.goto("/loja/"+slug+"/pedido/"+id))?.status()).toBe(404);
+      await other.goto("/loja/"+slug+"/pedido/"+id);
+      await expect(other.getByRole("heading",{name:"Pedido não encontrado",exact:true})).toBeVisible();
+      await expect(other.getByText(item.name,{exact:true})).toHaveCount(0);
       expect(await other.locator("body").innerText()).not.toContain(email);
       const cookie=(await page.context().cookies()).find(value=>value.name==="vexo_cart_"+slug)!;
       await stranger.addCookies([{...cookie,name:"vexo_cart_"+otherSlug,path:"/loja/"+otherSlug}]);
-      expect((await other.goto("/loja/"+otherSlug+"/pedido/"+id))?.status()).toBe(404);
+      await other.goto("/loja/"+otherSlug+"/pedido/"+id);
+      await expect(other.getByRole("heading",{name:"Pedido não encontrado",exact:true})).toBeVisible();
     } finally { await stranger.close(); }
     expect(errors).toEqual([]);
   });
@@ -86,7 +93,7 @@ test.describe("checkout e estoque isolados", () => {
       const submits=[page,other].map(p=>p.getByRole("button",{name:"Continuar no WhatsApp",exact:true}).click());
       try {
         // Both requests must actually wait on the controlled DB lock.
-        await expect.poll(async()=>Number((await query("select count(*)::int as total from pg_stat_activity where wait_event_type='Lock' and query like '%checkout_cart_secure%'")).rows[0].total),{timeout:20000}).toBeGreaterThanOrEqual(2);
+        await expect.poll(async()=>Number((await query("select count(*)::int as total from pg_stat_activity where $1=any(pg_blocking_pids(pid))",[lock.pid])).rows[0].total),{timeout:20000}).toBeGreaterThanOrEqual(2);
       } finally { await lock.release(); }
       await Promise.all(submits);
       await expect.poll(async()=>(await query("select count(*)::int as total from public.order_items where product_id=$1",[item.productId])).rows[0].total).toBe(1);
@@ -116,4 +123,32 @@ test.describe("checkout e estoque isolados", () => {
     await page.reload(); expect(new URL(page.url()).pathname.endsWith(orderId)).toBe(true);
     expect(errors).toEqual([]);
   });
+});
+
+test("controles do carrinho funcionam por formulário sem JavaScript",async({page,browser},info)=>{
+  test.skip(process.env.E2E_ISOLATED_SUPABASE!=="1","Only disposable loopback services.");
+  const item=await seedBuyerProduct(3);
+  await addBuyerProduct(page,item.productSlug);
+  const context=await browser.newContext({baseURL:"http://127.0.0.1:3100",javaScriptEnabled:false,viewport:info.project.use.viewport});
+  try {
+    await context.addCookies(await page.context().cookies());
+    const plain=await context.newPage();
+    await plain.goto("/loja/"+slug+"/carrinho");
+    await expect(plain.getByText(item.name,{exact:true})).toBeVisible();
+    await plain.getByRole("button",{name:"Aumentar quantidade",exact:true}).click();
+    await expect(plain.getByText(/R\$\s*240,00/).first()).toBeVisible();
+    await plain.reload();
+    await expect(plain.getByText(/R\$\s*240,00/).first()).toBeVisible();
+    await plain.getByRole("button",{name:"Remover",exact:true}).click();
+    await expect(plain.getByRole("heading",{name:/carrinho está vazio/i})).toBeVisible();
+  } finally { await context.close(); }
+});
+
+test.afterEach(async({page},info)=>{
+  if(info.status!==info.expectedStatus && info.project.name==="mobile-360") {
+    const credentials=(await page.context().cookies()).find(value=>value.name==="vexo_cart_"+slug);
+    if(credentials) console.log("VEXO_CART_FAILURE:"+JSON.stringify((await query("select ci.quantity,p.price,p.promotional_price from public.cart_items ci join public.products p on p.id=ci.product_id where ci.cart_id=$1",[credentials.value.split(".")[1]])).rows));
+    await visual(page,info,"falha-comprador");
+    console.log("VEXO_FAILED_PAGE:"+(await page.locator("body").innerText()).slice(0,4000));
+  }
 });
