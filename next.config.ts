@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
   // funcional: nenhuma rota depende de `X-Powered-By`).
   poweredByHeader: false,
   images: {
+    // Only the explicitly marked, disposable cloud CI stack can serve
+    // loopback media. Hosted URLs and production retain SSRF protection.
+    dangerouslyAllowLocalIP: process.env.CI === "true" && process.env.E2E_ISOLATED_SUPABASE === "1" &&
+      ["http://127.0.0.1:54321", "http://localhost:54321"].includes(process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""),
     // Etapa 8: imagens de produto (bucket público `product-media`,
     // arquitetura §9.1). Hospedado (produção) e local (`supabase start`,
     // porta padrão 54321) — nunca um hostname arbitrário.

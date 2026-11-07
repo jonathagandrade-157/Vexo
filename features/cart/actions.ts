@@ -203,3 +203,25 @@ export async function clearCartAction(storeSlug: string): Promise<CartActionStat
   revalidateCartViews(storeSlug);
   return { status: "success" };
 }
+
+
+/** Form endpoints keep quantity/removal usable before hydration. Ownership,
+ * tenant scoping and validation remain in the existing actions. */
+export async function updateCartItemQuantityFormAction(
+  storeSlug: string,
+  cartItemId: string,
+  _previous: CartActionState,
+  formData: FormData,
+): Promise<CartActionState> {
+  const raw = formData.get("quantity");
+  return updateCartItemQuantityAction(storeSlug, cartItemId, typeof raw === "string" && raw.trim() ? Number(raw) : Number.NaN);
+}
+
+export async function removeCartItemFormAction(
+  storeSlug: string,
+  cartItemId: string,
+  _previous: CartActionState,
+  _formData: FormData,
+): Promise<CartActionState> {
+  return removeCartItemAction(storeSlug, cartItemId);
+}

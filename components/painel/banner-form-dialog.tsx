@@ -42,7 +42,7 @@ export function BannerFormDialog({ trigger, banner }: { trigger: React.ReactNode
 
   useEffect(() => {
     if (state.status === "success") dialogRef.current?.close();
-  }, [state.status]);
+  }, [state]);
 
   useEffect(() => {
     if (!localPreview) return;

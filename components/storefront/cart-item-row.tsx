@@ -1,30 +1,25 @@
 "use client";
 
 import Image from "next/image";
-import { useTransition } from "react";
+import { useActionState } from "react";
 
 import type { CartItemView } from "@/features/cart/data";
-import { removeCartItemAction, updateCartItemQuantityAction } from "@/features/cart/actions";
+import { removeCartItemFormAction, updateCartItemQuantityFormAction } from "@/features/cart/actions";
 import { formatPrice } from "@/features/products/format-price";
 import { getProductImagePublicUrl } from "@/features/products/image-storage";
 import { effectivePrice } from "@/features/cart/pricing";
-import { CART_ITEM_MAX_QUANTITY } from "@/features/cart/schema";
+import { CART_ITEM_MAX_QUANTITY, initialCartActionState } from "@/features/cart/schema";
 
 /** Mobile uses two grid rows so the image, quantity and subtotal cannot shrink the product name to zero width. Desktop keeps the same single row. */
 export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug: string }) {
-  const [isPending, startTransition] = useTransition();
-
-  function changeQuantity(next: number) {
-    startTransition(async () => {
-      await updateCartItemQuantityAction(storeSlug, item.id, next);
-    });
-  }
-
-  function remove() {
-    startTransition(async () => {
-      await removeCartItemAction(storeSlug, item.id);
-    });
-  }
+  const [quantityState, quantityAction, quantityPending] = useActionState(
+    updateCartItemQuantityFormAction.bind(null, storeSlug, item.id), initialCartActionState,
+  );
+  const [removeState, removeAction, removePending] = useActionState(
+    removeCartItemFormAction.bind(null, storeSlug, item.id), initialCartActionState,
+  );
+  const isPending = quantityPending || removePending;
+  const error = quantityState.status === "error" ? quantityState.message : removeState.status === "error" ? removeState.message : null;
 
   return (
     <div className="grid grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-outline-variant/20 py-4 last:border-b-0 md:flex md:gap-4">
@@ -50,13 +45,14 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
       </div>
 
       {item.available ? (
-        <div className="col-start-2 row-start-2 flex items-center justify-self-start rounded-lg border border-outline-variant/50">
+        <form action={quantityAction} className="col-start-2 row-start-2 flex items-center justify-self-start rounded-lg border border-outline-variant/50">
           <button
             aria-label="Diminuir quantidade"
             className="px-2 py-1.5 text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-40"
             disabled={isPending}
-            onClick={() => changeQuantity(item.quantity - 1)}
-            type="button"
+            name="quantity"
+            value={item.quantity - 1}
+            type="submit"
           >
             <span className="material-symbols-outlined text-[16px]">remove</span>
           </button>
@@ -65,27 +61,31 @@ export function CartItemRow({ item, storeSlug }: { item: CartItemView; storeSlug
             aria-label="Aumentar quantidade"
             className="px-2 py-1.5 text-on-surface-variant transition-colors hover:text-on-surface disabled:opacity-40"
             disabled={isPending || item.quantity >= CART_ITEM_MAX_QUANTITY}
-            onClick={() => changeQuantity(item.quantity + 1)}
-            type="button"
+            name="quantity"
+            value={item.quantity + 1}
+            type="submit"
           >
             <span className="material-symbols-outlined text-[16px]">add</span>
           </button>
-        </div>
+        </form>
       ) : null}
 
       <p className="col-start-3 row-start-2 w-20 text-right font-label text-label-md text-on-surface">
         {item.available ? formatPrice(effectivePrice(item.product, item.variant) * item.quantity) : "—"}
       </p>
 
-      <button
-        aria-label="Remover"
-        className="col-start-3 row-start-1 justify-self-end rounded p-1.5 text-on-surface-variant transition-colors hover:bg-error-container/20 hover:text-error disabled:opacity-40"
-        disabled={isPending}
-        onClick={remove}
-        type="button"
-      >
-        <span className="material-symbols-outlined text-[20px]">delete</span>
-      </button>
+      <form action={removeAction} className="col-start-3 row-start-1 justify-self-end">
+        <button
+          aria-label="Remover"
+          className="rounded p-1.5 text-on-surface-variant transition-colors hover:bg-error-container/20 hover:text-error disabled:opacity-40"
+          disabled={isPending}
+          type="submit"
+        >
+          <span aria-hidden className="material-symbols-outlined text-[20px]">delete</span>
+        </button>
+      </form>
+      {error ? <p className="col-span-3 text-body-sm text-error" role="alert">{error}</p> : null}
+
     </div>
   );
 }

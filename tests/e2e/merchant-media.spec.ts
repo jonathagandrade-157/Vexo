@@ -18,6 +18,8 @@ test.describe("mídia e aparência com Storage real isolado", () => {
       await expect(section.getByText(prefix + suffix, { exact: true })).toBeVisible();
     }
     await page.reload();
+    const ids = await page.locator('dialog input[name="title"]').evaluateAll(inputs => inputs.map(input => input.id));
+    expect(new Set(ids).size).toBe(ids.length);
     const banners = await query("select id,title,image_path from public.storefront_banners where tenant_id=$1 and title like $2 order by sort_order,created_at", [tid, prefix + "%"]);
     expect(banners.rows.map(row => row.title)).toEqual([prefix + "A", prefix + "B"]);
     const card = (title: string) => section.getByText(title, { exact: true }).locator("xpath=../..");
@@ -80,7 +82,7 @@ test.describe("mídia e aparência com Storage real isolado", () => {
       await expect(section.getByText("Substituir", { exact: true })).toBeVisible();
     }
     await visual(page, info, "logo-persistida");
-    await section.getByText("Remover", { exact: true }).click();
+    await section.getByRole("button", { name: "Remover", exact: true }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Remover", exact: true }).click();
     await expect(section.getByText("Enviar logo", { exact: true })).toBeVisible();
     await page.reload();

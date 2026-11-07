@@ -69,6 +69,14 @@ const operatorEmail = `operator-${runId}@example.test`;
 const operator = await supabase.auth.admin.createUser({ email: operatorEmail, password, email_confirm: true });
 if (operator.error || !operator.data.user) throw new Error("Could not create the disposable browser test operator.");
 
+const roleAccounts = {};
+for (const key of ["ADMIN", "MANAGER", "SUPPORT", "OTHER_OWNER"]) {
+  const roleEmail = key.toLowerCase() + "-" + runId + "@example.test";
+  const createdRole = await supabase.auth.admin.createUser({ email: roleEmail, password, email_confirm: true });
+  if (createdRole.error || !createdRole.data.user) throw new Error("Could not create isolated role fixture.");
+  roleAccounts[key] = { id: createdRole.data.user.id, email: roleEmail };
+}
+
 const database = new pg.Client({ connectionString: databaseUrl });
 await database.connect();
 try {
@@ -81,7 +89,7 @@ try {
     const tenant = await database.query(
       `insert into public.tenants (name, slug, created_by, status, onboarding_completed_at, checkout_mode, whatsapp_phone)
        values ($1, $2, $3, 'active', now(), 'whatsapp', '11999999999') returning id`,
-      [tenantSlug === slug ? "Loja E2E" : "Outra loja E2E", tenantSlug, data.user.id],
+      [tenantSlug === slug ? "Loja E2E" : "Outra loja E2E", tenantSlug, tenantSlug === slug ? data.user.id : roleAccounts.OTHER_OWNER.id],
     );
     const tenantId = tenant.rows[0].id;
     await database.query(
@@ -98,6 +106,13 @@ try {
         "insert into public.tenant_members (tenant_id, user_id, role_id) select $1, $2, id from public.roles where key = 'OPERATOR'",
         [tenantId, operator.data.user.id],
       );
+    }
+    if (tenantSlug === slug) {
+      for (const key of ["ADMIN", "MANAGER", "SUPPORT"]) {
+        await database.query("insert into public.tenant_members(tenant_id,user_id,role_id) select $1,$2,id from public.roles where key=$3", [tenantId,roleAccounts[key].id,key]);
+      }
+    } else {
+      await database.query("insert into public.tenant_members(tenant_id,user_id,role_id) select $1,$2,id from public.roles where key='OWNER'", [tenantId,roleAccounts.OTHER_OWNER.id]);
     }
     await database.query(
       "insert into public.subscriptions (tenant_id, plan_id, status) select $1, id, 'active' from public.plans where slug = 'pro'",
@@ -172,6 +187,7 @@ Object.assign(env, {
   E2E_OWNER_EMAIL: email,
   E2E_OWNER_PASSWORD: password,
   E2E_OPERATOR_EMAIL: operatorEmail,
+  E2E_ROLE_EMAILS: JSON.stringify({ OWNER: email, OPERATOR: operatorEmail, ...Object.fromEntries(Object.entries(roleAccounts).map(([key, value]) => [key, value.email])) }),
   E2E_EMAIL_CONFIRMATION: confirmationRequired ? "1" : "0",
   E2E_MAIL_API_URL: mailUrl,
   DATABASE_URL: databaseUrl,
