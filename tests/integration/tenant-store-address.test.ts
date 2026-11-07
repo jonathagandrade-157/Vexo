@@ -81,9 +81,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Endereço da loja em tenant
     expect(result.rowCount).toBe(0);
   });
 
-  it("anon consegue ler o endereço (necessário para o futuro gerador de BR Code no checkout)", async () => {
+  it("anon NÃO lê o endereço pela API; o servidor (service_role) lê para retirada/BR Code", async () => {
     await withSuperuser((c) => c.query("update public.tenants set address_city = 'São Paulo', address_state = 'SP' where id = $1", [fx.tenantA]));
-    const result = await asActor({ role: "anon" }, (c) => c.query("select address_city, address_state from public.tenants where id = $1", [fx.tenantA]));
+    const error = await expectPgError(asActor({ role: "anon" }, (c) => c.query("select address_city, address_state from public.tenants where slug is not null")));
+    expect(error.message).toMatch(/permission denied/i);
+    const result = await asActor({ role: "service_role" }, (c) => c.query("select address_city, address_state from public.tenants where id = $1", [fx.tenantA]));
     expect(result.rows[0]).toMatchObject({ address_city: "São Paulo", address_state: "SP" });
     await withSuperuser((c) => c.query("update public.tenants set address_city = null, address_state = null where id = $1", [fx.tenantA]));
   });
