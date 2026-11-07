@@ -39,7 +39,8 @@ interface TenantPixRow {
  * `features/checkout/whatsapp-link.ts::getWhatsappOrderLink`: leitura via
  * service_role (contexto de servidor confiável, nunca exposto a
  * `anon`/cliente diretamente), escopada por (tenant_id, order_id) — o
- * mesmo par que já é o token de posse da página de confirmação.
+ * mesmo par usado pela página de confirmação, chamada só depois de validar
+ * a prova de posse assinada (features/checkout/order-access.ts).
  *
  * O valor (`amount`) vem sempre de `orders.total` (já calculado e
  * validado pela RPC `create_order_from_cart` no momento da criação do

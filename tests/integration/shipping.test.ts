@@ -544,7 +544,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("D3.1 — retirada na loja +
       { commit: true },
     );
 
-    const confirmation = await asActor({ role: "anon" }, (c) =>
+    const confirmation = await asActor({ role: "service_role" }, (c) =>
       c.query("select get_order_confirmation($1, $2) as confirmation", [tenantId, orderId]),
     );
     const data = confirmation.rows[0]!.confirmation;

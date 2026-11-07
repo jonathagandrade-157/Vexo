@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 
-import { scrubSentryEvent } from "@/lib/sentry/scrub-event";
+import { scrubSentryEvent, scrubSentryTransaction } from "@/lib/sentry/scrub-event";
 
 /**
  * JON-14 — inicialização client-side do Sentry (convenção estável do
@@ -19,6 +19,7 @@ Sentry.init({
   tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1,
   sendDefaultPii: false,
   beforeSend: scrubSentryEvent,
+  beforeSendTransaction: scrubSentryTransaction,
   debug: false,
 });
 

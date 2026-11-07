@@ -622,7 +622,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout com variantes (D20
     expect(items[0]!.variant_options).toEqual([{ option: "Cor", value: "Ciano" }]);
   });
 
-  it("get_order_confirmation expõe variantId/variantSku/variantLabel/variantOptions para o cliente (anon), null para item simples", async () => {
+  it("get_order_confirmation expõe variantId/variantSku/variantLabel/variantOptions para a confirmação do cliente, null para item simples", async () => {
     const productId = await insertProduct(fx.tenantA, "Produto Confirmacao Variante", 20);
     const variantId = await insertVariant(fx.tenantA, productId, [{ optionName: "Cor", position: 0, value: "Bege" }], 40, {
       sku: "BEG-01",
@@ -632,7 +632,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout com variantes (D20
     const result = await callCreateOrder(fx.tenantA, cartId);
     const orderId = result.rows[0]!.create_order_from_cart;
 
-    const confirmation = await asActor({ role: "anon" }, (c) =>
+    const confirmation = await asActor({ role: "service_role" }, (c) =>
       c.query<{ get_order_confirmation: Record<string, unknown> }>("select get_order_confirmation($1, $2)", [fx.tenantA, orderId]),
     );
     const items = confirmation.rows[0]!.get_order_confirmation.items as Record<string, unknown>[];
@@ -818,7 +818,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout com variantes (D20
     }
   });
 
-  it("create_order_from_cart é service-role-only, get_order_confirmation permanece público e update_order_status authenticated-only", async () => {
+  it("create_order_from_cart é service-role-only e update_order_status authenticated-only (get_order_confirmation: ver checkout.test.ts)", async () => {
     const productId = await insertProduct(fx.tenantA, "Produto Grants Variante", 20);
     const variantId = await insertVariant(fx.tenantA, productId, [{ optionName: "Cor", position: 0, value: "Grant" }], 30);
     const cartId = await createCartWithVariantItem(fx.tenantA, productId, variantId, 1);

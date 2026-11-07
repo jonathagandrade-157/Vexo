@@ -1,5 +1,6 @@
 import "server-only";
 
+import { orderConfirmationPath } from "@/features/checkout/order-access";
 import { getPublicEnv } from "@/lib/env";
 import { getGateway } from "@/lib/payments/registry";
 import { getPaymentCredentials } from "@/lib/payments/vault";
@@ -103,7 +104,7 @@ export async function initiatePaymentForOrder(
       amount: orderRow.total,
       customerEmail,
       idempotencyKey: `vexo-order-${orderId}`,
-      backUrl: `${NEXT_PUBLIC_SITE_URL}/loja/${storeSlug}/pedido/${orderId}`,
+      backUrl: `${NEXT_PUBLIC_SITE_URL}${orderConfirmationPath(storeSlug, tenantId, orderId)}`,
       notificationUrl: `${NEXT_PUBLIC_SITE_URL}/api/webhooks/mercadopago`,
     });
   } catch (err) {

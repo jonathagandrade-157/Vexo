@@ -3,6 +3,7 @@ import "server-only";
 import * as Sentry from "@sentry/nextjs";
 import { Resend } from "resend";
 
+import { orderConfirmationPath } from "@/features/checkout/order-access";
 import { getOrderConfirmation } from "@/features/checkout/order-confirmation";
 import { getEmailEnv, getPublicEnv } from "@/lib/env";
 import { buildOrderConfirmationEmail } from "./templates/order-confirmation";
@@ -60,7 +61,7 @@ export async function sendOrderConfirmationEmail(input: SendOrderConfirmationEma
     }
 
     const { NEXT_PUBLIC_SITE_URL } = getPublicEnv();
-    const orderUrl = `${NEXT_PUBLIC_SITE_URL}/loja/${input.storeSlug}/pedido/${input.orderId}`;
+    const orderUrl = `${NEXT_PUBLIC_SITE_URL}${orderConfirmationPath(input.storeSlug, input.tenantId, input.orderId)}`;
     const { subject, html } = buildOrderConfirmationEmail(order, { storeName: input.storeName, orderUrl });
 
     const resend = new Resend(env.RESEND_API_KEY);

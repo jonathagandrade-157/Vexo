@@ -15,6 +15,7 @@ import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { sendOrderConfirmationEmail } from "@/lib/email/send-order-confirmation";
 import { checkCheckoutRateLimit } from "./rate-limit";
 import { createOwnedOrder, type CheckoutShippingSelection } from "./create-owned-order";
+import { orderConfirmationPath } from "./order-access";
 import { friendlyCheckoutError, isAddressComplete } from "./schema";
 import { whatsappCheckoutSchema, type CheckoutWhatsappActionState, type WhatsappCheckoutInput } from "./whatsapp-schema";
 
@@ -101,7 +102,7 @@ export async function createOrderForWhatsappAction(
     return { status: "error", message: "Seu carrinho está vazio. Volte para a loja e adicione produtos." };
   }
   if (cartOwnership.checkoutOrderId) {
-    redirect(`/loja/${storeSlug}/pedido/${cartOwnership.checkoutOrderId}`);
+    redirect(orderConfirmationPath(storeSlug, resolution.tenant.id, cartOwnership.checkoutOrderId));
   }
 
   const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, shippingProvider, paymentPreference, zip } = parsed.data;
@@ -240,5 +241,5 @@ export async function createOrderForWhatsappAction(
   // (decidido dentro da própria RPC). O link do WhatsApp é montado na
   // página de confirmação (features/checkout/whatsapp-link.ts), nunca
   // aqui, para nunca passar telefone/mensagem/total por querystring.
-  redirect(`/loja/${storeSlug}/pedido/${orderId}`);
+  redirect(orderConfirmationPath(storeSlug, resolution.tenant.id, orderId));
 }

@@ -6,11 +6,13 @@ import { PixPaymentPanel } from "@/components/storefront/pix-payment-panel";
 import { StorefrontEmptyState } from "@/components/storefront/storefront-empty-state";
 import { StorefrontNotFound } from "@/components/storefront/storefront-not-found";
 import { StorefrontShell } from "@/components/storefront/storefront-shell";
+import { verifyOrderAccess } from "@/features/checkout/order-access";
 import { getOrderConfirmation } from "@/features/checkout/order-confirmation";
 import { getPixPaymentDetails } from "@/features/checkout/pix-payment";
 import { getStoreAddress } from "@/features/checkout/store-address";
 import { getWhatsappOrderLink } from "@/features/checkout/whatsapp-link";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
+import { ORDER_ACCESS_QUERY_PARAM } from "@/lib/security/order-access-token";
 import type { RequestedPaymentMethod } from "@/lib/whatsapp/message";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +21,7 @@ export const metadata: Metadata = { title: "Pedido realizado", robots: { index: 
 
 interface PageProps {
   params: Promise<{ slug: string; orderId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 /**
@@ -89,8 +92,8 @@ function whatsappButtonLabel(method: RequestedPaymentMethod): string {
   return method === "pix" ? "Enviar pedido e comprovante pelo WhatsApp" : "Enviar pedido pelo WhatsApp";
 }
 
-export default async function OrderConfirmationPage({ params }: PageProps) {
-  const { slug, orderId } = await params;
+export default async function OrderConfirmationPage({ params, searchParams }: PageProps) {
+  const [{ slug, orderId }, query] = await Promise.all([params, searchParams]);
   const resolution = await resolveStorefrontTenant(slug);
 
   if (resolution.status === "not_found") return <StorefrontNotFound />;
@@ -120,7 +123,13 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
   }
 
   const { tenant } = resolution;
-  const order = await getOrderConfirmation(tenant.id, orderId);
+  // A prova de posse é verificada ANTES de qualquer leitura do pedido: sem
+  // ela (ou com tenant/pedido/expiração adulterados) a resposta é idêntica
+  // à de um pedido inexistente — nenhuma consulta, nenhum oráculo. Só quem
+  // tem a chave consegue produzir um token "expirado" válido, então essa
+  // distinção não revela nada a terceiros.
+  const access = verifyOrderAccess(tenant.id, orderId, query[ORDER_ACCESS_QUERY_PARAM]);
+  const order = access === "valid" ? await getOrderConfirmation(tenant.id, orderId) : null;
 
   const shellFooter = {
     description: tenant.description,
@@ -128,6 +137,26 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
     whatsappPhone: tenant.whatsapp_phone,
     contactEmail: tenant.contact_email,
   };
+
+  if (access === "expired") {
+    return (
+      <StorefrontShell
+        footer={shellFooter}
+        logoUrl={tenant.logo_url}
+        primaryColor={tenant.primary_color}
+        secondaryColor={tenant.secondary_color}
+        storefrontTemplate={tenant.storefront_template}
+        storeName={tenant.name}
+        storeSlug={tenant.slug}
+      >
+        <StorefrontEmptyState
+          description="Por segurança, este link de acompanhamento expirou. Fale com a loja pelos contatos abaixo para consultar o pedido."
+          icon="schedule"
+          title="Link do pedido expirado"
+        />
+      </StorefrontShell>
+    );
+  }
 
   if (!order) {
     return (
@@ -141,7 +170,7 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
         storeSlug={tenant.slug}
       >
         <StorefrontEmptyState
-          description="Não foi possível encontrar este pedido."
+          description="Não foi possível encontrar este pedido. Use o link completo recebido ao finalizar a compra ou por e-mail."
           icon="search_off"
           title="Pedido não encontrado"
         />
@@ -151,9 +180,9 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
 
   // Fase D2-B — pedido criado pelo fluxo WhatsApp: o link já é montado
   // inteiramente no servidor (features/checkout/whatsapp-link.ts), a
-  // partir só de (tenant_id, order_id) — o mesmo par que já é o token de
-  // posse desta página. Nunca reconstruído no cliente, nunca passado por
-  // querystring.
+  // partir só de (tenant_id, order_id), e só é alcançado depois da prova
+  // de posse assinada já ter sido validada acima. Nunca reconstruído no
+  // cliente, nunca passado por querystring.
   const isWhatsappOrder = order.orderSource === "whatsapp";
   const whatsappLink = isWhatsappOrder ? await getWhatsappOrderLink(tenant.id, orderId) : null;
   const paymentCopy = PAYMENT_STATUS_COPY[order.paymentStatus];

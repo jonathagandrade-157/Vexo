@@ -27,6 +27,11 @@ const serverSchema = z.object({
   // Etapa 3: HMAC key for hashing CPF/CNPJ before it ever touches the
   // database (architecture §13) — lib/security/hash-identifier.ts.
   TRIAL_HASH_SECRET: z.string().min(16),
+  // Chave dedicada (opcional) para o token de acesso da confirmação de
+  // pedido (lib/security/order-access-token.ts). Ausente, a chave é
+  // derivada de TRIAL_HASH_SECRET com contexto próprio — nunca reutilizada
+  // crua. Trocar o valor invalida todos os links de confirmação emitidos.
+  ORDER_ACCESS_SECRET: z.string().min(32).optional(),
 });
 
 // Etapa 11: Mercado Pago OAuth (arquitetura §11) — schema separado do
@@ -245,6 +250,8 @@ export function getServerEnv(): ServerEnv {
       SUPABASE_SERVICE_ROLE_KEY:
         process.env.SUPABASE_SECRET_KEY ??
         process.env.SUPABASE_SERVICE_ROLE_KEY,
+      // Linha vazia copiada de .env.example equivale a "não configurado".
+      ORDER_ACCESS_SECRET: process.env.ORDER_ACCESS_SECRET || undefined,
     },
     "server",
   );

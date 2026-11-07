@@ -57,18 +57,38 @@ test.describe("checkout e estoque isolados", () => {
     await query("update public.product_variants set price=200,promotional_price=null where id=$1",[item.variantId]);
     await page.reload(); await expect(page.getByText(/R\$\s*180,00/).first()).toBeVisible();
     await visual(page, info, "pedido-variante");
+    // Prova de posse: o link legítimo carrega o token assinado; o UUID sozinho não é credencial.
+    const access = new URL(page.url()).searchParams.get("acesso");
+    expect(access).toMatch(/^[0-9a-z]+\.[A-Za-z0-9_-]{43}$/);
     const stranger = await browser.newContext({ baseURL: "http://127.0.0.1:3100" });
+    const expectHidden = async (target: import("@playwright/test").Page, path: string) => {
+      await target.goto(path);
+      await expect(target.getByRole("heading",{name:"Pedido não encontrado",exact:true})).toBeVisible();
+      await expect(target.getByText(item.name,{exact:true})).toHaveCount(0);
+      expect(await target.locator("body").innerText()).not.toContain(email);
+    };
     try {
       const other = await stranger.newPage();
-      await other.goto("/loja/"+slug+"/pedido/"+id);
-      await expect(other.getByRole("heading",{name:"Pedido não encontrado",exact:true})).toBeVisible();
-      await expect(other.getByText(item.name,{exact:true})).toHaveCount(0);
-      expect(await other.locator("body").innerText()).not.toContain(email);
+      await expectHidden(other, "/loja/"+slug+"/pedido/"+id);
+      const tampered = access!.slice(0, -1) + (access!.endsWith("A") ? "B" : "A");
+      await expectHidden(other, "/loja/"+slug+"/pedido/"+id+"?acesso="+encodeURIComponent(tampered));
+      const [expiry, signature] = access!.split(".");
+      await expectHidden(other, "/loja/"+slug+"/pedido/"+id+"?acesso="+encodeURIComponent((parseInt(expiry!,36)+86400).toString(36)+"."+signature));
+      // Troca de loja: mesmo pedido e mesma prova válida sob outro slug.
+      await expectHidden(other, "/loja/"+otherSlug+"/pedido/"+id+"?acesso="+encodeURIComponent(access!));
       const cookie=(await page.context().cookies()).find(value=>value.name==="vexo_cart_"+slug)!;
       await stranger.addCookies([{...cookie,name:"vexo_cart_"+otherSlug,path:"/loja/"+otherSlug}]);
-      await other.goto("/loja/"+otherSlug+"/pedido/"+id);
-      await expect(other.getByRole("heading",{name:"Pedido não encontrado",exact:true})).toBeVisible();
+      await expectHidden(other, "/loja/"+otherSlug+"/pedido/"+id);
+      // Quem recebe o link completo (ex.: o próprio comprador em outro aparelho) abre a confirmação.
+      await other.goto("/loja/"+slug+"/pedido/"+id+"?acesso="+encodeURIComponent(access!));
+      await expect(other.getByRole("heading", { name: "Pedido criado com sucesso!" })).toBeVisible();
     } finally { await stranger.close(); }
+    // O comprador abre um novo carrinho e volta ao recibo antigo: continua acessível.
+    const confirmationUrl = page.url();
+    await addBuyerProduct(page, item.productSlug, true);
+    await page.goto(confirmationUrl);
+    await expect(page.getByRole("heading", { name: "Pedido criado com sucesso!" })).toBeVisible();
+    await expect(page.getByText(/R\$\s*180,00/).first()).toBeVisible();
     expect(errors).toEqual([]);
   });
   test("recalcula preço alterado antes do checkout e rejeita indisponibilidade posterior", async ({ page }) => {

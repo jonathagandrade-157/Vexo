@@ -528,6 +528,33 @@ describe.skipIf(!process.env.RUN_SUPABASE_HTTP_TESTS).sequential("Etapa 2A.2 —
     });
   });
 
+  it("denies the order confirmation RPC to the public key and to user sessions; only the server role reads it", async () => {
+    const { productId } = await createProduct(tenantA, 5);
+    const cartId = await createCart(tenantA, productId, "5".repeat(64), 1);
+    const checkoutResponse = await secureCheckout(checkoutPayload(tenantA, cartId, "5".repeat(64)));
+    expect(checkoutResponse.status).toBe(200);
+    const { orderId } = unwrapCheckout(checkoutResponse.body);
+    const body = { p_tenant_id: tenantA, p_order_id: orderId };
+
+    for (const actor of ["anon", "authenticated"] as const) {
+      const denied = await http("/rest/v1/rpc/get_order_confirmation", { actor, method: "POST", body });
+      expectDenied(denied);
+      expect(JSON.stringify(denied.body)).not.toContain("Cliente HTTP");
+    }
+
+    const allowed = await http("/rest/v1/rpc/get_order_confirmation", { actor: "service_role", method: "POST", body });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toMatchObject({ customerName: expect.stringContaining("Cliente HTTP") });
+
+    const wrongTenant = await http("/rest/v1/rpc/get_order_confirmation", {
+      actor: "service_role",
+      method: "POST",
+      body: { p_tenant_id: tenantB, p_order_id: orderId },
+    });
+    expect(wrongTenant.status).toBe(200);
+    expect(wrongTenant.body).toBeNull();
+  });
+
   it("prepares one local Mercado Pago payment row across repeated HTTP RPC calls", async () => {
     const { productId } = await createProduct(tenantA, 5);
     const cartId = await createCart(tenantA, productId, "4".repeat(64), 1);
