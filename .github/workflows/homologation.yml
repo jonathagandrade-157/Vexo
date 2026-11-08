@@ -1,0 +1,111 @@
+name: Homologation (isolated rollout replica)
+
+# Homologação isolada e efêmera: Supabase real (Auth, PostgREST, Storage,
+# Mailpit) criado do zero no executor, com banco, chaves e dados sintéticos
+# próprios. Diferente do job supabase-http do CI, o banco começa no estado
+# EXATO da produção (somente as migrations já aplicadas lá), recebe dados,
+# e só então as migrations pendentes são aplicadas na ordem do release.
+#
+# Nenhum segredo do repositório, token Supabase, projeto vinculado, chave
+# de produção ou credencial de provedor externo é exposto a este job.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: homologation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rollout-replica:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      E2E_BROWSER_CHANNEL: chrome
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: supabase/setup-cli@bea637206310b05056109c4ffab256b2c3c522af
+        with:
+          version: 2.115.0
+
+      - name: Isolation guard (no production endpoints, keys or providers)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fail if anything production-shaped reaches this job.
+          if env | grep -Eiq 'vqbiurnfqkjkrenigxzv|vexoecommerce\.vercel\.app|\.supabase\.co|SUPABASE_ACCESS_TOKEN|MERCADO_PAGO_|ASAAS_|RESEND_|VERCEL_API_TOKEN|SENTRY_AUTH_TOKEN'; then
+            echo "Production-shaped variable present; refusing to run homologation."; exit 1
+          fi
+          if [ -e supabase/.temp/project-ref ]; then echo "A linked Supabase project is present; refusing."; exit 1; fi
+          grep -q '^site_url = "http://127.0.0.1:3000"' supabase/config.toml
+          echo "Isolation guard passed: no production references, no linked project, loopback Auth site URL."
+
+      - name: Stage the production migration baseline
+        run: |
+          node scripts/operations/release-migrations.mjs list
+          node scripts/operations/release-migrations.mjs stage-production "$RUNNER_TEMP/pending-migrations"
+
+      - name: Start isolated Supabase at the production schema
+        shell: bash
+        env:
+          VEXO_SYNTHETIC_AUTH_ONLY: "1"
+        run: |
+          set -euo pipefail
+          node tests/e2e/configure-local-auth.mjs
+          if ! supabase start \
+            --exclude studio,realtime,imgproxy,postgres-meta,edge-runtime,logflare,vector,supavisor \
+            >"$RUNNER_TEMP/supabase-start.log" 2>&1; then
+            echo "The isolated Supabase stack failed to start. Output was withheld because the CLI includes local API keys."
+            exit 1
+          fi
+          echo "Isolated stack started at the production migration baseline; credential-bearing output withheld."
+
+      - name: Seed synthetic store, order and open cart through the real APIs
+        run: node tests/homologation/production-replica.mjs seed
+
+      - name: Prove the replica reproduces the production defects
+        run: node tests/homologation/production-replica.mjs assert-before
+
+      - name: Apply pending migrations in release order
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/operations/release-migrations.mjs restore "$RUNNER_TEMP/pending-migrations"
+          if ! supabase migration up --local >"$RUNNER_TEMP/migration-up.log" 2>&1; then
+            echo "Pending migrations failed on the production replica."; tail -n 40 "$RUNNER_TEMP/migration-up.log"; exit 1
+          fi
+          grep -E "Applying migration|Local database is up to date" "$RUNNER_TEMP/migration-up.log" || true
+
+      - name: Prove fixes, public-key denials and untouched synthetic data
+        run: node tests/homologation/production-replica.mjs assert-after
+
+      - name: Real HTTP Auth, PostgREST and checkout tests on the migrated replica
+        run: npm run test:http:supabase
+
+      - name: Browser journeys on the migrated replica (desktop, Pixel 7, 360 px)
+        run: npm run test:e2e:supabase
+
+      - name: Save homologation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: homologation-evidence
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Stop isolated Supabase stack
+        if: always()
+        run: supabase stop --no-backup
