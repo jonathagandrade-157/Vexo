@@ -23,11 +23,13 @@ Entrega na PR #4 (rascunho), empilhada sobre a PR #3.
   Pela chave pública, `anon` lê PIX, titular, endereço e `created_by` de toda
   loja não suspensa (contagem somente leitura: 5 lojas, 1 com PIX, 1 com
   endereço). Migration `20261107121000` restringe colunas e remove DML anônimo.
-- **Convite de equipe — causa confirmada.** service_role de produção não tem
+- **Convite e gestão de equipe — causas confirmadas e corrigidas em código.** service_role de produção não tem
   SELECT em `roles` nem INSERT em `tenant_members`; o laboratório Postgres
   concede tudo e não detectava. Migration `20261107122000` concede o mínimo.
   Em produção `authenticated` também não tem UPDATE/DELETE em `tenant_members`
-  (troca de função e remoção quebradas): migration `20261107123000`.
+  (troca de função e remoção quebradas): migration `20261107123000`. O cliente
+  PKCE também recusava o link implícito do convite (corrigido na página de senha).
+  Jornada completa aprovada nas três larguras com Supabase local real.
 - **Rate limit de Auth** (login, cadastro, reenvio, recuperação) adicionado,
   com política de falha explícita. **Sem proteção anti-robô**: decisão pendente.
 - **Concorrência**: sete cenários com conexões independentes (última unidade,
@@ -38,6 +40,9 @@ Entrega na PR #4 (rascunho), empilhada sobre a PR #3.
   servido; `anon` legada ativa e nomes legados na Vercel (Production e Preview);
   senhas vazadas desligadas no Supabase Auth.
 
+HEAD `7cb977b`: [CI 42438272483](https://github.com/jonathagandrade-157/Vexo/actions/runs/42438272483)
+totalmente verde (1.398 unitários, 748 PostgreSQL, 17 HTTP, 108/108 navegador,
+audit zero, recovery-lab). Isso valida o laboratório, não a produção.
 Quatro migrations novas aguardam o mesmo GO específico de release já exigido
 para a migration da PR #3. "Não verificado" continua não aprovado;
 homologação não existe.

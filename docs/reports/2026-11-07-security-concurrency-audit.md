@@ -35,7 +35,9 @@ homologação.
 | `ab32cb4` | E2E lê o ID do pedido pelo caminho e exige a prova no redirect |
 | `9253637` | Privilégios mínimos do convite de equipe |
 | `6d42cf7` | Este relatório |
-| seguinte | Convite: sessão do link implícito estabelecida explicitamente, tokens removidos da URL |
+| `41aa8ba` | Convite: sessão do link implícito estabelecida explicitamente, tokens removidos da URL |
+| `31f1fcd` | Troca de função/remoção: UPDATE só em `role_id` e DELETE para a sessão |
+| `7cb977b` | Testes de checkout isolados da janela compartilhada do limitador; recusa da última unidade exige motivo de estoque |
 
 Migrations novas (todas **preparadas, não aplicadas**; aditivas ou de
 restrição de privilégio, sem alterar dados/RLS/funções):
@@ -133,7 +135,7 @@ Legenda de resultado: **Aprovado** (verificado no ambiente indicado),
 | 4 | RLS, grants, funções, Storage | Corrigido (código) / Falha em produção | Laboratório + Produção | `ba83020`, `e5583f5`, `9253637` | Produção: RLS+FORCE em todas as tabelas com grant `anon`, policies `anon` só SELECT, view `security_invoker`, Storage por pasta do tenant + permissão; 79 funções DEFINER com `search_path` fixo (lab) | Lab Postgres concede tudo a service_role; produção é restritiva — integrações não detectam privilégio faltante (só o E2E com Supabase local) | Aplicar migrations 1–4 após GO; P2: `create_billing_invoice`/`set_billing_gateway_identifiers` executáveis por `authenticated` com valores do cliente |
 | 5 | Criptografia | Parcial | Produção + Código | `9253637` | HTTPS com HSTS preload; Postgres `ssl=on`, `scram-sha-256`; CPF como HMAC; cookie de cadastro AES-256-GCM; credenciais de gateway no Supabase Vault | Cifra em repouso do disco/backup é do provedor — **não verificada**; `TRIAL_HASH_SECRET` é raiz de várias chaves derivadas (CPF, cookie, token de pedido, contador) e não tem rotação documentada | Documentar custódia/rotação; usar `ORDER_ACCESS_SECRET` dedicado |
 | 6 | Autenticação no servidor | Aprovado | Código + Lab | `9253637` | Servidor usa `auth.getUser()` (nenhum `getSession` no servidor); proxy renova sessão; JWT inválido/expirado → 401 no HTTP real | Sem MFA | — |
-| 7 | Autorização por operação/papel/loja/recurso | Corrigido (código) / Falha em produção | Lab + CI | `9253637` | Matriz de 5 papéis no navegador (PR #3); RPCs revalidam membro/permissão; confirmação de pedido agora exige prova. Convite: com a migration 3 o envio passou no CI 42405437471 (Supabase local real); a etapa seguinte falhava porque o cliente PKCE do `@supabase/ssr` recusa o retorno implícito do convite — corrigido na página de senha | CI 42436142680 (`41aa8ba`): convite, link, senha, login e membro ativo passaram; troca de função falhou por falta de UPDATE — corrigido pela migration 4, aguarda CI | Migrations 3 e 4 |
+| 7 | Autorização por operação/papel/loja/recurso | Corrigido (código) / Falha em produção | Lab + CI | `9253637` | Matriz de 5 papéis no navegador (PR #3); RPCs revalidam membro/permissão; confirmação de pedido agora exige prova. Convite: com a migration 3 o envio passou no CI 42405437471 (Supabase local real); a etapa seguinte falhava porque o cliente PKCE do `@supabase/ssr` recusa o retorno implícito do convite — corrigido na página de senha | Jornada completa do convite aprovada nas três larguras no CI 42438272483 (Supabase local real) com as migrations 3 e 4 | Migrations 3 e 4 |
 | 8 | Mass assignment | Parcial | Código | `9253637` | Zod com allowlist nas Actions; tenant sempre do servidor; preço/frete/estoque recalculados no banco | Revisão por amostragem, não campo a campo | P2: RPCs de billing aceitam `p_amount`, `gateway_*_id` do chamador autenticado (sem UI hoje); mover para service_role com valores calculados no servidor |
 | 9 | Cookies, sessão, CSRF, CORS | Aprovado (código) / Parcial (produção) | Código + Produção | `9253637` | Carrinho HttpOnly/SameSite=Lax/Secure com hash; Server Actions com checagem de origem nativa do Next; webhooks com assinatura/token; cron Bearer; OAuth com state HMAC + cookie + PKCE; produção sem `Access-Control-Allow-*` | Cookies de sessão do `@supabase/ssr` são legíveis por JS (padrão); com CSP só report-only, XSS exporia sessão; domínios customizados não testados (nenhum ativo) | Ver controle 18 |
 | 10 | Senhas e provedor | **Falha (config. produção)** | Produção (advisor) + Código | — | Hash pelo Supabase Auth; mínimo 8 caracteres no servidor | Advisor: proteção contra senhas vazadas **desligada**; confirmação de e-mail desligada (registro de 05/11, não reconsultado) | Habilitar senhas vazadas, confirmação de e-mail e política mínima no painel Supabase — requer aprovação |
@@ -152,18 +154,20 @@ Legenda de resultado: **Aprovado** (verificado no ambiente indicado),
 
 | Suíte | Ambiente | Resultado |
 | --- | --- | --- |
-| Unitários | local | 1.398/1.398 |
-| PostgreSQL (127 migrations) | local | 747/747 (inclui 7 de concorrência e novos de privilégio) |
-| Rollout das migrations de carrinho | local | aprovado |
-| Typecheck, lint, build de produção | local | aprovados |
-| HTTP real Auth/PostgREST | CI 42402645086 | 17/17 |
-| Navegador (desktop, Pixel 7, 360 px) | CI 42402645086 | confirmação de pedido aprovada nas três larguras; falharam o convite e a leitura do ID no teste de comércio |
-| Navegador | CI 42436142680 (`41aa8ba`) | 103/108: convite chegou a membro ativo nas três larguras; falhou na troca de função (migration 4); comércio em Pixel 7 e pedidos em 360 px falharam em esperas de UI após passarem nos runs anteriores — tratados como instabilidade, sem correção nesta entrega; banners passaram |
-| Navegador | CI 42405437471 (`9253637`) | **103/108**: comércio aprovado nas três larguras; convite passou do envio e parou no link (corrigido depois); banners em Pixel 7/360 px — botão do diálogo encoberto pela barra inferior, falha **pré-existente** (já ocorria na PR #3 `9d0c670`), não corrigida nesta entrega |
+| **CI completo do HEAD `7cb977b`** | [CI 42438272483](https://github.com/jonathagandrade-157/Vexo/actions/runs/42438272483) | **Todos os jobs verdes**: 1.398 unitários, 748 PostgreSQL, 17 HTTP reais (Auth/PostgREST), **108/108 navegador** (desktop, Pixel 7, 360 px) sem retries, `npm audit` 0, lint/typecheck/build, rollout, smoke público, recovery-lab |
+| Unitários, PostgreSQL, rollout, typecheck, lint, build | local | aprovados (mesmos totais) |
+| Navegador | CI 42437234965 (`406a74d`) | 107/108: convite completo (envio, link, senha, aceite, troca de função, remoção) passou nas três larguras; comércio 360 px falhou por janela do limitador de checkout compartilhada entre cenários do laboratório — isolado em `7cb977b` |
+| Navegador | CI 42436142680 (`41aa8ba`) | 103/108: convite chegou a membro ativo; troca de função falhou por falta de UPDATE (migration 4) |
+| Navegador | CI 42405437471 (`9253637`) | 103/108: convite passou do envio e parou no link (cliente PKCE) |
+| Navegador / HTTP | CI 42402645086 (`8e19937`) | isolamento da confirmação aprovado nas três larguras pela primeira vez; HTTP 17/17 |
 
-O resultado do CI do HEAD final está na PR #4. CI verde não torna o
-projeto pronto: as correções só valem em produção após deploy e
-migrations aprovados.
+Diálogo de banners em mobile: falhou em runs intermediários (botão
+encoberto pela barra inferior) e passou nos dois últimos; continua
+registrado como instável, sem correção específica nesta entrega.
+
+**CI verde não torna o projeto pronto**: valida o código no laboratório
+descartável. Nenhuma correção desta entrega está em produção, e os riscos
+abaixo seguem abertos.
 
 ## Riscos restantes (ordem de prioridade)
 
@@ -178,7 +182,7 @@ migrations aprovados.
 6. **P1** — convite, troca de função e remoção de membro quebrados em produção (migrations 3 e 4).
 7. **P2** — RPCs de billing aceitam valores financeiros do cliente; CSP
    não aplicada; Previews com credenciais de produção.
-8. **P2** — diálogo de banners inacessível em mobile no E2E (pré-existente).
+8. **P2** — diálogo de banners instável em mobile no E2E (pré-existente).
 9. **P3** — bytes reais/EXIF de imagens de produto, estoque exato público,
    Actions sem SHA, `CRON_SECRET` legível.
 
