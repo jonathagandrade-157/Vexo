@@ -575,4 +575,31 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Equipe/Funcionários — ca
       expect(result.rowCount).toBe(1);
     });
   });
+
+  // 20261107123000 — produção não concedia UPDATE/DELETE a authenticated
+  // (troca de função e remoção quebradas). O grant é mínimo: só role_id é
+  // atualizável pela sessão; status/invited_by/user_id ficam fora da API.
+  describe("privilégios da gestão de equipe pela sessão", () => {
+    it("authenticated atualiza apenas role_id e pode excluir, sempre sob RLS/triggers", async () => {
+      const privileges = await withSuperuser((c) =>
+        c.query<{ role_id: boolean; status: boolean; invited_by: boolean; user_id: boolean; table_update: boolean; del: boolean; ins: boolean }>(
+          `select has_column_privilege('authenticated', 'public.tenant_members', 'role_id', 'UPDATE') as role_id,
+                  has_column_privilege('authenticated', 'public.tenant_members', 'status', 'UPDATE') as status,
+                  has_column_privilege('authenticated', 'public.tenant_members', 'invited_by', 'UPDATE') as invited_by,
+                  has_column_privilege('authenticated', 'public.tenant_members', 'user_id', 'UPDATE') as user_id,
+                  has_table_privilege('authenticated', 'public.tenant_members', 'UPDATE') as table_update,
+                  has_table_privilege('authenticated', 'public.tenant_members', 'DELETE') as del,
+                  has_table_privilege('authenticated', 'public.tenant_members', 'INSERT') as ins`,
+        ),
+      );
+      expect(privileges.rows[0]).toMatchObject({ role_id: true, status: false, invited_by: false, user_id: false, del: true });
+      const error = await expectPgError(
+        asActor({ role: "authenticated", userId: fx.userAOwner }, (c) =>
+          c.query("update public.tenant_members set status = 'removed' where tenant_id = $1 and user_id <> $2", [fx.tenantA, fx.userAOwner]),
+        ),
+      );
+      expect(error.message).toMatch(/permission denied/i);
+    });
+  });
 });
+
