@@ -260,7 +260,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("order_source / payment_chan
     });
     const orderId = result.rows[0]!.create_order_from_cart;
 
-    const confirmation = await asActor({ role: "anon" }, (c) =>
+    const confirmation = await asActor({ role: "service_role" }, (c) =>
       c.query<{ confirmation: { orderSource: string; requestedPaymentMethod: string; paymentStatus: string; cashChangeFor: number } }>(
         "select get_order_confirmation($1, $2) as confirmation",
         [fx.tenantA, orderId],

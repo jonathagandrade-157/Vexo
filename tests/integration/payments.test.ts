@@ -34,7 +34,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Pagamentos (Etapa 11)", () 
       const { rows } = await client.query<{ id: string }>(
         `insert into public.orders (tenant_id, order_number, customer_name, customer_email, customer_phone, shipping_address, subtotal, total)
          values ($1, $2, $3, $4, $5, $6, $7, $7) returning id`,
-        [tenantId, `PED${runId}${Math.floor(Math.random() * 100000)}`, "Cliente Teste", "cliente@example.com", "11912345678", ADDRESS, total],
+        [tenantId, `PED${randomUUID()}`, "Cliente Teste", "cliente@example.com", "11912345678", ADDRESS, total],
       );
       return rows[0]!.id;
     });

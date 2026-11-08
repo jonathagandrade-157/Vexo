@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { pool, withSuperuser } from "../integration/helpers/db";
 import { giveUnlimitedPlan } from "../integration/helpers/fixtures";
+import { CART_ITEMS_SELECT } from "../../features/cart/cart-query";
 
 const runId = randomUUID().slice(0, 8);
 const apiUrl = process.env.SUPABASE_HTTP_URL ?? "";
@@ -113,11 +114,27 @@ async function signUp(label: string): Promise<AuthSession> {
     },
     body: JSON.stringify({ email, password: `VexoHttp-${runId}-A9!` }),
   });
-  const body = (await response.json()) as { access_token?: unknown; user?: { id?: unknown }; msg?: unknown };
-  if (!response.ok || typeof body.access_token !== "string" || typeof body.user?.id !== "string") {
+  let body = (await response.json()) as { access_token?: unknown; id?: unknown; user?: { id?: unknown }; msg?: unknown };
+  const id = body.user?.id ?? body.id;
+  if (!response.ok || typeof id !== "string") {
     throw new Error(`Local Supabase Auth signup failed with HTTP ${response.status}`);
   }
-  return { accessToken: body.access_token, userId: body.user.id };
+  if (typeof body.access_token !== "string") {
+    // This suite needs verified fixture actors, not an email-flow bypass
+    // in the app. Browser tests separately follow actual Mailpit emails.
+    const confirmed = await fetch(`${apiUrl}/auth/v1/admin/users/${id}`, {
+      method: "PUT", headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ email_confirm: true }),
+    });
+    if (!confirmed.ok) throw new Error("Could not confirm disposable HTTP fixture user.");
+    const signedIn = await fetch(`${apiUrl}/auth/v1/token?grant_type=password`, {
+      method: "POST", headers: { apikey: anonKey, authorization: `Bearer ${anonKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ email, password: `VexoHttp-${runId}-A9!` }),
+    });
+    body = await signedIn.json();
+    if (!signedIn.ok || typeof body.access_token !== "string") throw new Error("Disposable verified HTTP fixture could not sign in.");
+  }
+  return { accessToken: body.access_token as string, userId: id };
 }
 
 function expectDenied(result: HttpResult): void {
@@ -299,6 +316,17 @@ describe.skipIf(!process.env.RUN_SUPABASE_HTTP_TESTS).sequential("Etapa 2A.2 —
     const privileged = await http(path, { actor: "service_role" });
     expect(privileged.status).toBe(200);
     expect(privileged.body).toEqual([{ id: cartId, tenant_id: tenantA }]);
+  });
+
+  it("reads the real cart projection including product and optional variant through the BFF role", async () => {
+    const { productId } = await createProduct(tenantA, 10);
+    const cartId = await createCart(tenantA, productId, "a".repeat(64), 2);
+    const query = new URLSearchParams({ cart_id: `eq.${cartId}`, tenant_id: `eq.${tenantA}`, select: CART_ITEMS_SELECT });
+    const result = await http(`/rest/v1/cart_items?${query}`, { actor: "service_role" });
+    expect(result.status, JSON.stringify(result.body)).toBe(200);
+    expect(result.body).toEqual([
+      expect.objectContaining({ quantity: 2, product: expect.objectContaining({ id: productId, price: 100 }), variant: null }),
+    ]);
   });
 
   it.each(["anon", "authenticated"] as const)("blocks every privileged checkout RPC for %s over HTTP", async (actor) => {
@@ -498,6 +526,33 @@ describe.skipIf(!process.env.RUN_SUPABASE_HTTP_TESTS).sequential("Etapa 2A.2 —
       expect(order.rows[0]).toMatchObject({ order_source: "whatsapp", payment_channel: "external" });
       expect(payments.rowCount).toBe(0);
     });
+  });
+
+  it("denies the order confirmation RPC to the public key and to user sessions; only the server role reads it", async () => {
+    const { productId } = await createProduct(tenantA, 5);
+    const cartId = await createCart(tenantA, productId, "5".repeat(64), 1);
+    const checkoutResponse = await secureCheckout(checkoutPayload(tenantA, cartId, "5".repeat(64)));
+    expect(checkoutResponse.status).toBe(200);
+    const { orderId } = unwrapCheckout(checkoutResponse.body);
+    const body = { p_tenant_id: tenantA, p_order_id: orderId };
+
+    for (const actor of ["anon", "authenticated"] as const) {
+      const denied = await http("/rest/v1/rpc/get_order_confirmation", { actor, method: "POST", body });
+      expectDenied(denied);
+      expect(JSON.stringify(denied.body)).not.toContain("Cliente HTTP");
+    }
+
+    const allowed = await http("/rest/v1/rpc/get_order_confirmation", { actor: "service_role", method: "POST", body });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).toMatchObject({ customerName: expect.stringContaining("Cliente HTTP") });
+
+    const wrongTenant = await http("/rest/v1/rpc/get_order_confirmation", {
+      actor: "service_role",
+      method: "POST",
+      body: { p_tenant_id: tenantB, p_order_id: orderId },
+    });
+    expect(wrongTenant.status).toBe(200);
+    expect(wrongTenant.body).toBeNull();
   });
 
   it("prepares one local Mercado Pago payment row across repeated HTTP RPC calls", async () => {

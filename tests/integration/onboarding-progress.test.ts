@@ -164,10 +164,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Motor de onboarding multi-e
       ]),
     );
 
-    const read = await asActor({ role: "anon" }, (c) =>
-      c.query("select step_key from public.onboarding_progress where tenant_id = $1", [tenantId]),
+    // 20261107121000: além da RLS sem policy, anon não tem mais o privilégio.
+    const error = await expectPgError(
+      asActor({ role: "anon" }, (c) => c.query("select step_key from public.onboarding_progress where tenant_id = $1", [tenantId])),
     );
-    expect(read.rows).toHaveLength(0);
+    expect(error.message).toMatch(/permission denied/i);
   });
 
   // D12.2.1 — status aceita só 'completed'/'skipped'.

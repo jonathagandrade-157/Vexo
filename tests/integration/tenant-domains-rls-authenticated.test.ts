@@ -217,12 +217,24 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("tenant_domains — RLS auth
     });
   });
 
-  describe("anon — preservado exatamente como antes (D17.1)", () => {
-    it("anon continua conseguindo SELECT somente domínios status='active'", async () => {
-      const result = await asActor({ role: "anon" }, (c) => c.query("select id, status from public.tenant_domains where id in ($1, $2)", [domainA, activeDomainA]));
-      const ids = result.rows.map((r: { id: string }) => r.id);
-      expect(ids).toContain(activeDomainA);
-      expect(ids).not.toContain(domainA);
+  describe("anon — somente domínios ativos e somente colunas de roteamento (20261107121000)", () => {
+    it("anon continua conseguindo SELECT somente domínios status='active', apenas tenant_id/domain/status", async () => {
+      const names = await withSuperuser((c) =>
+        c.query<{ id: string; domain: string }>("select id, domain from public.tenant_domains where id in ($1, $2)", [domainA, activeDomainA]),
+      );
+      const domainOf = (id: string) => names.rows.find((row) => row.id === id)!.domain;
+      const result = await asActor({ role: "anon" }, (c) =>
+        c.query<{ domain: string; status: string }>("select tenant_id, domain, status from public.tenant_domains where domain = any($1::text[])", [
+          [domainOf(domainA), domainOf(activeDomainA)],
+        ]),
+      );
+      const domains = result.rows.map((r) => r.domain);
+      expect(domains).toContain(domainOf(activeDomainA));
+      expect(domains).not.toContain(domainOf(domainA));
+      for (const column of ["id", "verification_token_hash", "vercel_error_code"]) {
+        const error = await expectPgError(asActor({ role: "anon" }, (c) => c.query(`select ${column} from public.tenant_domains limit 1`)));
+        expect(error.message, column).toMatch(/permission denied/i);
+      }
     });
 
     it("anon não consegue INSERT", async () => {
@@ -239,22 +251,18 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("tenant_domains — RLS auth
       );
     });
 
-    it("anon não consegue UPDATE (nem domínio ativo)", async () => {
-      const result = await asActor(
-        { role: "anon" },
-        (c) => c.query("update public.tenant_domains set domain_type = 'subdomain' where id = $1", [activeDomainA]),
-        { commit: false },
+    it("anon não consegue UPDATE (nem domínio ativo) — sem privilégio, não só sem policy", async () => {
+      const error = await expectPgError(
+        asActor({ role: "anon" }, (c) => c.query("update public.tenant_domains set domain_type = 'subdomain' where domain is not null"), { commit: false }),
       );
-      expect(result.rowCount).toBe(0);
+      expect(error.message).toMatch(/permission denied/i);
     });
 
-    it("anon não consegue DELETE (nem domínio ativo)", async () => {
-      const result = await asActor(
-        { role: "anon" },
-        (c) => c.query("delete from public.tenant_domains where id = $1", [activeDomainA]),
-        { commit: false },
+    it("anon não consegue DELETE (nem domínio ativo) — sem privilégio, não só sem policy", async () => {
+      const error = await expectPgError(
+        asActor({ role: "anon" }, (c) => c.query("delete from public.tenant_domains where domain is not null"), { commit: false }),
       );
-      expect(result.rowCount).toBe(0);
+      expect(error.message).toMatch(/permission denied/i);
     });
   });
 

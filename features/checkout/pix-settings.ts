@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 
 import type { PixKeyType } from "@/features/settings/pix-schema";
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export interface StorePixSettings {
   pixKey: string;
@@ -12,9 +12,12 @@ export interface StorePixSettings {
 }
 
 /**
- * Fase D2-B (revisão final). Leitura pública (anon) — mesma policy de
- * SELECT que já cobre o resto de `tenants` no storefront (name/logo/
- * whatsapp_phone etc., RLS por linha, não por coluna). Só usada pela
+ * Fase D2-B (revisão final). Leitura no servidor com service_role, sempre
+ * escopada pelo `tenantId` já resolvido por `resolveStorefrontTenant`.
+ * Antes era anon: como a RLS de `tenants` é por linha, a chave pública
+ * permitia listar chave PIX/titular de todas as lojas pela API. A
+ * migration 20261107121000 restringe as colunas legíveis por anon; esta
+ * leitura não depende delas. Só usada pela
  * página de checkout (nunca pela home/produto) — por isso não entra em
  * `PublicTenant`/`resolveStorefrontTenant` (mesmo raciocínio já aplicado
  * às colunas de Aparência, que também têm sua própria leitura dedicada
@@ -25,7 +28,7 @@ export interface StorePixSettings {
  * configurado" (ex.: avisar o cliente em vez de quebrar a seleção).
  */
 export const getStorePixSettings = cache(async (tenantId: string): Promise<StorePixSettings | null> => {
-  const supabase = createSupabasePublicClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { data } = await supabase
     .from("tenants")
     .select("pix_enabled, pix_key, pix_key_type, pix_recipient_name")

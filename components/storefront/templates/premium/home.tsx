@@ -82,7 +82,9 @@ export function PremiumHome({ tenant, categories, products, promotions, banners,
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <p className="text-center font-body text-body-sm text-neutral-500" id="promocoes">Nenhuma promoção no momento.</p>
+        )}
 
         <section className="mx-auto max-w-xl text-center" id="sobre">
           <p className="mb-2 font-label text-label-sm uppercase tracking-widest text-neutral-400">Nossa história</p>

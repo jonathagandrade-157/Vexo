@@ -59,10 +59,12 @@ function FileInputLabel({
  * componente pai via `onPaletteExtracted`, além de disparar o upload.
  */
 export function LogoUploader({
+  canEdit,
   initialLogoPath,
   onPaletteExtracted,
   onDisplayUrlChange,
 }: {
+  canEdit: boolean;
   initialLogoPath: string | null;
   onPaletteExtracted: (colors: string[]) => void;
   /** Reporta ao pai (para o painel de preview) a URL que deve ser exibida como logo — chamado no select de arquivo (preview local imediato) e na remoção (null). Nunca chamado no estado inicial: o pai já deriva isso sozinho de `initialLogoPath`. */
@@ -128,8 +130,8 @@ export function LogoUploader({
 
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <FileInputLabel hasLogo={Boolean(savedPath)} onFileChange={handleFileChange} />
-            {savedPath ? (
+            {canEdit ? <FileInputLabel hasLogo={Boolean(savedPath)} onFileChange={handleFileChange} /> : null}
+            {canEdit && savedPath ? (
               <ConfirmDialog
                 confirmLabel="Remover"
                 description="Tem certeza que deseja remover a logo da loja?"

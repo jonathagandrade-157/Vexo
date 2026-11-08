@@ -277,19 +277,44 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Checkout (Etapa 10)", () =>
     const result = await callCreateOrder(fx.tenantA, cartId);
     const orderId = result.rows[0]!.create_order_from_cart;
 
-    const asWrongTenant = await asActor({ role: "anon" }, (c) =>
+    const asWrongTenant = await asActor({ role: "service_role" }, (c) =>
       c.query("select get_order_confirmation($1, $2) as confirmation", [fx.tenantB, orderId]),
     );
     expect(asWrongTenant.rows[0]?.confirmation).toBeNull();
 
-    const asRightTenant = await asActor({ role: "anon" }, (c) =>
+    const asRightTenant = await asActor({ role: "service_role" }, (c) =>
       c.query("select get_order_confirmation($1, $2) as confirmation", [fx.tenantA, orderId]),
     );
     expect(asRightTenant.rows[0]?.confirmation).not.toBeNull();
   });
 
+  // Confirmação pela URL: a RPC deixou de ser pública (migration
+  // 20261107120000). Com a chave anon/publishable — pública por definição —
+  // ou com a sessão de qualquer usuário, conhecer (tenant, pedido) não basta.
+  it("get_order_confirmation is not executable by anon or authenticated (direct API cannot bypass the signed page proof)", async () => {
+    const cartId = await createCartWithItem(fx.tenantA, productA, 1);
+    const orderId = (await callCreateOrder(fx.tenantA, cartId)).rows[0]!.create_order_from_cart;
+    for (const actor of [{ role: "anon" as const }, { role: "authenticated" as const, userId: fx.userAOwner }]) {
+      const error = await expectPgError(
+        asActor(actor, (c) => c.query("select get_order_confirmation($1, $2) as confirmation", [fx.tenantA, orderId])),
+      );
+      expect(error.message).toMatch(/permission denied/i);
+    }
+    const privileges = await withSuperuser((c) =>
+      c.query<{ anon: boolean; authenticated: boolean; service_role: boolean; public_role: boolean }>(
+        `select has_function_privilege('anon', p.oid, 'execute') as anon,
+                has_function_privilege('authenticated', p.oid, 'execute') as authenticated,
+                has_function_privilege('service_role', p.oid, 'execute') as service_role,
+                coalesce((select bool_or(a.grantee = 0) from aclexplode(p.proacl) a where a.privilege_type = 'EXECUTE'), false) as public_role
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.proname = 'get_order_confirmation'`,
+      ),
+    );
+    expect(privileges.rows).toEqual([{ anon: false, authenticated: false, service_role: true, public_role: false }]);
+  });
+
   it("get_order_confirmation returns null for a random/nonexistent order_id (no enumeration leak)", async () => {
-    const result = await asActor({ role: "anon" }, (c) =>
+    const result = await asActor({ role: "service_role" }, (c) =>
       c.query("select get_order_confirmation($1, $2) as confirmation", [fx.tenantA, randomUUID()]),
     );
     expect(result.rows[0]?.confirmation).toBeNull();

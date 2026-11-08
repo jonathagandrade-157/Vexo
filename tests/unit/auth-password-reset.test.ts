@@ -14,6 +14,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * Mesmo padrão de mock de `tests/unit/melhorenvio-callback-route.test.ts`
  * (client Supabase e `getPublicEnv` mockados via `vi.mock`).
  */
+// Limites de Auth têm testes próprios (auth-rate-limit.test.ts); aqui o foco é o fluxo.
+vi.mock("@/features/auth/rate-limit", () => ({ isAuthAttemptLimited: vi.fn(async () => false), AUTH_RATE_LIMIT_MESSAGE: "limited" }));
 vi.mock("@/lib/env", () => ({
   getPublicEnv: vi.fn(() => ({ NEXT_PUBLIC_SITE_URL: "https://vexoecommerce.vercel.app" })),
   getServerEnv: vi.fn(),
@@ -67,14 +69,14 @@ describe("resetPasswordRequestAction (D7)", () => {
     vi.mocked(getPublicEnv).mockClear();
   });
 
-  it("1. redirectTo aponta para /redefinir-senha (nunca mais /login)", async () => {
+  it("1. redirectTo exchanges the email code before opening the password form", async () => {
     const { resetPasswordForEmail } = mockAuthClient();
 
     await resetPasswordRequestAction(initialResetPasswordRequestState, formDataOf({ email: "lojista@example.com" }));
 
     expect(resetPasswordForEmail).toHaveBeenCalledWith(
       "lojista@example.com",
-      expect.objectContaining({ redirectTo: "https://vexoecommerce.vercel.app/redefinir-senha" }),
+      expect.objectContaining({ redirectTo: "https://vexoecommerce.vercel.app/auth/confirm?purpose=recovery" }),
     );
   });
 

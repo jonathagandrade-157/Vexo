@@ -2,7 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export interface StoreAddress {
   zip: string;
@@ -17,9 +17,11 @@ export interface StoreAddress {
 /**
  * D3.1 §2/§5: endereço da loja para retirada — fonte oficial é
  * `tenants.address_*` (nunca `shipping_settings.origin_zip`, e nunca uma
- * segunda cópia do endereço em `shipping_methods`). Leitura pública (anon),
- * mesmo padrão de `getStorePixSettings` — RLS de `tenants` é por linha,
- * não por coluna, então nenhuma policy nova é necessária.
+ * segunda cópia do endereço em `shipping_methods`). Leitura no servidor
+ * com service_role, escopada pelo `tenantId` já resolvido — mesmo padrão
+ * de `getStorePixSettings`. A página continua exibindo o endereço quando
+ * há retirada; a API pública deixa de listar endereços de todas as lojas
+ * (migration 20261107121000).
  *
  * Retorna `null` quando o endereço está incompleto (loja ainda não
  * preencheu tudo em Configurações) — quem chama decide o que fazer com
@@ -27,7 +29,7 @@ export interface StoreAddress {
  * checkout), nunca inventa ou completa o endereço.
  */
 export const getStoreAddress = cache(async (tenantId: string): Promise<StoreAddress | null> => {
-  const supabase = createSupabasePublicClient();
+  const supabase = createSupabaseServiceRoleClient();
   const { data } = await supabase
     .from("tenants")
     .select("address_zip, address_street, address_number, address_complement, address_neighborhood, address_city, address_state")

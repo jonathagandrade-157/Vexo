@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect, RedirectType } from "next/navigation";
 
 import { createSupabasePublicClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
@@ -202,4 +203,30 @@ export async function clearCartAction(storeSlug: string): Promise<CartActionStat
 
   revalidateCartViews(storeSlug);
   return { status: "success" };
+}
+
+
+/** Form endpoints keep quantity/removal usable before hydration. Ownership,
+ * tenant scoping and validation remain in the existing actions. */
+export async function updateCartItemQuantityFormAction(
+  storeSlug: string,
+  cartItemId: string,
+  _previous: CartActionState,
+  formData: FormData,
+): Promise<CartActionState> {
+  const raw = formData.get("quantity");
+  const result = await updateCartItemQuantityAction(storeSlug, cartItemId, typeof raw === "string" && raw.trim() ? Number(raw) : Number.NaN);
+  if (result.status === "success") redirect(`/loja/${storeSlug}/carrinho`, RedirectType.replace);
+  return result;
+}
+
+export async function removeCartItemFormAction(
+  storeSlug: string,
+  cartItemId: string,
+  _previous: CartActionState,
+  _formData: FormData,
+): Promise<CartActionState> {
+  const result = await removeCartItemAction(storeSlug, cartItemId);
+  if (result.status === "success") redirect(`/loja/${storeSlug}/carrinho`, RedirectType.replace);
+  return result;
 }

@@ -9,6 +9,7 @@ import { resolveActiveTenantForUser } from "@/features/onboarding/resolve-tenant
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils/slugify";
 import { computeGallerySortOrder, isValidGalleryReorder, moveImageToFront } from "./gallery-logic";
+import { saveSimpleProductStock } from "./stock";
 import {
   buildProductGalleryImagePath,
   buildProductImagePath,
@@ -69,40 +70,6 @@ function parseProductForm(formData: FormData) {
     stockQuantity: formData.get("stockQuantity"),
     lowStockThreshold: formData.get("lowStockThreshold"),
   });
-}
-
-/**
- * D19.1.2 — aplica o estoque informado no formulário a product_inventory,
- * sempre DEPOIS do produto já existir/ter sido salvo com sucesso (nunca
- * antes — o trigger prevent_cross_tenant_product_inventory exige que o
- * produto já exista com o tenant_id certo). `stockQuantity === undefined`
- * significa "o lojista deixou o campo em branco" — decisão explícita de
- * D19.1.1 §8/ticket: se ainda não existe linha, não cria nenhuma
- * (produto continua "sem controle de estoque", vende normalmente); se já
- * existia uma linha e o lojista limpou o campo, remove a linha (volta a
- * "sem controle", nunca reinterpretado como 0). Nunca bloqueia a
- * criação/edição do produto em si — uma falha aqui é registrada mas não
- * é motivo para reverter o produto já salvo (mesma filosofia de
- * best-effort já usada em confirmProductImageUploadAction para o Storage).
- */
-async function applyProductStock(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
-  tenantId: string,
-  productId: string,
-  stockQuantity: number | undefined,
-  lowStockThreshold: number | undefined,
-): Promise<void> {
-  if (stockQuantity === undefined) {
-    await supabase.from("product_inventory").delete().eq("product_id", productId).eq("tenant_id", tenantId);
-    return;
-  }
-
-  await supabase
-    .from("product_inventory")
-    .upsert(
-      { tenant_id: tenantId, product_id: productId, stock_quantity: stockQuantity, low_stock_threshold: lowStockThreshold ?? null },
-      { onConflict: "product_id" },
-    );
 }
 
 function fieldErrorsFrom(
@@ -186,7 +153,7 @@ export async function createProductAction(
     return { status: "error", message: "Não foi possível criar o produto. Tente novamente." };
   }
 
-  await applyProductStock(supabase, resolved.tenantId, created.id, parsed.data.stockQuantity, parsed.data.lowStockThreshold);
+  const stockSaved = await saveSimpleProductStock(supabase, resolved.tenantId, created.id, parsed.data.stockQuantity, parsed.data.lowStockThreshold);
 
   revalidatePath("/painel/produtos");
   // D20.7 — nunca mais redireciona sozinha: `ProductGalleryUploader` pode
@@ -199,7 +166,7 @@ export async function createProductAction(
   // chamadora) decide quando navegar — imediatamente, se não havia
   // nenhuma imagem selecionada (mesmo efeito prático de antes), ou só
   // depois de tentar os uploads pendentes.
-  return { status: "success", productId: created.id };
+  return { status: "success", productId: created.id, ...(!stockSaved ? { stockSaveFailed: true } : {}) };
 }
 
 export async function updateProductAction(
@@ -258,9 +225,12 @@ export async function updateProductAction(
     return { status: "error", message: "Produto não encontrado." };
   }
 
-  await applyProductStock(supabase, resolved.tenantId, productId, parsed.data.stockQuantity, parsed.data.lowStockThreshold);
+  const stockSaved = await saveSimpleProductStock(supabase, resolved.tenantId, productId, parsed.data.stockQuantity, parsed.data.lowStockThreshold);
 
   revalidatePath("/painel/produtos");
+  if (!stockSaved) {
+    return { status: "error", message: "Os dados do produto foram salvos, mas o estoque não foi atualizado. Tente salvar novamente." };
+  }
   redirect("/painel/produtos");
 }
 

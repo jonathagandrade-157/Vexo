@@ -14,10 +14,12 @@ export const signUpSchema = z.object({
   phone: z
     .string()
     .trim()
+    .max(32, "Telefone inválido")
     .refine((v) => v.replace(/\D/g, "").length >= 10, "Telefone inválido"),
   document: z
     .string()
     .trim()
+    .max(32, "CPF/CNPJ inválido")
     .refine(isValidCpfOrCnpj, "CPF/CNPJ inválido"),
   password: z.string().min(8, "A senha precisa ter pelo menos 8 caracteres"),
   acceptTerms: z.literal("on", {
@@ -26,6 +28,7 @@ export const signUpSchema = z.object({
 });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;
+export const completeSignupSchema = signUpSchema.omit({ email: true, password: true });
 
 export const signInSchema = z.object({
   email: z.string().trim().toLowerCase().email("E-mail inválido"),

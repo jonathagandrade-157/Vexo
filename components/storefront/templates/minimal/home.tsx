@@ -68,7 +68,9 @@ export function MinimalHome({ tenant, categories, products, promotions, activeCa
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <p className="text-center font-body text-body-sm text-neutral-500" id="promocoes">Nenhuma promoção no momento.</p>
+        )}
 
         <section className="mx-auto max-w-lg text-center" id="sobre">
           <h2 className="mb-2 font-display text-base font-medium text-neutral-900">Sobre a loja</h2>

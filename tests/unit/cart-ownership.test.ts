@@ -12,7 +12,10 @@ const CART_ID = "22222222-2222-4222-8222-222222222222";
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const TOKEN = "a".repeat(43);
 
-function fakeClient(row: { id: string; checkout_order_id: string | null } | null) {
+function fakeClient(
+  row: { id: string; checkout_order_id: string | null } | null,
+  error: { code: string } | null = null,
+) {
   const filters: Array<[string, unknown]> = [];
   const builder = {
     select: vi.fn(() => builder),
@@ -20,7 +23,7 @@ function fakeClient(row: { id: string; checkout_order_id: string | null } | null
       filters.push([column, value]);
       return builder;
     }),
-    maybeSingle: vi.fn(async () => ({ data: row, error: null })),
+    maybeSingle: vi.fn(async () => ({ data: row, error })),
   };
   return { client: { from: vi.fn(() => builder) }, filters };
 }
@@ -63,5 +66,16 @@ describe("cart ownership authorization", () => {
       fakeClient({ id: CART_ID, checkout_order_id: orderId }).client as never,
     );
     await expect(getOwnedActiveCart("loja-a", TENANT_ID)).resolves.toBeNull();
+  });
+
+  it("does not silently convert a database error into an empty cart", async () => {
+    vi.mocked(getCartCredentials).mockResolvedValue({ cartId: CART_ID, token: TOKEN });
+    vi.mocked(createSupabaseServiceRoleClient).mockReturnValue(
+      fakeClient(null, { code: "42501" }).client as never,
+    );
+
+    await expect(getOwnedActiveCart("loja-a", TENANT_ID)).rejects.toThrow(
+      "Falha ao autorizar o carrinho no banco.",
+    );
   });
 });

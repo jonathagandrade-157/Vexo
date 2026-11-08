@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 
 import type { RequestedPaymentMethod } from "@/lib/whatsapp/message";
-import { createSupabasePublicClient } from "@/lib/supabase/server";
+import { createSupabasePublicClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 /** D20.5 — snapshot de um par opção/valor da variante comprada, na ordem de exibição (product_options.position) no momento da compra. */
 export interface OrderConfirmationVariantOption {
@@ -60,18 +60,31 @@ export interface OrderConfirmation {
 }
 
 /**
- * `orderId` (uuid) é o token de posse (não adivinhável) — nunca o
- * order_number sequencial (arquitetura Etapa 10 §11). `tenantId` sempre
- * vem de `resolveStorefrontTenant(slug)`, nunca de parâmetro solto.
+ * Leitura da confirmação. NUNCA chamar sem antes validar a prova de posse
+ * (`verifyOrderAccess`, features/checkout/order-access.ts) — o `orderId`
+ * sozinho deixou de ser credencial. `tenantId` sempre vem de
+ * `resolveStorefrontTenant(slug)`, nunca de parâmetro solto.
+ *
+ * A RPC passa a ser exclusiva de service_role (migration
+ * 20261107120000_order_confirmation_service_role_only.sql). Enquanto essa
+ * migration não estiver aplicada, service_role ainda não tem EXECUTE e o
+ * banco responde 42501: só nesse caso a leitura cai para o contrato antigo
+ * (anon), preservando o funcionamento durante o rollout em qualquer ordem
+ * (código antes ou depois da migration). Remover o fallback após aplicar.
  */
 export const getOrderConfirmation = cache(
   async (tenantId: string, orderId: string): Promise<OrderConfirmation | null> => {
-    const supabase = createSupabasePublicClient();
-    const { data, error } = await supabase.rpc("get_order_confirmation", {
-      p_tenant_id: tenantId,
-      p_order_id: orderId,
-    });
-    if (error || !data) return null;
-    return data as unknown as OrderConfirmation;
+    const args = { p_tenant_id: tenantId, p_order_id: orderId };
+    const privileged = await createSupabaseServiceRoleClient().rpc("get_order_confirmation", args);
+    if (!privileged.error) return (privileged.data as unknown as OrderConfirmation | null) ?? null;
+
+    if (privileged.error.code !== "42501") {
+      console.error("[getOrderConfirmation] failed to load order confirmation", { code: privileged.error.code });
+      return null;
+    }
+
+    const legacy = await createSupabasePublicClient().rpc("get_order_confirmation", args);
+    if (legacy.error || !legacy.data) return null;
+    return legacy.data as unknown as OrderConfirmation;
   },
 );

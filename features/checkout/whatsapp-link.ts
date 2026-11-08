@@ -39,9 +39,9 @@ interface OrderItemRow {
  * contexto de servidor confiável, nunca exposto a `anon`/cliente — por
  * isso pode incluir `customer_phone` (excluído de propósito da projeção
  * pública de `get_order_confirmation`), já que quem chama esta função é
- * sempre a própria página de confirmação do pedido, atrás do mesmo token
- * de posse (`tenant_id` + `order_id` uuid), nunca um endpoint novo exposto
- * a `anon`.
+ * sempre a própria página de confirmação do pedido, depois de validar a
+ * prova de posse assinada (features/checkout/order-access.ts), nunca um
+ * endpoint novo exposto a `anon`.
  *
  * O telefone de DESTINO é sempre `tenants.whatsapp_phone`, lido aqui —
  * nunca um parâmetro desta função, nunca aceito de fora.

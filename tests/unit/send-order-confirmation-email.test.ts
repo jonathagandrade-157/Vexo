@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/env", () => ({
   getEmailEnv: vi.fn(),
   getPublicEnv: vi.fn(() => ({ NEXT_PUBLIC_SITE_URL: "https://vexoecommerce.vercel.app" })),
+  getServerEnv: vi.fn(() => ({ TRIAL_HASH_SECRET: "placeholder-trial-hash-secret-not-real" })),
 }));
 vi.mock("@/features/checkout/order-confirmation", () => ({
   getOrderConfirmation: vi.fn(),
@@ -189,6 +190,13 @@ describe("sendOrderConfirmationEmail", () => {
     expect(payload.to).toBe(INPUT.customerEmail);
     expect(payload.subject).toBe("Recebemos seu pedido #1001 — Loja Teste");
     expect(payload.html).toContain("Recebemos seu pedido");
+    // O link do e-mail é o caminho legítimo de volta à confirmação: precisa
+    // carregar a prova assinada, senão o comprador cairia em "não encontrado".
+    const href = /href="(https:\/\/vexoecommerce\.vercel\.app\/loja\/loja-teste\/pedido\/[^"]+)"/.exec(payload.html)?.[1];
+    expect(href).toBeDefined();
+    const url = new URL(href!.replaceAll("&amp;", "&"));
+    expect(url.pathname).toBe(`/loja/loja-teste/pedido/${INPUT.orderId}`);
+    expect(url.searchParams.get("acesso")).toMatch(/^[0-9a-z]+\.[A-Za-z0-9_-]{43}$/);
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 

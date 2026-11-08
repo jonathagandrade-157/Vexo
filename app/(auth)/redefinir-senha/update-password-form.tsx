@@ -11,35 +11,46 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type SessionCheck = "checking" | "ready" | "invalid";
 
-/**
- * D7 — o link de recuperação do Supabase Auth entrega a sessão como
- * fragmento de URL (`#access_token=...&refresh_token=...&type=
- * recovery`), que nunca chega ao servidor (fragmentos não são enviados em
- * requisições HTTP) — só o browser consegue lê-lo. `createSupabaseBrowserClient()`
- * usa `detectSessionInUrl` (padrão do `@supabase/ssr`/`supabase-js`): ao
- * montar o client, ele processa esse fragmento sozinho, estabelece a
- * sessão e grava os mesmos cookies que `createSupabaseServerClient()` lê
- * no Server Action — por isso `updatePasswordAction` (server-side) enxerga
- * essa sessão sem precisar de nenhuma rota de callback própria.
- *
- * `getSession()` aguarda essa inicialização terminar antes de responder —
- * é a forma recomendada de checar "existe uma sessão de recovery válida?"
- * sem depender só do timing do evento `onAuthStateChange` (que pode
- * disparar antes deste componente se inscrever). Nenhum token é lido,
- * exibido, logado ou repassado para lugar nenhum aqui — só a PRESENÇA de
- * uma sessão é usada para decidir se o formulário aparece.
- */
-export function UpdatePasswordForm() {
+/** Session presence controls presentation only. The server action verifies
+ * the user before updating that user's password. An explicit callback error
+ * hides the form even when the browser already has another valid session.
+ * Implicit invite fragments are handled explicitly below (the SSR browser
+ * client is PKCE-only). */
+export function UpdatePasswordForm({ invalidLink = false }: { invalidLink?: boolean }) {
   const [sessionCheck, setSessionCheck] = useState<SessionCheck>("checking");
   const [state, formAction] = useActionState(updatePasswordAction, initialUpdatePasswordState);
 
   useEffect(() => {
+    if (invalidLink) return;
     const supabase = createSupabaseBrowserClient();
     let active = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (active) setSessionCheck(session ? "ready" : "invalid");
-    });
+    // Convites do Supabase Auth (admin.inviteUserByEmail) voltam pelo fluxo
+    // implícito, com tokens no fragmento. O cliente do @supabase/ssr é PKCE
+    // e recusa esse retorno ("Not a valid PKCE flow url"), então o convite
+    // nunca abria o formulário. Só o fragmento de convite é aceito aqui: a
+    // URL é limpa antes de qualquer outra coisa (tokens fora do histórico,
+    // do Referer e de capturas) e a sessão é validada pelo Auth via setSession.
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const accessToken = fragment.get("access_token");
+    const refreshToken = fragment.get("refresh_token");
+    const hasAuthFragment = fragment.has("access_token") || fragment.has("error") || fragment.has("error_code");
+    if (hasAuthFragment) window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+    if (hasAuthFragment && fragment.get("type") === "invite" && accessToken && refreshToken && !fragment.has("error")) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ data, error }) => {
+        if (active) setSessionCheck(!error && data.session ? "ready" : "invalid");
+      });
+    } else if (hasAuthFragment) {
+      // Erro do provedor ou fragmento que não é convite: nunca abre o formulário.
+      void Promise.resolve().then(() => {
+        if (active) setSessionCheck("invalid");
+      });
+    } else {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (active) setSessionCheck(session ? "ready" : "invalid");
+      });
+    }
 
     const {
       data: { subscription },
@@ -54,9 +65,9 @@ export function UpdatePasswordForm() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [invalidLink]);
 
-  if (sessionCheck === "checking") {
+  if (!invalidLink && sessionCheck === "checking") {
     return (
       <div className="flex flex-col items-center gap-3 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6 text-center shadow-2xl md:p-8">
         <p className="font-body text-body-md text-on-surface-variant">Verificando seu link…</p>
@@ -64,7 +75,7 @@ export function UpdatePasswordForm() {
     );
   }
 
-  if (sessionCheck === "invalid") {
+  if (invalidLink || sessionCheck === "invalid") {
     return (
       <div className="flex flex-col items-center gap-4 rounded-xl border border-surface-container-highest bg-surface-container-lowest p-6 text-center shadow-2xl md:p-8">
         <span className="material-symbols-outlined text-4xl text-error">link_off</span>

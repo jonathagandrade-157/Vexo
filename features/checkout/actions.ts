@@ -12,6 +12,7 @@ import { resolveStorefrontTenant } from "@/features/storefront/resolve-tenant";
 import { sendOrderConfirmationEmail } from "@/lib/email/send-order-confirmation";
 import { checkCheckoutRateLimit } from "./rate-limit";
 import { createOwnedOrder, type CheckoutShippingSelection } from "./create-owned-order";
+import { orderConfirmationPath } from "./order-access";
 import { checkoutSchema, friendlyCheckoutError, isAddressComplete, type CheckoutActionState, type CheckoutInput } from "./schema";
 
 function fieldErrorsFrom(parsed: ReturnType<typeof checkoutSchema.safeParse>): CheckoutActionState["fieldErrors"] {
@@ -94,7 +95,7 @@ export async function createOrderAction(
       storeSlug,
     );
     if ("checkoutUrl" in payment) redirect(payment.checkoutUrl);
-    redirect(`/loja/${storeSlug}/pedido/${cart.checkoutOrderId}`);
+    redirect(orderConfirmationPath(storeSlug, resolution.tenant.id, cart.checkoutOrderId));
   }
 
   const { customerName, customerEmail, customerPhone, shippingMethodId, shippingPrice, shippingProvider, zip } = parsed.data;
@@ -219,5 +220,5 @@ export async function createOrderAction(
   if ("checkoutUrl" in payment) {
     redirect(payment.checkoutUrl);
   }
-  redirect(`/loja/${storeSlug}/pedido/${orderId}`);
+  redirect(orderConfirmationPath(storeSlug, resolution.tenant.id, orderId));
 }

@@ -69,17 +69,30 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("PIX direto em tenants (Fase
     expect(result.rowCount).toBe(0);
   });
 
-  it("anon consegue ler pix_key/pix_recipient_name (necessário para exibir no checkout)", async () => {
+  it("anon continua lendo exatamente as colunas da vitrine (resolveStorefrontTenant e roteamento por host)", async () => {
+    const storefrontColumns =
+      "id, name, slug, segment, description, instagram_handle, whatsapp_phone, contact_email, onboarding_completed_at, logo_url, primary_color, secondary_color, storefront_template, checkout_mode";
+    const result = await asActor({ role: "anon" }, (c) => c.query(`select ${storefrontColumns} from public.tenants where id = $1`, [fx.tenantA]));
+    expect(result.rows).toHaveLength(1);
+    const byHost = await asActor({ role: "anon" }, (c) => c.query("select slug, status from public.tenants where id = $1", [fx.tenantA]));
+    expect(byHost.rows).toHaveLength(1);
+  });
+
+  it("anon NÃO lê pix_key/pix_recipient_name pela API; o servidor (service_role) lê para o checkout", async () => {
     await withSuperuser((c) =>
       c.query(
         "update public.tenants set pix_enabled = true, pix_key = '11999999999', pix_key_type = 'phone', pix_recipient_name = 'Loja Exemplo', address_city = 'São Paulo' where id = $1",
         [fx.tenantA],
       ),
     );
-    const result = await asActor({ role: "anon" }, (c) =>
+    for (const column of ["pix_key", "pix_key_type", "pix_recipient_name", "pix_enabled", "created_by"]) {
+      const error = await expectPgError(asActor({ role: "anon" }, (c) => c.query(`select ${column} from public.tenants where slug is not null`)));
+      expect(error.message, column).toMatch(/permission denied/i);
+    }
+    const server = await asActor({ role: "service_role" }, (c) =>
       c.query("select pix_key, pix_recipient_name from public.tenants where id = $1", [fx.tenantA]),
     );
-    expect(result.rows[0]).toMatchObject({ pix_key: "11999999999", pix_recipient_name: "Loja Exemplo" });
+    expect(server.rows[0]).toMatchObject({ pix_key: "11999999999", pix_recipient_name: "Loja Exemplo" });
     await withSuperuser((c) =>
       c.query(
         "update public.tenants set pix_enabled = false, pix_key = null, pix_key_type = null, pix_recipient_name = null, address_city = null where id = $1",
@@ -87,6 +100,7 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("PIX direto em tenants (Fase
       ),
     );
   });
+
 
   it("CHECK rejeita pix_key_type fora de cpf_cnpj/email/phone/random", async () => {
     const err = await expectPgError(

@@ -229,11 +229,11 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("Gestão de Pedidos (Etapa 1
   });
 
   // E2 — nota interna nunca aparece na confirmação pública do pedido (get_order_confirmation, anon).
-  it("internal note is never exposed via get_order_confirmation (customer-facing, anon)", async () => {
+  it("internal note is never exposed via get_order_confirmation (customer-facing confirmation)", async () => {
     const orderId = await insertOrder(fx.tenantA, "PAID");
     await updateStatus(fx.userAOwner, fx.tenantA, orderId, "PREPARING", "Nota confidencial da equipe interna");
 
-    const confirmation = await asActor({ role: "anon" }, (c) =>
+    const confirmation = await asActor({ role: "service_role" }, (c) =>
       c.query<{ get_order_confirmation: Record<string, unknown> }>("select get_order_confirmation($1, $2)", [fx.tenantA, orderId]),
     );
     const payload = confirmation.rows[0]!.get_order_confirmation;

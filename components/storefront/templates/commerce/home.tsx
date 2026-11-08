@@ -101,7 +101,9 @@ export function CommerceHome({ tenant, categories, products, promotions, banners
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <p className="text-center font-body text-body-sm text-neutral-500" id="promocoes">Nenhuma promoção no momento.</p>
+        )}
 
         <section className="mx-auto max-w-2xl text-center" id="sobre">
           <h2 className="mb-3 font-headline text-headline-sm text-neutral-900">Sobre a {tenant.name}</h2>
