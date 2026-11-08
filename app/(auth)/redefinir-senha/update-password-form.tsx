@@ -14,7 +14,8 @@ type SessionCheck = "checking" | "ready" | "invalid";
 /** Session presence controls presentation only. The server action verifies
  * the user before updating that user's password. An explicit callback error
  * hides the form even when the browser already has another valid session.
- * SDK initialization also processes legacy implicit invite links. */
+ * Implicit invite fragments are handled explicitly below (the SSR browser
+ * client is PKCE-only). */
 export function UpdatePasswordForm({ invalidLink = false }: { invalidLink?: boolean }) {
   const [sessionCheck, setSessionCheck] = useState<SessionCheck>("checking");
   const [state, formAction] = useActionState(updatePasswordAction, initialUpdatePasswordState);
@@ -24,9 +25,32 @@ export function UpdatePasswordForm({ invalidLink = false }: { invalidLink?: bool
     const supabase = createSupabaseBrowserClient();
     let active = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (active) setSessionCheck(session ? "ready" : "invalid");
-    });
+    // Convites do Supabase Auth (admin.inviteUserByEmail) voltam pelo fluxo
+    // implícito, com tokens no fragmento. O cliente do @supabase/ssr é PKCE
+    // e recusa esse retorno ("Not a valid PKCE flow url"), então o convite
+    // nunca abria o formulário. Só o fragmento de convite é aceito aqui: a
+    // URL é limpa antes de qualquer outra coisa (tokens fora do histórico,
+    // do Referer e de capturas) e a sessão é validada pelo Auth via setSession.
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const accessToken = fragment.get("access_token");
+    const refreshToken = fragment.get("refresh_token");
+    const hasAuthFragment = fragment.has("access_token") || fragment.has("error") || fragment.has("error_code");
+    if (hasAuthFragment) window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+    if (hasAuthFragment && fragment.get("type") === "invite" && accessToken && refreshToken && !fragment.has("error")) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ data, error }) => {
+        if (active) setSessionCheck(!error && data.session ? "ready" : "invalid");
+      });
+    } else if (hasAuthFragment) {
+      // Erro do provedor ou fragmento que não é convite: nunca abre o formulário.
+      void Promise.resolve().then(() => {
+        if (active) setSessionCheck("invalid");
+      });
+    } else {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (active) setSessionCheck(session ? "ready" : "invalid");
+      });
+    }
 
     const {
       data: { subscription },

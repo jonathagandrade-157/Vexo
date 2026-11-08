@@ -71,6 +71,8 @@ test.describe("matriz real de permissões da equipe", () => {
     const invitedPage=await invitedContext.newPage();
     await invitedPage.goto(message.link);
     await expect(invitedPage.getByLabel("Nova senha",{exact:true})).toBeVisible();
+    // Tokens do convite nunca permanecem na URL (histórico/Referer/capturas).
+    expect(new URL(invitedPage.url()).hash).toBe("");
     await invitedPage.getByLabel("Nova senha",{exact:true}).fill(process.env.E2E_OWNER_PASSWORD!);
     await invitedPage.getByLabel("Confirme a nova senha",{exact:true}).fill(process.env.E2E_OWNER_PASSWORD!);
     await invitedPage.getByRole("button",{name:"Salvar nova senha",exact:true}).click();
