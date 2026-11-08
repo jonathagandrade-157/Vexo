@@ -1,11 +1,44 @@
 # VEXO — relatório de prontidão comercial
 
-Atualizado em 2026-11-07. **PR em validação; sem liberação de produção,
-beta com dados reais ou operação comercial.** A rodada atual amplia testes
-de lojista/comprador no executor GitHub Actions com Supabase/Storage/Auth/
-Mailpit descartáveis. Não utiliza o computador do titular nem o Preview
-com credenciais de produção. Nenhum merge, migration de produção, envio
-externo, cobrança, exportação real ou revogação foi executado nesta rodada.
+Atualizado em 2026-11-08. **Sem liberação de produção, beta com dados reais
+ou operação comercial.** Nenhum merge, migration de produção, deploy,
+revogação, exportação real, carga ou mutação de teste em produção foi
+executado nas rodadas abaixo.
+
+## Auditoria de segurança e concorrência — 07–08/11
+
+Relatório completo com os 20 controles (resultado, ambiente, SHA,
+evidência, limitação, correção pendente):
+[2026-11-07-security-concurrency-audit.md](reports/2026-11-07-security-concurrency-audit.md).
+Entrega na PR #4 (rascunho), empilhada sobre a PR #3.
+
+- **Confirmação de pedido pela URL — corrigido em código, aberto em
+  produção.** Página e links legítimos agora exigem prova HMAC (tenant,
+  pedido, expiração); prova ausente, adulterada, de outra loja ou de outro
+  pedido não lê o banco. A regressão de isolamento que estava vermelha
+  passou nas três larguras (CI 42402645086); RPC negada a anon/authenticated
+  no PostgREST real. Produção segue expondo a RPC a `anon` até deploy +
+  migration `20261107120000`.
+- **Dados públicos excessivos — corrigido em código, aberto em produção.**
+  Pela chave pública, `anon` lê PIX, titular, endereço e `created_by` de toda
+  loja não suspensa (contagem somente leitura: 5 lojas, 1 com PIX, 1 com
+  endereço). Migration `20261107121000` restringe colunas e remove DML anônimo.
+- **Convite de equipe — causa confirmada.** service_role de produção não tem
+  SELECT em `roles` nem INSERT em `tenant_members`; o laboratório Postgres
+  concede tudo e não detectava. Migration `20261107122000` concede o mínimo.
+- **Rate limit de Auth** (login, cadastro, reenvio, recuperação) adicionado,
+  com política de falha explícita. **Sem proteção anti-robô**: decisão pendente.
+- **Concorrência**: sete cenários com conexões independentes (última unidade,
+  variantes, duplo envio, reenvio após timeout, cancelamento simultâneo e
+  repetido, devolução única) aprovados no laboratório.
+- **Produção conferida somente leitura**: HSTS preload e cabeçalhos ativos,
+  CSP só report-only; URLs alternativas exigem SSO Vercel; nenhum `.map`
+  servido; `anon` legada ativa e nomes legados na Vercel (Production e Preview);
+  senhas vazadas desligadas no Supabase Auth.
+
+Três migrations novas aguardam o mesmo GO específico de release já exigido
+para a migration da PR #3. "Não verificado" continua não aprovado;
+homologação não existe.
 
 ## Revisão de 07/11 — execução atual
 
