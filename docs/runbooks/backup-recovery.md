@@ -140,6 +140,32 @@ restore-lab.mjs aceita exclusivamente origem sintética local e destino
 loopback vazio; **não é executor de restore de produção**. A recuperação real
 exige procedimento específico acima, revisado para o destino aprovado.
 
+## Critérios verificáveis de aceite
+
+Cada critério é aprovado/reprovado por um número ou hash, nunca por
+impressão. Referência somente leitura da produção em **08/11/2026**
+(recontar na janela; divergência sem explicação reprova):
+
+| Item | Referência 08/11 | Critério de aceite no restore isolado |
+| --- | --- | --- |
+| Migrations | 123, última `20261026210716` (128 após o release) | lista idêntica, mesma ordem |
+| Banco | PostgreSQL 17.6, 16 MB | versão major igual; restore sem erro |
+| Usuários Auth | 6 | contagem igual; login de identidade sintética aprovada com hash preservado |
+| Lojas / produtos / pedidos / clientes | 5 / 11 / 10 / 1 | contagens iguais por tabela; checksum `md5(string_agg(id::text, ',' order by id))` igual por tabela |
+| Auditoria | 183 linhas | contagem igual; última linha com mesmo `created_at` |
+| Storage | 9 objetos, 1.471.843 bytes (tenant-media 4, product-media 5) | mesma quantidade, mesmos bytes, SHA-256 de cada objeto igual ao manifesto |
+| Vault | 0 segredos | 0; se >0, exige escrow aprovado antes do export |
+| Integridade do bundle | — | todo ciphertext relido com SHA-256 igual; manifesto cifrado publicado por último |
+| Isolamento | — | nenhum e-mail, webhook, OAuth, cron ou pagamento disparado durante o restore |
+| RLS | — | anon sem carrinhos/pedidos; dono de uma loja não vê outra |
+| RPO | meta proposta 24 h | idade da cópia restaurada registrada |
+| RTO | meta proposta 4 h | início→fim do restore registrado |
+
+Regra do release: nenhuma migration de produção sem um export **da própria
+janela** com readback aprovado pelos critérios de integridade acima. O
+projeto está no plano gratuito do Supabase: sem PITR e sem backup diário
+baixável da plataforma — o export externo é o único ponto de retorno de dados.
+
 ## Evidências e gate
 
 [CI 40810300128](https://github.com/jonathagandrade-157/Vexo/actions/runs/40810300128),

@@ -5,6 +5,12 @@ revogada por este documento. Execução em produção requer GO do proprietário
 Projeto esperado: `vqbiurnfqkjkrenigxzv`. Uma exposição potencial mantém o
 lançamento bloqueado até a revogação efetiva ser comprovada.
 
+Reconferido em 08/11/2026: `anon` legada **ativa** (`disabled=false`),
+publishable moderna `29900830-208d-4288-98ef-a68527825db7` ativa; Vercel
+Production e Preview ainda só com os nomes legados (compartilhados). Antes
+de revogar, concluir o Passo A de [credentials-and-payments.md](credentials-and-payments.md)
+— senão Previews e qualquer consumidor esquecido continuam na chave legada.
+
 ## Consumidores e release candidato
 
 | Consumidor | Variável nova | Validação |

@@ -1,93 +1,138 @@
-# PR #3 — release controlado
+# Release controlado — candidato consolidado (PR #3 + PR #4)
 
-Atualizado em 05/11/2026. Nenhum merge, migration ou deploy autorizado por
-este documento. Tratar GO técnico, beta e comercial como decisões distintas.
+Atualizado em 08/11/2026. **Este documento não autoriza** merge na `main`,
+deploy, migration, troca ou revogação de credenciais, nem qualquer mutação
+em produção. Cada etapa marcada com 🔒 exige o GO específico do proprietário,
+registrado antes da execução. GO técnico (hotfix), beta e comercial são
+decisões distintas.
 
-## Gates antes de solicitar GO técnico
+## Candidato
 
-1. Fixar SHA integral do HEAD revisado e CI desse SHA com todos os jobs
-   aprovados. Confirmar que main não mudou e repetir merge-tree se mudar.
-   Merge sem conflitos verificado contra main
-   `da1ab1d4bcab1be78c332bd50b4305b9e3c887d5`; não alterar o checkout principal.
-2. Backup externo criptografado restaurado no destino isolado e evidência
-   aceita conforme backup-recovery.md. Laboratório sintético não fecha gate.
-3. Chaves modernas testadas no projeto alvo, inventário de consumidores e
-   candidato/rollback compatíveis prontos. Aprovação explícita da troca e
-   revogação; acesso legado só está encerrado quando probe after-revoke passa.
-4. Listar migrations remotas imediatamente antes da janela. Pendência
-   esperada da PR é somente `20261027150000_cart_product_read_grant.sql`.
-   Se existir outra pendência, interromper e revisar; não usar push cego.
-5. Registrar operador, janela, deployment atual, candidato e rollback,
-   configuração (nomes/IDs), smoke, gatilhos de interrupção e GO explícito.
-6. Conferir Auth Site URL/redirects/SMTP conforme `auth-email-release.md`.
-   Confirmação está desativada em produção; habilitá-la exige mudança de
-   configuração explicitamente incluída no GO, com entrega sintética aceita
-   no ambiente isolado. Não presumir que a chave Resend ativa SMTP do Auth.
+| Item | Valor |
+| --- | --- |
+| Branch candidata | `codex/vexo-launch-blockers` (PR #3); PR #4 incorporada por fast-forward |
+| SHA candidato | ver PR #3 / `docs/RELEASE_READINESS.md` (SHA integral, CI e homologação do mesmo SHA) |
+| Produção atual | deployment `dpl_AJnRSLMhKw959n5DtwtemJ52ZkJ1`, commit `da1ab1d` (rollback de código) |
+| Banco de produção | `vqbiurnfqkjkrenigxzv`, 123 migrations, última `20261026210716` |
+| Migrations do release | 5, listadas abaixo; `node scripts/operations/release-migrations.mjs list` |
 
-Asaas não bloqueia um hotfix técnico quando esses gates estiverem satisfeitos.
-Beta exige recuperação/segurança e limitações explícitas; comercial exige
-também pagamentos, assinaturas, suporte e operação validados.
+## Migrations do release, na ordem
 
-## Migration mínima revisada
+Todas são de privilégio (GRANT/REVOKE) e comentário; **nenhuma altera
+dados, RLS, funções ou tabelas**. A homologação de rollout aplica exatamente
+esta sequência sobre uma réplica no estado da produção, com dados.
 
-O único SQL novo concede SELECT de `public.products` a `service_role`.
-Não altera dados, RLS, grants anon/authenticated ou migrations históricas.
-É necessário para o embed cart_items → products no BFF administrativo;
-BYPASSRLS não concede privilégios SQL de tabela automaticamente.
-Integrações verificam o join real e que o browser não lê carrinhos diretamente.
+| # | Versão | Efeito | Compensação (só com GO, como nova migration) |
+| --- | --- | --- | --- |
+| 1 | `20261027150000_cart_product_read_grant` | service_role lê `products` → carrinho volta a funcionar | `revoke select on public.products from service_role;` (carrinho volta a falhar) |
+| 2 | `20261107120000_order_confirmation_service_role_only` | RPC da confirmação sai de anon e vai para service_role | `grant execute on function public.get_order_confirmation(uuid, uuid) to anon;` (reabre exposição) |
+| 3 | `20261107121000_anon_minimal_column_privileges` | anon só lê colunas da vitrine; sem DML anônimo | `grant select on public.tenants, public.tenant_domains to anon;` (reabre PIX/endereço) |
+| 4 | `20261107122000_team_invite_service_role_grants` | convite de equipe funciona | `revoke insert, select on public.tenant_members from service_role; revoke select on public.roles from service_role;` |
+| 5 | `20261107123000_team_management_authenticated_grants` | troca de função (só `role_id`) e remoção funcionam | `revoke update (role_id), delete on public.tenant_members from authenticated;` |
 
-## Ordem exata após autorização
+Compatibilidade de ordem: o código candidato funciona **antes e depois** de
+cada migration (confirmação cai para o contrato antigo só em `42501`; PIX e
+endereço já são lidos com service_role, que tem SELECT em `tenants`).
+Ainda assim, o roteiro aplica migrations **antes** de promover o código para
+que a janela de exposição termine junto com o deploy.
 
-1. Congelar SHA, registrar GO e baseline, conferir backup e configuração de
-   chaves modernas. Restringir merge/autodeploy à janela; merge da PR pode
-   disparar produção automaticamente na Vercel.
-2. No alvo confirmado, aplicar **somente** a migration revisada pelo mecanismo
-   normal de migrations com histórico. Registrar versão e privilégios antes/
-   depois. Não executar migration histórica, seed ou reset.
-3. Configurar os nomes modernos nos consumidores aprovados e disparar build
-   novo do SHA revisado. NEXT_PUBLIC exige rebuild. Repetir baseline do probe.
-4. Fazer merge/promoção apenas na janela autorizada, validar deployment e
-   commit efetivos; nunca promover um Preview com banco/chaves sandbox.
-5. Smoke público e de sessão abaixo. Se falhar, parar antes de revogar.
-6. Com GO de revogação e consumidores migrados, desativar API keys legadas.
-   Rodar probe after-revoke e repetir sessão nova/reload/smoke. Remover nomes
-   legados dos ambientes aprovados; registrar IDs/horários, nunca valores.
-7. Monitorar logs sanitizados e alertas durante a janela; fechar registro
-   técnico somente com evidências. Não liberar cobrança por inferência.
+## Gates antes de pedir o GO técnico
+
+1. CI e homologação de rollout **verdes no SHA integral** do candidato;
+   `main` inalterada desde `da1ab1d` (senão refazer merge-tree e CI).
+2. 🔒 Backup externo cifrado **da produção tirado na própria janela**, com
+   readback íntegro e critérios de [backup-recovery.md](backup-recovery.md#critérios-verificáveis-de-aceite).
+   O piloto de restore aceito é gate de **beta**; para o hotfix, exigir no
+   mínimo o export + readback da janela (o free plan não tem PITR nem backup
+   diário da plataforma — não há outro ponto de retorno de dados).
+3. Lista remota de migrations imediatamente antes da janela: exatamente
+   123, última `20261026210716`. Qualquer diferença → interromper.
+4. Chaves modernas configuradas e testadas conforme
+   [credentials-and-payments.md](credentials-and-payments.md); Preview já
+   separado de Produção (sem `SUPABASE_SERVICE_ROLE_KEY`/`SUPABASE_SECRET_KEY`
+   de produção no alvo Preview).
+5. Registro da janela: operador, horário, deployment atual e candidato,
+   critérios de interrupção abaixo e GO explícito.
+
+## Roteiro de publicação (ordem exata, após GO)
+
+1. 🔒 Congelar: desligar merges na `main` fora do operador; anotar
+   deployment atual (`dpl_AJnRSLMhKw959n5DtwtemJ52ZkJ1`) como rollback.
+2. 🔒 Backup da janela (gate 2). Sem bundle íntegro, **parar**.
+3. 🔒 Conferir migrations remotas (gate 3).
+4. 🔒 Aplicar as 5 migrations **somente** pelo mecanismo com histórico
+   (`supabase db push` vinculado ao projeto, após `--dry-run` mostrar
+   exatamente as 5, nesta ordem). Nunca `reset`, seed ou SQL avulso.
+5. Verificar privilégios (SQL somente leitura do checklist "pós-migration"
+   abaixo). Divergência → interromper e decidir compensação.
+6. 🔒 Configurar na Vercel Production `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e
+   `SUPABASE_SECRET_KEY` (valores direto do painel Supabase para o cofre da
+   Vercel, nunca por chat/commit). As legadas permanecem até o passo 10.
+7. 🔒 Merge do PR #3 na `main` (dispara o build de produção). Conferir que o
+   deployment promovido tem o **SHA candidato**; READY não basta.
+8. Smoke de produção (abaixo), com o escopo sintético aprovado.
+9. Observar 30 min: runtime errors, cron (deve parar de falhar sem MP
+   configurado), Sentry sanitizado.
+10. 🔒 Revogação das chaves legadas (seção própria) e probe after-revoke.
+
+## Smoke de produção pós-deploy
+
+Leitura (sem dados novos): home, `/loja/superbrands` com 4 produtos,
+produto com variantes, `/api/health`, painel sem sessão → login, cron sem
+token → 401, `/loja/superbrands/pedido/<uuid>` sem prova → "não encontrado".
+
+Com escopo sintético aprovado (loja e conta de teste do proprietário, nunca
+clientes reais): adicionar ao carrinho e **ver o item após reload**;
+checkout WhatsApp até a confirmação; confirmação abre só com o link
+recebido; URL sem `?acesso=` → "não encontrado"; cancelar o pedido sintético
+e conferir devolução única do estoque; convidar, trocar função e remover um
+membro sintético.
+
+Probes de exposição (chave pública, sem sessão):
+`POST /rest/v1/rpc/get_order_confirmation` → 401/403;
+`GET /rest/v1/tenants?select=pix_key` → 401/403;
+`GET /rest/v1/tenants?select=name,slug` → 200.
+
+## Critérios de interrupção
+
+Interromper e não seguir para o próximo passo se ocorrer qualquer um:
+- migration remota diferente do esperado, ou `db push --dry-run` com algo
+  além das 5 migrations;
+- backup da janela incompleto ou readback divergente;
+- deployment promovido com SHA diferente do candidato;
+- carrinho vazio após adicionar, divergência de total/estoque, pedido
+  duplicado, acesso cruzado entre lojas;
+- chave pública lendo PIX, endereço ou pedido após as migrations;
+- erro de autenticação/sessão generalizado, ou taxa de erro de runtime
+  acima da linha de base de antes da janela;
+- qualquer chamada a provedor externo (Mercado Pago, Asaas, e-mail) fora do
+  escopo aprovado.
 
 ## Rollback
 
-Antes da revogação: reverter/preservar deployment anterior só se continuar
-seguro e funcional, ou corrigir candidato. Após revogação: usar artefato
-revisado compatível com chaves modernas. Deployment antigo que depende de
-JWT legado não serve como rollback; não reativar chave potencialmente exposta.
-Preparar esse artefato antes de executar a troca.
+- **Código, antes da revogação**: promover de volta `dpl_AJnRSLMhKw959n5DtwtemJ52ZkJ1`.
+  As migrations 1, 4 e 5 podem permanecer. O código antigo lê confirmação,
+  PIX e endereço de retirada **com a chave pública**; com as migrations 2 e 3
+  aplicadas, essas três telas deixam de funcionar. Decidir na hora, com GO:
+  manter (loja sem confirmação/PIX/retirada até corrigir o candidato) ou
+  aplicar as compensações 2 e 3 (reabre a exposição). Preferir corrigir e
+  republicar o candidato.
+- **Código, depois da revogação**: o deployment antigo usa as chaves legadas
+  e **não serve**; o rollback é um build do SHA anterior com chaves modernas,
+  preparado antes da revogação.
+- **Banco**: compensações por migration na tabela acima, sempre como nova
+  migration com GO. Restore de dados só para perda/corrupção, pelo
+  procedimento de backup-recovery.md — nunca para falha visual.
 
-Banco: grant é aditivo, sem transformação de dados, e pode permanecer ao
-reverter código compatível. Se a contingência aprovada exigir remover o
-acesso, SQL compensatório é `revoke select on table public.products from
-service_role;`, com impacto conhecido: leitura do carrinho volta a falhar.
-Registrar nova migration compensatória; não apagar histórico nem fazer reset.
-Restore é para corrupção/perda de dados e exige procedimento específico;
-não restaurar produção indiscriminadamente por falha visual.
+## Troca e revogação das chaves antigas
 
-## Smoke pós-deploy
-
-- SuperBrands: home/quatro produtos/âncoras e nenhuma navegação interna 404.
-- Carrinho: adicionar, reload, quantidade, remoção, totais e isolamento por loja.
-- Checkout: validações até antes da confirmação; pedido sintético completo
-  somente no ambiente e escopo especificamente aprovados.
-- Lojista: login/sessão nova, painel, produtos, pedidos e configurações.
-- Auth: cadastro/retomada e recuperação no escopo sintético autorizado,
-  link inválido/expirado, reenvio e senha anterior negada após troca; não
-  criar contas nem enviar e-mails reais fora da janela/destinatário aprovados.
-- Cron sem pagamentos pendentes: resposta vazia normal, sem inicializar MP.
-- Console/hidratação, HTTP, logs, autorização e páginas desktop/Pixel 7.
-- Probe: moderno funcional e público sem acesso direto a carrinhos;
-  chaves antigas 401 após revogação.
-
-Interromper se houver erro de autenticação, carrinho vazio incorreto,
-divergência de estoque/total, acesso cruzado, migration inesperada ou
-integração externa disparada fora do escopo. O acesso browser de produção
-foi negado pelo controle de origem nesta sessão; é necessário liberar a
-superfície autorizada ou operador executar esse smoke. Não contornar o bloqueio.
+Detalhes e probes em [supabase-key-rotation.md](supabase-key-rotation.md).
+Resumo após o passo 9 estável:
+1. 🔒 Confirmar que nenhum consumidor usa o JWT legado (Vercel Production e
+   Preview, jobs, automações; Edge Functions: zero em 05/11).
+2. 🔒 Desativar no painel Supabase as API keys legadas `anon` e `service_role`.
+3. Probe `scripts/operations/verify-key-cutover.mjs` modo after-revoke:
+   publishable lê catálogo, não lê carrinho; secret lê carrinho; **ambas as
+   legadas 401**. Repetir smoke de leitura e login.
+4. Remover os nomes legados da Vercel e rebuild. Registrar IDs e horários,
+   nunca valores.

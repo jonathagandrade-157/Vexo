@@ -1,5 +1,31 @@
 # Homologação isolada: configuração e aceite
 
+## Estado em 08/11/2026
+
+| Modalidade | Estado | Detalhe |
+| --- | --- | --- |
+| **Homologação efêmera de rollout** (GitHub Actions) | **Em uso** | `.github/workflows/homologation.yml`: Supabase real descartável (Auth, PostgREST, Storage, Mailpit), banco/chaves/dados sintéticos próprios; parte da linha de base exata da produção (123 migrations), semeia loja/pedido/carrinho pelas APIs reais, prova os defeitos de produção, aplica as 5 pendentes na ordem e prova correções, negações da chave pública e dados intactos; depois HTTP real e navegador |
+| **Homologação hospedada** (Supabase + Vercel Preview) | **Bloqueada por dependência** | Criar o projeto Supabase foi negado pela política de permissões desta sessão (transação real). Organização "Vexo" no plano gratuito com 2 projetos ativos (`Vexo` produção e `onlycard-homologacao`, de outro produto — não usar) e 1 pausado (`MenuNext`); o limite gratuito costuma ser 2 ativos |
+
+Para liberar a hospedada, o proprietário escolhe uma opção e cria o projeto
+(gratuito) pelo painel ou autoriza a criação:
+1. pausar `onlycard-homologacao` ou outro projeto ativo e criar
+   `vexo-homologacao` (us-east-1) na organização "Vexo"; ou
+2. outra organização/conta gratuita exclusiva para homologação.
+
+Depois: aplicar as 128 migrations com `supabase db push` vinculado **somente**
+ao projeto novo; configurar Auth (Site URL/redirects só da homologação, SMTP
+de teste), e na Vercel as variáveis de Preview do projeto novo conforme
+[credentials-and-payments.md](credentials-and-payments.md) (Passos A e B).
+Checklist de isolamento antes do primeiro uso: URL Supabase ≠
+`vqbiurnfqkjkrenigxzv`; nenhuma chave, `TRIAL_HASH_SECRET`, `OAUTH_STATE_SECRET`,
+`CRON_SECRET`, Resend, Mercado Pago ou Asaas de produção no alvo Preview;
+crons ausentes em Preview (a Vercel só agenda em Production); webhooks de
+provedores apontando só para a URL de homologação; dados exclusivamente
+sintéticos. O código recusa segredos de servidor em Preview apontado para o
+banco de produção (`lib/env.ts`).
+
+
 Inventário de nomes reconferido em 05/11/2026. Nenhum valor foi baixado ou alterado.
 Preview Vercel do projeto `vexo.ecommerce` contém entradas compartilhadas
 Production/Preview de Supabase legado, Mercado Pago, TRIAL_HASH_SECRET e
