@@ -187,6 +187,33 @@ let cachedEmailEnv: EmailServerEnv | undefined;
 let cachedCronEnv: CronServerEnv | undefined;
 
 /**
+ * Previews da Vercel herdam hoje as credenciais de produção (mesmo banco,
+ * mesma service role). Um Preview que aponte para o projeto Supabase de
+ * produção nunca recebe segredos de servidor: carrinho, checkout, pedidos,
+ * convites, cadastro, pagamentos, e-mail e cron falham fechados, e só as
+ * páginas públicas (chave publicável, sob RLS) continuam renderizando.
+ * Homologação usa um projeto Supabase próprio, com variáveis de Preview
+ * dedicadas (docs/runbooks/credentials-and-payments.md). O ref não é
+ * segredo: identifica o projeto em URLs públicas.
+ */
+export const PRODUCTION_SUPABASE_REF = "vqbiurnfqkjkrenigxzv";
+
+export function assertNotPreviewOnProductionData(env: Record<string, string | undefined> = process.env): void {
+  if (env.VERCEL_ENV !== "preview") return;
+  let host = "";
+  try {
+    host = new URL(env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname;
+  } catch {
+    return;
+  }
+  if (host === `${PRODUCTION_SUPABASE_REF}.supabase.co`) {
+    throw new Error(
+      "Preview bloqueado para operações de servidor: este deployment aponta para o banco de produção. Configure o Supabase de homologação nas variáveis de Preview.",
+    );
+  }
+}
+
+/**
  * Server-only, apesar do nome: os VALORES são `NEXT_PUBLIC_*` (seguros de
  * expor), mas esta FUNÇÃO nunca pode ser chamada do browser. `readSchema`
  * recebe `process.env` inteiro e o Zod lê as chaves de dentro dele
@@ -240,6 +267,7 @@ export function getServerEnv(): ServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getServerEnv() must never be called from the browser.");
   }
+  assertNotPreviewOnProductionData();
   cachedServerEnv ??= readSchema(
     serverSchema,
     {
@@ -278,6 +306,7 @@ export function getMercadoPagoEnv(): MercadoPagoServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getMercadoPagoEnv() must never be called from the browser.");
   }
+  assertNotPreviewOnProductionData();
   if (!cachedMercadoPagoEnv) {
     try {
       cachedMercadoPagoEnv = readSchema(mercadoPagoServerSchema, process.env, "Mercado Pago");
@@ -305,6 +334,7 @@ export function getBillingEnv(): BillingServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getBillingEnv() must never be called from the browser.");
   }
+  assertNotPreviewOnProductionData();
   if (!cachedBillingEnv) {
     try {
       cachedBillingEnv = readSchema(billingServerSchema, process.env, "Billing");
@@ -332,6 +362,7 @@ export function getMelhorEnvioEnv(): MelhorEnvioServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getMelhorEnvioEnv() must never be called from the browser.");
   }
+  assertNotPreviewOnProductionData();
   if (!cachedMelhorEnvioEnv) {
     try {
       const raw = readSchema(melhorEnvioServerSchema, process.env, "Melhor Envio");
@@ -369,6 +400,7 @@ export function getVercelEnv(): VercelServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getVercelEnv() must never be called from the browser.");
   }
+  assertNotPreviewOnProductionData();
   if (!cachedVercelEnv) {
     try {
       cachedVercelEnv = readSchema(vercelServerSchema, process.env, "Vercel");
@@ -401,6 +433,7 @@ export function getEmailEnv(): EmailServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getEmailEnv() must never be called from the browser.");
   }
+  assertNotPreviewOnProductionData();
   if (!cachedEmailEnv) {
     try {
       const raw = readSchema(emailServerSchema, process.env, "Email");
@@ -426,6 +459,7 @@ export function getCronEnv(): CronServerEnv {
   if (typeof window !== "undefined") {
     throw new Error("getCronEnv() must never be called from the browser.");
   }
+  assertNotPreviewOnProductionData();
   if (!cachedCronEnv) {
     try {
       cachedCronEnv = readSchema(cronServerSchema, process.env, "Cron");

@@ -157,6 +157,29 @@ describe("lib/env", () => {
     expect(() => getServerEnv()).not.toThrow();
   });
 
+  it("Preview apontando para o banco de produção nunca recebe segredos de servidor (fail closed)", async () => {
+    Object.assign(process.env, VALID_ENV, { VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: "https://vqbiurnfqkjkrenigxzv.supabase.co" });
+    try {
+      const env = await import("@/lib/env");
+      expect(() => env.getServerEnv()).toThrow(/Preview bloqueado/);
+      expect(() => env.getCronEnv()).toThrow(/Preview bloqueado/);
+      expect(() => env.getEmailEnv()).toThrow(/Preview bloqueado/);
+      expect(() => env.getMercadoPagoEnv()).toThrow(/Preview bloqueado/);
+      // Páginas públicas continuam renderizando com a chave publicável, sob RLS.
+      expect(env.getPublicEnv().NEXT_PUBLIC_SUPABASE_URL).toBe("https://vqbiurnfqkjkrenigxzv.supabase.co");
+    } finally {
+      delete process.env.VERCEL_ENV;
+    }
+  });
+
+  it("Preview com projeto de homologação e Production com o banco real seguem normalmente", async () => {
+    const { assertNotPreviewOnProductionData } = await import("@/lib/env");
+    expect(() => assertNotPreviewOnProductionData({ VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: "https://homologref123.supabase.co" })).not.toThrow();
+    expect(() => assertNotPreviewOnProductionData({ VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: "https://vqbiurnfqkjkrenigxzv.supabase.co" })).not.toThrow();
+    expect(() => assertNotPreviewOnProductionData({ NEXT_PUBLIC_SUPABASE_URL: "https://vqbiurnfqkjkrenigxzv.supabase.co" })).not.toThrow();
+    expect(() => assertNotPreviewOnProductionData({ VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: "https://vqbiurnfqkjkrenigxzv.supabase.co.evil.example" })).not.toThrow();
+  });
+
   it("refuses to read server env vars when called from the browser", async () => {
     Object.assign(process.env, VALID_ENV);
     const { getServerEnv } = await import("@/lib/env");
