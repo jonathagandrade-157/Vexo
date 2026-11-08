@@ -5,6 +5,58 @@ ou operação comercial.** Nenhum merge, migration de produção, deploy,
 revogação, exportação real, carga ou mutação de teste em produção foi
 executado nas rodadas abaixo.
 
+## Release candidato pronto para decisão — 08/11
+
+**Nada foi publicado.** O código abaixo está pronto para o GO; todas as
+ações em produção estão em [controlled-release.md](runbooks/controlled-release.md),
+marcadas 🔒 e aguardando aprovação específica.
+
+| Item | Estado |
+| --- | --- |
+| Código candidato | `c23c660f503ac6970e983fbee5c7915e2bfa13aa` na branch `codex/vexo-launch-blockers` (PR #3); PR #4 incorporada por fast-forward, sem conflito; `main` inalterada em `da1ab1d` |
+| CI do candidato | [42489555296](https://github.com/jonathagandrade-157/Vexo/actions/runs/42489555296): 1.402 unitários, 748 PostgreSQL, 17 HTTP reais, **108/108 navegador**, audit 0, smoke público, recovery-lab — todos verdes |
+| Homologação de rollout | [42489555372](https://github.com/jonathagandrade-157/Vexo/actions/runs/42489555372): réplica no estado exato da produção (123 migrations) com loja, pedido e carrinho sintéticos → 8 defeitos de produção reproduzidos → 5 migrations aplicadas na ordem → 23 verificações aprovadas (carrinho lê produtos; chave pública negada na RPC do pedido, em PIX/titular/endereço/dono, no hash de domínio, em pedidos/itens/clientes/carrinhos/pagamentos, e sem escrita de estoque; vitrine lê; equipe com privilégio mínimo; dados sintéticos idênticos) → HTTP 17/17 e **navegador 108/108** sobre a réplica migrada |
+| Migrations | 5, na ordem: `20261027150000`, `20261107120000`, `20261107121000`, `20261107122000`, `20261107123000` — só privilégios; compensação de cada uma no runbook |
+| Correções desde a auditoria | retorno do Mercado Pago com `?` duplo; Preview apontado para o banco de produção recusa segredos de servidor; diálogo de banners volta a ser modal após reordenação (falha mobile recorrente); anon sem SELECT ocioso em 5 relações |
+
+### Homologação hospedada: dependência
+
+A homologação acima é **efêmera** (GitHub Actions, Supabase local real).
+A hospedada (projeto Supabase + Preview dedicado) não foi criada: a criação
+do projeto foi negada pela política de permissões desta sessão. O plano
+gratuito da organização "Vexo" tem 2 projetos ativos (produção e
+`onlycard-homologacao`, de outro produto). Opções e checklist de isolamento
+em [homologation-configuration.md](runbooks/homologation-configuration.md).
+
+### Roteiro, interrupção e recuperação
+
+- Roteiro exato, smoke, critérios de interrupção e rollback (inclusive o
+  que o código antigo perde após as migrations 2 e 3):
+  [controlled-release.md](runbooks/controlled-release.md).
+- Backup: nenhuma migration sem export cifrado **da própria janela** com
+  readback; critérios numéricos de aceite com o inventário de 08/11 em
+  [backup-recovery.md](runbooks/backup-recovery.md#critérios-verificáveis-de-aceite).
+  O laboratório do CI **não** prova recuperação de produção; o piloto B2
+  segue aguardando custodiante, conta/bucket, executor, teto de custo e
+  aprovação ([backup-pilot-b2.md](runbooks/backup-pilot-b2.md)).
+- Chaves: troca para as modernas no release e revogação das legadas com
+  probe after-revoke em [supabase-key-rotation.md](runbooks/supabase-key-rotation.md);
+  pré-requisito: separar Preview (Passo A de
+  [credentials-and-payments.md](runbooks/credentials-and-payments.md)).
+- Hotfix × vendas × billing: matriz em credentials-and-payments.md.
+  O hotfix não depende de Mercado Pago (checkout WhatsApp).
+
+### Decisões pendentes do proprietário
+
+1. **CAPTCHA** (cadastro/login no Supabase Auth, que cobre a API direta, e
+   checkout): adotar? Turnstile é gratuito mas exige conta Cloudflare.
+2. **Expiração das reservas de estoque de pedidos WhatsApp não pagos**:
+   prazo e quem cancela (hoje só o lojista devolve o estoque).
+3. GO do release (backup da janela, 5 migrations, chaves modernas, merge).
+4. Separação do Preview (Passo A) e projeto de homologação hospedada.
+5. Credenciais Mercado Pago (sandbox, depois produção) — hoje vazias.
+6. Piloto B2: custodiante/cofre, conta, executor, custo e aprovação.
+
 ## Auditoria de segurança e concorrência — 07–08/11
 
 Relatório completo com os 20 controles (resultado, ambiente, SHA,
