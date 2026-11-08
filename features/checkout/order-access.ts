@@ -25,7 +25,19 @@ export function orderConfirmationPath(storeSlug: string, tenantId: string, order
   return `/loja/${encodeURIComponent(storeSlug)}/pedido/${encodeURIComponent(orderId)}?${ORDER_ACCESS_QUERY_PARAM}=${encodeURIComponent(token)}`;
 }
 
+/**
+ * O alfabeto do token nunca contém `?`, `&` nem `#`. Gateways que anexam
+ * os próprios parâmetros ao `back_url` com um segundo `?` (em vez de `&`)
+ * entregariam `acesso=<token>?collection_id=...`; cortar no primeiro
+ * separador recupera o token sem aceitar nenhum valor adulterado — o
+ * restante ainda passa pela verificação HMAC completa.
+ */
+export function normalizeOrderAccessToken(token: string | string[] | undefined): string | undefined {
+  if (Array.isArray(token) || token === undefined) return undefined;
+  return token.split(/[?&#]/, 1)[0];
+}
+
 export function verifyOrderAccess(tenantId: string, orderId: string, token: string | string[] | undefined): OrderAccessVerification {
   if (Array.isArray(token)) return "invalid";
-  return verifyOrderAccessToken({ key: orderAccessKey(), tenantId, orderId, token });
+  return verifyOrderAccessToken({ key: orderAccessKey(), tenantId, orderId, token: normalizeOrderAccessToken(token) });
 }

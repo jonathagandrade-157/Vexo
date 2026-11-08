@@ -176,6 +176,20 @@ describe("OrderConfirmationPage — prova de posse assinada", () => {
     });
   }
 
+  it("retorno do gateway que anexa parâmetros com um segundo '?' continua abrindo a confirmação", async () => {
+    const token = tokenFor(TENANT.id, ORDER_ID);
+    const element = await OrderConfirmationPage(paramsFor(ORDER_ID, `${token}?collection_id=123&status=approved`));
+    expect(emptyStateOf(element)).toBeNull();
+    expect(getOrderConfirmation).toHaveBeenCalledWith(TENANT.id, ORDER_ID);
+  });
+
+  it("sufixo após separador não legitima uma assinatura adulterada", async () => {
+    const forged = tokenFor(TENANT.id, OTHER_ORDER_ID);
+    const element = await OrderConfirmationPage(paramsFor(ORDER_ID, `${forged}?collection_id=123`));
+    expect(emptyStateOf(element)).toBe("Pedido não encontrado");
+    expect(getOrderConfirmation).not.toHaveBeenCalled();
+  });
+
   it("identificador que não é UUID nunca chega à RPC", async () => {
     const element = await OrderConfirmationPage(paramsFor("1001", tokenFor(TENANT.id, ORDER_ID)));
     expect(emptyStateOf(element)).toBe("Pedido não encontrado");
