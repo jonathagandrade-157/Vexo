@@ -221,7 +221,7 @@ async function assertAfter() {
   check("dados: chave pública negada no hash de verificação de domínio", denied(hash), `HTTP ${hash.status}`);
   for (const table of ["orders", "order_items", "customers", "carts", "cart_items", "payments"]) {
     const result = await rest(`/rest/v1/${table}?select=*&limit=1`, { key: publishableKey });
-    check(`dados: chave pública não lista ${table}`, denied(result) || (result.status === 200 && Array.isArray(result.json) && result.json.length === 0), `HTTP ${result.status}`);
+    check(`dados: chave pública negada em ${table}`, denied(result), `HTTP ${result.status}`);
   }
   const storefront = await rest(`/rest/v1/tenants?select=id,name,slug,checkout_mode&id=eq.${state.tenantId}`, { key: publishableKey });
   check("vitrine: chave pública ainda lê os campos da vitrine", storefront.status === 200 && storefront.json?.[0]?.name === "Loja Homologação", `HTTP ${storefront.status}`);

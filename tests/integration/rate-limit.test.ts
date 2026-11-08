@@ -135,10 +135,13 @@ describe.skipIf(!process.env.RUN_INTEGRATION_TESTS)("check_rate_limit (D15-S.2)"
       );
       expect(errRpc.message).toMatch(/permission denied for function/i);
 
-      const tableResult = await asActor(actor, (c) =>
-        c.query("select * from public.rate_limit_counters limit 1"),
+      // anon: sem privilégio desde 20261107121000; authenticated: RLS sem policy devolve vazio.
+      const tableResult = await asActor(actor, (c) => c.query("select * from public.rate_limit_counters limit 1")).then(
+        (result) => ({ rows: result.rows, denied: false }),
+        (error: Error) => ({ rows: [], denied: /permission denied/i.test(error.message) }),
       );
       expect(tableResult.rows).toEqual([]);
+      if (actor.role === "anon") expect(tableResult.denied).toBe(true);
     }
   });
 

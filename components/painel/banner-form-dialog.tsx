@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { SelectField } from "@/components/ui/select-field";
@@ -44,6 +44,27 @@ export function BannerFormDialog({ trigger, banner }: { trigger: React.ReactNode
   useEffect(() => {
     if (state.status === "success") dialogRef.current?.close();
   }, [state]);
+
+  // Reordenar a lista (ex.: "Mover para cima" seguido de revalidação) faz o
+  // React mover estes nós no DOM. Pela especificação HTML, mover um <dialog>
+  // aberto o retira da camada modal: ele continua `open`, mas no fluxo da
+  // página, e no celular a barra inferior fixa cobre "Salvar alterações".
+  // Depois de cada render, um diálogo aberto fora da camada modal volta a
+  // ser modal; os valores do formulário são preservados.
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog?.open) return;
+    let isModal = true;
+    try {
+      isModal = dialog.matches(":modal");
+    } catch {
+      return;
+    }
+    if (!isModal) {
+      dialog.close();
+      dialog.showModal();
+    }
+  });
 
   useEffect(() => {
     if (!localPreview) return;

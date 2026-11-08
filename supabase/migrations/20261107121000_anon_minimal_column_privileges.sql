@@ -14,7 +14,7 @@
 -- para anon — a RLS já negava —, então isto é defesa em profundidade sem
 -- mudança de comportamento.
 --
--- Não altera dados nem policies. Rollback:
+-- Não altera dados nem policies. Rollback (por tabela, se necessário):
 --   grant select on public.tenants, public.tenant_domains to anon;
 
 revoke select on table public.tenants from anon;
@@ -45,6 +45,15 @@ begin
   end loop;
 end;
 $$;
+
+-- SELECT de anon em tabelas/views sem nenhuma policy de leitura para anon,
+-- conforme inventário somente leitura da produção (07–08/11): a RLS já
+-- devolvia vazio; o privilégio sai também. Lista explícita para revisão.
+revoke select on table public.customers from anon;
+revoke select on table public.notifications from anon;
+revoke select on table public.onboarding_progress from anon;
+revoke select on table public.rate_limit_counters from anon;
+revoke select on table public.team_member_profiles from anon;
 
 alter default privileges for role postgres in schema public
   revoke insert, update, delete, truncate on tables from anon;
