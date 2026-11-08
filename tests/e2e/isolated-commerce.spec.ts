@@ -479,6 +479,8 @@ test.describe("comércio com Supabase descartável", () => {
   });
 
   test("cria pedido externo, baixa estoque uma vez e exibe o pedido ao lojista", async ({ page, browser }) => {
+    // Janela do limitador de checkout zerada: os cenários anteriores saem do mesmo IP do laboratório.
+    await query("delete from public.rate_limit_counters where key like 'checkout:%'");
     const errors = collectErrors(page);
     await addProduct(page);
     const cookie = (await page.context().cookies()).find((value) => value.name === `vexo_cart_${slug}`)!;

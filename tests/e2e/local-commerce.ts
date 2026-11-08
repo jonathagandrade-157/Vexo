@@ -20,6 +20,16 @@ export async function query(sql: string, values: unknown[] = [], actorId?: strin
   } catch (error) { await db.query("rollback"); throw error; }
   finally { await db.end(); }
 }
+/**
+ * O limitador de checkout (5/60 s por IP+loja) é real no laboratório, mas
+ * todos os cenários saem do mesmo 127.0.0.1: checkouts de testes anteriores
+ * (duplo clique, replays) podiam esgotar a janela do teste seguinte. Cada
+ * cenário de checkout começa com a janela zerada no banco descartável; o
+ * limitador em si continua ativo e coberto pelos testes unitários.
+ */
+export async function resetCheckoutRateLimit() {
+  await query("delete from public.rate_limit_counters where key like 'checkout:%'");
+}
 export async function login(page: Page, email = process.env.E2E_OWNER_EMAIL!) {
   await page.goto("/login");
   await page.getByLabel("E-mail", { exact: true }).fill(email);

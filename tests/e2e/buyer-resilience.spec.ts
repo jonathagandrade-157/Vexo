@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { actionRequest, addBuyerProduct, fillCheckout, lockCheckoutCarts, login, otherSlug, query, replayAction, seedBuyerProduct, slug, unique, visual, watchErrors } from "./local-commerce";
+import { actionRequest, addBuyerProduct, fillCheckout, lockCheckoutCarts, login, otherSlug, query, replayAction, resetCheckoutRateLimit, seedBuyerProduct, slug, unique, visual, watchErrors } from "./local-commerce";
 
 test.describe("carrinho após adicionar produto", () => {
   test.skip(process.env.E2E_ISOLATED_SUPABASE !== "1", "Only disposable loopback services.");
@@ -38,6 +38,7 @@ test.describe("carrinho após adicionar produto", () => {
 
 test.describe("checkout e estoque isolados", () => {
   test.skip(process.env.E2E_ISOLATED_SUPABASE !== "1", "Only disposable loopback services.");
+  test.beforeEach(async () => { await resetCheckoutRateLimit(); });
   test("mantém variante, promoção, quantidade e snapshot até pedido e confirmação", async ({ page, browser }, info) => {
     const errors = watchErrors(page); const item = await seedBuyerProduct(5, true);
     await addBuyerProduct(page, item.productSlug, true);
@@ -126,7 +127,10 @@ test.describe("checkout e estoque isolados", () => {
         await expect.poll(()=>[page,other].some(p=>p.url().includes("/pedido/"))).toBe(true);
       }
       const loser=[page,other].find(p=>!p.url().includes("/pedido/"))!;
-      await expect(loser.locator("form").getByRole("alert").first()).toContainText(/estoque|finalizar|disponível/i);
+      const loserAlert = loser.locator("form").getByRole("alert").first();
+      await expect(loserAlert).toContainText(/estoque|disponível/i);
+      // A recusa precisa ser por estoque, nunca pelo limitador de tentativas.
+      await expect(loserAlert).not.toContainText(/muitas tentativas/i);
       expect((await query("select stock_quantity from public.product_inventory where product_id=$1",[item.productId])).rows[0].stock_quantity).toBe(0);
       await loser.locator("form").getByRole("alert").first().scrollIntoViewIfNeeded();
       await visual(loser,info,"ultima-unidade-negada");
