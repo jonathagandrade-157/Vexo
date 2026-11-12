@@ -38,7 +38,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: supabase/setup-cli@bea637206310b05056109c4ffab256b2c3c522af
+      - uses: supabase/setup-cli@9f97a8880aff8507123eac41a95501b846a3976f
         with:
           version: 2.115.0
       - name: Install native recovery tools
@@ -167,7 +167,7 @@ jobs:
       # Pinned action commit plus an explicit CLI version: the runner starts
       # only a disposable local stack. No Supabase access token, project ref,
       # linked project, or production secret is available to this job.
-      - uses: supabase/setup-cli@bea637206310b05056109c4ffab256b2c3c522af
+      - uses: supabase/setup-cli@9f97a8880aff8507123eac41a95501b846a3976f
         with:
           version: 2.115.0
 
