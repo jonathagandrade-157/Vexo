@@ -84,8 +84,8 @@ async function seed() {
     const ids = [];
     for (const [index, owner] of owners.entries()) {
       const tenant = await db.query(
-        `insert into public.tenants (name, slug, created_by, status, onboarding_completed_at, checkout_mode, whatsapp_phone, pix_enabled, pix_key, pix_key_type, pix_recipient_name)
-         values ($1, $2, $3, 'active', now(), 'whatsapp', '11999999999', true, $4, 'email', 'Titular Sintetico') returning id`,
+        `insert into public.tenants (name, slug, created_by, status, onboarding_completed_at, checkout_mode, whatsapp_phone, pix_enabled, pix_key, pix_key_type, pix_recipient_name, address_city)
+         values ($1, $2, $3, 'active', now(), 'whatsapp', '11999999999', true, $4, 'email', 'Titular Sintetico', 'São Paulo') returning id`,
         [`Loja Recuperação ${index}`, `recovery-${index}-${runId}`, owner.id, `pix-${index}@example.test`],
       );
       const tenantId = tenant.rows[0].id;
