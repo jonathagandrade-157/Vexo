@@ -58,6 +58,21 @@ async function withDb(url, fn) {
   try { return await fn(db); } finally { await db.end(); }
 }
 
+async function withServiceRoleDb(url, fn) {
+  return withDb(url, async (db) => {
+    await db.query("begin");
+    try {
+      await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: "service_role" })]);
+      const result = await fn(db);
+      await db.query("commit");
+      return result;
+    } catch (error) {
+      await db.query("rollback");
+      throw error;
+    }
+  });
+}
+
 // Pequenas imagens válidas (bytes mágicos reais) com conteúdo único por arquivo.
 function png(seed) {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), createHash("sha256").update(`png-${seed}`).digest()]);
@@ -78,9 +93,7 @@ async function seed() {
     if (error || !data.user) throw new Error("Synthetic owner creation failed.");
     owners.push({ id: data.user.id, email, password });
   }
-  const tenants = await withDb(s.dbUrl, async (db) => {
-    await db.query("begin");
-    await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ role: "service_role" })]);
+  const tenants = await withServiceRoleDb(s.dbUrl, async (db) => {
     const ids = [];
     for (const [index, owner] of owners.entries()) {
       const tenant = await db.query(
@@ -103,7 +116,6 @@ async function seed() {
       }
       ids.push({ tenantId, productId: product.rows[0].id });
     }
-    await db.query("commit");
     return ids;
   });
 
@@ -117,12 +129,12 @@ async function seed() {
     const { error } = await admin.storage.from(bucket).upload(path, bytes, { contentType, upsert: false });
     if (error) throw new Error("Synthetic Storage upload failed.");
   }
-  await withDb(s.dbUrl, (db) => db.query("update public.products set main_image = $1 where id = $2", [files[0][1], tenants[0].productId]));
+  await withServiceRoleDb(s.dbUrl, (db) => db.query("update public.products set main_image = $1 where id = $2", [files[0][1], tenants[0].productId]));
 
   // Um pedido real pelo BFF (RPC transacional), com baixa de estoque e auditoria.
   const ownerHash = createHash("sha256").update(randomBytes(32)).digest("hex");
   const cartId = randomUUID();
-  await withDb(s.dbUrl, async (db) => {
+  await withServiceRoleDb(s.dbUrl, async (db) => {
     await db.query("insert into public.carts (id, tenant_id, owner_token_hash) values ($1, $2, $3)", [cartId, tenants[0].tenantId, ownerHash]);
     await db.query("insert into public.cart_items (cart_id, tenant_id, product_id, quantity) values ($1, $2, $3, 3)", [cartId, tenants[0].tenantId, tenants[0].productId]);
   });
