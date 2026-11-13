@@ -245,7 +245,7 @@ function restoreDatabase() {
     },
   });
   if (result.status !== 0) {
-    const diagnostic = result.stderr.match(/Synthetic restore failed in [a-z-]+: psql failed \(exit \d+; SQLSTATE [0-9A-Z,]+\); raw output withheld\./)?.[0];
+    const diagnostic = result.stderr.match(/Synthetic restore failed in [a-z-]+: psql failed \(exit \d+; SQLSTATE [0-9A-Z,]+\); raw output withheld\.|Synthetic restore target preflight not empty: (?:[a-z._]+=[0-9]+,?)+/)?.[0];
     throw new Error(diagnostic ?? "Database restore into the isolated target failed; diagnostics withheld by restore-lab.mjs.");
   }
   const summary = JSON.parse(result.stdout.trim().split("\n").at(-1));
