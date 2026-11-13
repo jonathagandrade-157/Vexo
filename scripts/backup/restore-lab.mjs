@@ -99,7 +99,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   main().catch((error) => {
     const safe = /^Synthetic restore failed in [a-z-]+: psql failed \(exit \d+; SQLSTATE [0-9A-Z,]+\); raw output withheld\.$/.test(error.message) ||
       /^Synthetic restore target preflight not empty: (?:[a-z._]+=[0-9]+,?)+$/.test(error.message);
-    console.error(safe ? error.message : "Isolated restore failed; sensitive output withheld. Do not promote a release on this result.");
+    const frame = error.stack?.match(/restore-lab\.mjs:(\d+):\d+/);
+    console.error(safe ? error.message : frame ? `Synthetic restore failed at restore-lab line ${frame[1]}; raw output withheld.` : "Isolated restore failed; sensitive output withheld. Do not promote a release on this result.");
     process.exitCode = 1;
   });
 }
