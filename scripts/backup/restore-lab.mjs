@@ -53,12 +53,18 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
   // A Supabase stack initializes this empty table itself. Reuse that managed
   // structure there; a raw PostgreSQL laboratory still restores its schema.
   const components = allComponents.filter((record) => record.kind !== "history-schema" || !targetHasMigrationHistory);
-  const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--single-transaction", "--file", "-"], {
+  const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--set", "VERBOSITY=sqlstate", "--single-transaction", "--file", "-"], {
     env: pgEnvironment(targetDatabaseUrl),
+    reportSqlState: true,
   });
-  psql.child.stdout.resume();
+  let lastComponent = "preflight";
+  psql.child.stdout.setEncoding("utf8");
+  psql.child.stdout.on("data", (chunk) => {
+    for (const match of chunk.matchAll(/VEXO_RESTORE_COMPONENT_([a-z-]+)/g)) lastComponent = match[1];
+  });
   try {
     for (const record of components) {
+      psql.child.stdin.write(`\\echo VEXO_RESTORE_COMPONENT_${record.kind}\n`);
       const verified = await decryptStream(join(directory, record.filename), identity, psql.child.stdin, { end: false });
       if (verified.plaintextSha256 !== record.plaintextSha256 || verified.plaintextBytes !== record.plaintextBytes) {
         throw new Error("Decrypted component differs from the trusted manifest; transaction will roll back.");
@@ -67,7 +73,10 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
     }
     psql.child.stdin.end();
     await psql.done;
-  } catch (error) { psql.child.kill(); throw error; }
+  } catch (error) {
+    psql.child.kill();
+    throw new Error(`Synthetic restore failed in ${lastComponent}: ${error.message}`);
+  }
   return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedMigrationHistorySchema: targetHasMigrationHistory, productionRecoveryValidated: false,
     limitations: ["Managed Auth/provider configuration", "Actual Supabase root-key transfer", "Storage service restore", "Real backup destination and retention"] };
 }
@@ -85,5 +94,9 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch(() => { console.error("Isolated restore failed; sensitive output withheld. Do not promote a release on this result."); process.exitCode = 1; });
+  main().catch((error) => {
+    const safe = /^Synthetic restore failed in [a-z-]+: psql failed \\(exit \\d+; SQLSTATE [0-9A-Z,]+\\); raw output withheld\\.$/.test(error.message);
+    console.error(safe ? error.message : "Isolated restore failed; sensitive output withheld. Do not promote a release on this result.");
+    process.exitCode = 1;
+  });
 }
