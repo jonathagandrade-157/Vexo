@@ -27,27 +27,32 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
   // Reject source aliases and non-loopback targets BEFORE connecting.
   assertEmptyRestoreTarget(sourceDatabaseUrl, targetDatabaseUrl, {}, env);
   const { database } = await connectDatabase({ databaseUrl: targetDatabaseUrl });
+  let targetHasMigrationHistory = false;
   try {
     const appTables = (await database.query("select count(*) as count from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.relkind = 'r' and n.nspname in ('public','private')")).rows[0].count;
     const counts = { appTables };
-    for (const table of ["auth.users", "storage.objects", "storage.buckets", "vault.secrets"]) {
+    for (const table of ["auth.users", "storage.objects", "storage.buckets", "vault.secrets", "supabase_migrations.schema_migrations"]) {
       const exists = (await database.query("select to_regclass($1) as name", [table])).rows[0].name;
       counts[table] = exists ? (await database.query(`select count(*) as count from ${table}`)).rows[0].count : 0;
+      if (table === "supabase_migrations.schema_migrations") targetHasMigrationHistory = Boolean(exists);
     }
     assertEmptyRestoreTarget(sourceDatabaseUrl, targetDatabaseUrl, counts, env);
   } finally { await database.end(); }
 
-  const ordered = ["roles", "schema", "history-schema", "vault-data", "data", "history-data"];
-  const components = ordered.map((kind) => {
+  const required = ["roles", "schema", "history-schema", "vault-data", "data", "history-data"];
+  const allComponents = required.map((kind) => {
     const records = manifest.components.filter((entry) => entry.kind === kind);
     if (records.length !== 1) throw new Error("Incomplete or ambiguous database bundle.");
     const record = records[0];
     assertSafeArtifactName(record.filename);
     return record;
   });
-  for (const record of components) {
+  for (const record of allComponents) {
     if (await hashFile(join(directory, record.filename)) !== record.ciphertextSha256) throw new Error("Encrypted component hash mismatch; restore not started.");
   }
+  // A Supabase stack initializes this empty table itself. Reuse that managed
+  // structure there; a raw PostgreSQL laboratory still restores its schema.
+  const components = allComponents.filter((record) => record.kind !== "history-schema" || !targetHasMigrationHistory);
   const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--single-transaction", "--file", "-"], {
     env: pgEnvironment(targetDatabaseUrl),
   });
@@ -63,7 +68,7 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
     psql.child.stdin.end();
     await psql.done;
   } catch (error) { psql.child.kill(); throw error; }
-  return { runId: manifest.runId, syntheticDatabaseRestored: true, productionRecoveryValidated: false,
+  return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedMigrationHistorySchema: targetHasMigrationHistory, productionRecoveryValidated: false,
     limitations: ["Managed Auth/provider configuration", "Actual Supabase root-key transfer", "Storage service restore", "Real backup destination and retention"] };
 }
 
