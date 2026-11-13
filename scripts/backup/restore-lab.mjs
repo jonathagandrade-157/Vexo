@@ -52,9 +52,13 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
   for (const record of allComponents) {
     if (await hashFile(join(directory, record.filename)) !== record.ciphertextSha256) throw new Error("Encrypted component hash mismatch; restore not started.");
   }
-  // A Supabase stack initializes this empty table itself. Reuse that managed
-  // structure there; a raw PostgreSQL laboratory still restores its schema.
-  const components = allComponents.filter((record) => record.kind !== "history-schema" || !targetHasMigrationHistory);
+  // A Supabase stack initializes the migration table and protected roles.
+  // Reuse those managed structures there; a raw PostgreSQL laboratory still
+  // restores both components from the bundle.
+  const components = allComponents.filter((record) => {
+    if (!targetHasMigrationHistory) return true;
+    return !["roles", "history-schema"].includes(record.kind);
+  });
   const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--set", "VERBOSITY=sqlstate", "--single-transaction", "--file", "-"], {
     env: pgEnvironment(targetDatabaseUrl),
     reportSqlState: true,
@@ -81,7 +85,8 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
     if (!pipeClosed) psql.child.kill();
     throw new Error(`Synthetic restore failed in ${lastComponent}: ${cause.message}`);
   }
-  return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedMigrationHistorySchema: targetHasMigrationHistory, productionRecoveryValidated: false,
+  return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedManagedRoles: targetHasMigrationHistory,
+    reusedMigrationHistorySchema: targetHasMigrationHistory, productionRecoveryValidated: false,
     limitations: ["Managed Auth/provider configuration", "Actual Supabase root-key transfer", "Storage service restore", "Real backup destination and retention"] };
 }
 
