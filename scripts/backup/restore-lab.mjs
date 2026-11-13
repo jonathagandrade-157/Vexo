@@ -76,8 +76,10 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
     psql.child.stdin.end();
     await psql.done;
   } catch (error) {
-    psql.child.kill();
-    throw new Error(`Synthetic restore failed in ${lastComponent}: ${error.message}`);
+    const pipeClosed = new Set(["EPIPE", "ERR_STREAM_DESTROYED", "ERR_STREAM_PREMATURE_CLOSE"]).has(error.code);
+    const cause = pipeClosed ? await psql.done.catch((processError) => processError) : error;
+    if (!pipeClosed) psql.child.kill();
+    throw new Error(`Synthetic restore failed in ${lastComponent}: ${cause.message}`);
   }
   return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedMigrationHistorySchema: targetHasMigrationHistory, productionRecoveryValidated: false,
     limitations: ["Managed Auth/provider configuration", "Actual Supabase root-key transfer", "Storage service restore", "Real backup destination and retention"] };
