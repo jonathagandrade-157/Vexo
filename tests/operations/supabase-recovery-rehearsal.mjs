@@ -244,7 +244,10 @@ function restoreDatabase() {
       BACKUP_SYNTHETIC_ONLY: "1", BACKUP_RESTORE_ISOLATED: "1",
     },
   });
-  if (result.status !== 0) throw new Error("Database restore into the isolated target failed; diagnostics withheld by restore-lab.mjs.");
+  if (result.status !== 0) {
+    const diagnostic = result.stderr.match(/Synthetic restore failed in [a-z-]+: psql failed \\(exit \\d+; SQLSTATE [0-9A-Z,]+\\); raw output withheld\\./)?.[0];
+    throw new Error(diagnostic ?? "Database restore into the isolated target failed; diagnostics withheld by restore-lab.mjs.");
+  }
   const summary = JSON.parse(result.stdout.trim().split("\n").at(-1));
   console.log(`Database restored into an empty isolated stack (syntheticDatabaseRestored=${summary.syntheticDatabaseRestored}).`);
   return withDb(target.dbUrl, (db) => db.query("notify pgrst, 'reload schema'"));
