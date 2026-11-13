@@ -28,9 +28,13 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
   assertEmptyRestoreTarget(sourceDatabaseUrl, targetDatabaseUrl, {}, env);
   const { database } = await connectDatabase({ databaseUrl: targetDatabaseUrl });
   let targetHasMigrationHistory = false;
+  let targetHasManagedRoles = false;
   try {
     const appTables = (await database.query("select count(*) as count from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.relkind = 'r' and n.nspname in ('public','private')")).rows[0].count;
     const counts = { appTables };
+    const managedRoles = ["anon", "authenticated", "authenticator", "service_role", "supabase_admin"];
+    const managedRoleCount = (await database.query("select count(*)::int as count from pg_roles where rolname = any($1::text[])", [managedRoles])).rows[0].count;
+    targetHasManagedRoles = managedRoleCount === managedRoles.length;
     for (const table of ["auth.users", "storage.objects", "storage.buckets", "vault.secrets", "supabase_migrations.schema_migrations"]) {
       const exists = (await database.query("select to_regclass($1) as name", [table])).rows[0].name;
       counts[table] = exists ? (await database.query(`select count(*) as count from ${table}`)).rows[0].count : 0;
@@ -52,12 +56,13 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
   for (const record of allComponents) {
     if (await hashFile(join(directory, record.filename)) !== record.ciphertextSha256) throw new Error("Encrypted component hash mismatch; restore not started.");
   }
-  // A Supabase stack initializes the migration table and protected roles.
-  // Reuse those managed structures there; a raw PostgreSQL laboratory still
-  // restores both components from the bundle.
+  // A Supabase stack initializes protected roles and may initialize the
+  // migration table independently. Reuse each managed structure only when it
+  // is actually present; a raw PostgreSQL laboratory restores both.
   const components = allComponents.filter((record) => {
-    if (!targetHasMigrationHistory) return true;
-    return !["roles", "history-schema"].includes(record.kind);
+    if (record.kind === "roles") return !targetHasManagedRoles;
+    if (record.kind === "history-schema") return !targetHasMigrationHistory;
+    return true;
   });
   const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--set", "VERBOSITY=sqlstate", "--single-transaction", "--file", "-"], {
     env: pgEnvironment(targetDatabaseUrl),
@@ -85,7 +90,7 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
     if (!pipeClosed) psql.child.kill();
     throw new Error(`Synthetic restore failed in ${lastComponent}: ${cause.message}`);
   }
-  return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedManagedRoles: targetHasMigrationHistory,
+  return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedManagedRoles: targetHasManagedRoles,
     reusedMigrationHistorySchema: targetHasMigrationHistory, productionRecoveryValidated: false,
     limitations: ["Managed Auth/provider configuration", "Actual Supabase root-key transfer", "Storage service restore", "Real backup destination and retention"] };
 }
