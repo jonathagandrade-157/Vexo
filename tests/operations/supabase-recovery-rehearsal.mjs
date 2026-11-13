@@ -178,8 +178,8 @@ async function fingerprint(s) {
     // com triggers/FKs suspensos por session_replication_role=replica).
     const fks = (await db.query(
       `select con.conname, cl.relname as child, pl.relname as parent,
-              array(select att.attname from unnest(con.conkey) with ordinality k(attnum, ord) join pg_attribute att on att.attrelid = con.conrelid and att.attnum = k.attnum order by ord) as child_cols,
-              array(select att.attname from unnest(con.confkey) with ordinality k(attnum, ord) join pg_attribute att on att.attrelid = con.confrelid and att.attnum = k.attnum order by ord) as parent_cols,
+              to_jsonb(array(select att.attname from unnest(con.conkey) with ordinality k(attnum, ord) join pg_attribute att on att.attrelid = con.conrelid and att.attnum = k.attnum order by ord)) as child_cols,
+              to_jsonb(array(select att.attname from unnest(con.confkey) with ordinality k(attnum, ord) join pg_attribute att on att.attrelid = con.confrelid and att.attnum = k.attnum order by ord)) as parent_cols,
               pn.nspname as parent_schema
        from pg_constraint con join pg_class cl on cl.oid = con.conrelid join pg_namespace cn on cn.oid = cl.relnamespace
        join pg_class pl on pl.oid = con.confrelid join pg_namespace pn on pn.oid = pl.relnamespace
