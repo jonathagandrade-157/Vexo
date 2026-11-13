@@ -92,7 +92,7 @@ export function silentProcess(command, args, options = {}) {
       if (!reportSqlState) return reject(new Error(`${command} failed (exit ${code}); raw output withheld.`));
       const states = [...stderr.matchAll(/ERROR:\s+([0-9A-Z]{5})\b/g)].map((match) => match[1]);
       const unique = [...new Set(states)];
-      reject(new Error(`${command} failed (exit ${code}; SQLSTATE ${unique.join(",") || "unavailable"}); raw output withheld.`));
+      reject(new Error(`${command} failed (exit ${code}; SQLSTATE ${unique.join(",") || "UNAVAILABLE"}); raw output withheld.`));
     });
   });
   // Pipelines can reject before the caller awaits process completion.
