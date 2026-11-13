@@ -27,33 +27,56 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
   // Reject source aliases and non-loopback targets BEFORE connecting.
   assertEmptyRestoreTarget(sourceDatabaseUrl, targetDatabaseUrl, {}, env);
   const { database } = await connectDatabase({ databaseUrl: targetDatabaseUrl });
+  let targetHasMigrationHistory = false;
+  let targetHasManagedRoles = false;
   try {
     const appTables = (await database.query("select count(*) as count from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.relkind = 'r' and n.nspname in ('public','private')")).rows[0].count;
     const counts = { appTables };
-    for (const table of ["auth.users", "storage.objects", "storage.buckets", "vault.secrets"]) {
+    const managedRoles = ["anon", "authenticated", "authenticator", "service_role", "supabase_admin"];
+    const managedRoleCount = (await database.query("select count(*)::int as count from pg_roles where rolname = any($1::text[])", [managedRoles])).rows[0].count;
+    targetHasManagedRoles = managedRoleCount === managedRoles.length;
+    for (const table of ["auth.users", "storage.objects", "storage.buckets", "vault.secrets", "supabase_migrations.schema_migrations"]) {
       const exists = (await database.query("select to_regclass($1) as name", [table])).rows[0].name;
       counts[table] = exists ? (await database.query(`select count(*) as count from ${table}`)).rows[0].count : 0;
+      if (table === "supabase_migrations.schema_migrations") targetHasMigrationHistory = Boolean(exists);
     }
+    const occupied = Object.entries(counts).filter(([, count]) => Number(count) !== 0);
+    if (occupied.length) throw new Error(`Synthetic restore target preflight not empty: ${occupied.map(([name, count]) => `${name}=${count}`).join(",")}`);
     assertEmptyRestoreTarget(sourceDatabaseUrl, targetDatabaseUrl, counts, env);
   } finally { await database.end(); }
 
-  const ordered = ["roles", "schema", "history-schema", "vault-data", "data", "history-data"];
-  const components = ordered.map((kind) => {
+  const required = ["roles", "schema", "history-schema", "vault-data", "data", "history-data"];
+  const allComponents = required.map((kind) => {
     const records = manifest.components.filter((entry) => entry.kind === kind);
     if (records.length !== 1) throw new Error("Incomplete or ambiguous database bundle.");
     const record = records[0];
     assertSafeArtifactName(record.filename);
     return record;
   });
-  for (const record of components) {
+  for (const record of allComponents) {
     if (await hashFile(join(directory, record.filename)) !== record.ciphertextSha256) throw new Error("Encrypted component hash mismatch; restore not started.");
   }
-  const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--single-transaction", "--file", "-"], {
-    env: pgEnvironment(targetDatabaseUrl),
+  // A Supabase stack initializes protected roles and may initialize the
+  // migration table independently. Reuse each managed structure only when it
+  // is actually present; a raw PostgreSQL laboratory restores both.
+  const components = allComponents.filter((record) => {
+    if (record.kind === "roles") return !targetHasManagedRoles;
+    if (record.kind === "history-schema") return !targetHasMigrationHistory;
+    if (record.kind === "vault-data") return manifest.vaultSecrets > 0;
+    return true;
   });
-  psql.child.stdout.resume();
+  const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--set", "VERBOSITY=sqlstate", "--single-transaction", "--file", "-"], {
+    env: pgEnvironment(targetDatabaseUrl),
+    reportSqlState: true,
+  });
+  let lastComponent = "preflight";
+  psql.child.stdout.setEncoding("utf8");
+  psql.child.stdout.on("data", (chunk) => {
+    for (const match of chunk.matchAll(/VEXO_RESTORE_COMPONENT_([a-z-]+)/g)) lastComponent = match[1];
+  });
   try {
     for (const record of components) {
+      psql.child.stdin.write(`\\echo VEXO_RESTORE_COMPONENT_${record.kind}\n`);
       const verified = await decryptStream(join(directory, record.filename), identity, psql.child.stdin, { end: false });
       if (verified.plaintextSha256 !== record.plaintextSha256 || verified.plaintextBytes !== record.plaintextBytes) {
         throw new Error("Decrypted component differs from the trusted manifest; transaction will roll back.");
@@ -62,8 +85,14 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
     }
     psql.child.stdin.end();
     await psql.done;
-  } catch (error) { psql.child.kill(); throw error; }
-  return { runId: manifest.runId, syntheticDatabaseRestored: true, productionRecoveryValidated: false,
+  } catch (error) {
+    const pipeClosed = new Set(["EPIPE", "ERR_STREAM_DESTROYED", "ERR_STREAM_PREMATURE_CLOSE"]).has(error.code);
+    const cause = pipeClosed ? await psql.done.catch((processError) => processError) : error;
+    if (!pipeClosed) psql.child.kill();
+    throw new Error(`Synthetic restore failed in ${lastComponent}: ${cause.message}`);
+  }
+  return { runId: manifest.runId, syntheticDatabaseRestored: true, reusedManagedRoles: targetHasManagedRoles,
+    reusedMigrationHistorySchema: targetHasMigrationHistory, productionRecoveryValidated: false,
     limitations: ["Managed Auth/provider configuration", "Actual Supabase root-key transfer", "Storage service restore", "Real backup destination and retention"] };
 }
 
@@ -80,5 +109,11 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch(() => { console.error("Isolated restore failed; sensitive output withheld. Do not promote a release on this result."); process.exitCode = 1; });
+  main().catch((error) => {
+    const safe = /^Synthetic restore failed in [a-z-]+: psql failed \(exit \d+; SQLSTATE [0-9A-Z,]+\); raw output withheld\.$/.test(error.message) ||
+      /^Synthetic restore target preflight not empty: (?:[a-z._]+=[0-9]+,?)+$/.test(error.message);
+    const frame = error.stack?.match(/restore-lab\.mjs:(\d+):\d+/);
+    console.error(safe ? error.message : frame ? `Synthetic restore failed at restore-lab line ${frame[1]}; raw output withheld.` : "Isolated restore failed; sensitive output withheld. Do not promote a release on this result.");
+    process.exitCode = 1;
+  });
 }

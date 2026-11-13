@@ -1,0 +1,102 @@
+name: Recovery rehearsal (real Supabase services, synthetic data)
+
+# Ensaio de backup e restauração com os serviços Supabase reais (Auth,
+# PostgREST, Storage) e dados sintéticos, usando sem alterações os scripts
+# do procedimento de produção (scripts/backup/export.mjs e restore-lab.mjs).
+# A origem é DESTRUÍDA antes do destino subir: a recuperação depende só do
+# bundle cifrado. Não é prova de recuperação de produção: nenhum dado real,
+# nenhum destino externo, nenhum segredo do repositório.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: recovery-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: supabase/setup-cli@9f97a8880aff8507123eac41a95501b846a3976f
+        with:
+          version: 2.115.0
+
+      - name: Install age and PostgreSQL 17 client (same major as the stack)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y age postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install --no-install-recommends -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Isolation guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if env | grep -Eiq 'vqbiurnfqkjkrenigxzv|\.supabase\.co|SUPABASE_ACCESS_TOKEN|BACKUP_S3_|B2_|AWS_ACCESS_KEY'; then
+            echo "Production-shaped or external-destination variable present; refusing."; exit 1
+          fi
+          if [ -e supabase/.temp/project-ref ]; then echo "Linked project present; refusing."; exit 1; fi
+          pg_dump --version
+
+      - name: Start source stack (all migrations)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! supabase start --exclude studio,realtime,imgproxy,postgres-meta,edge-runtime,logflare,vector,supavisor,mailpit \
+            >"$RUNNER_TEMP/source-start.log" 2>&1; then
+            echo "Source stack failed to start; credential-bearing output withheld."; exit 1
+          fi
+
+      - name: Seed synthetic users, stores, catalog, order and Storage files
+        run: node tests/operations/supabase-recovery-rehearsal.mjs seed
+
+      - name: Fingerprint the source
+        run: node tests/operations/supabase-recovery-rehearsal.mjs fingerprint "$RUNNER_TEMP/source-fingerprint.json"
+
+      - name: Encrypted export (export.mjs, age)
+        run: node tests/operations/supabase-recovery-rehearsal.mjs export
+
+      - name: Destroy the source stack
+        run: supabase stop --no-backup
+
+      - name: Start an empty isolated target stack on other ports
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/restore-target"
+          mkdir -p "$target/supabase"
+          sed -e 's/^project_id = .*/project_id = "vexo-recovery-target"/' -e 's/= 543\([0-9][0-9]\)/= 553\1/' supabase/config.toml > "$target/supabase/config.toml"
+          if ! supabase start --workdir "$target" --exclude studio,realtime,imgproxy,postgres-meta,edge-runtime,logflare,vector,supavisor,mailpit \
+            >"$RUNNER_TEMP/target-start.log" 2>&1; then
+            echo "Target stack failed to start; credential-bearing output withheld."; exit 1
+          fi
+          echo "SUPABASE_WORKDIR=$target" >> "$GITHUB_ENV"
+
+      - name: Restore database into the empty target (restore-lab.mjs)
+        run: node tests/operations/supabase-recovery-rehearsal.mjs restore-db
+
+      - name: Restore Storage files from the encrypted bundle
+        run: node tests/operations/supabase-recovery-rehearsal.mjs restore-objects
+
+      - name: Compare integrity, relationships, files, Auth login and RLS
+        run: node tests/operations/supabase-recovery-rehearsal.mjs verify "$RUNNER_TEMP/source-fingerprint.json"
+
+      - name: Stop target stack
+        if: always()
+        run: supabase stop --no-backup --workdir "$RUNNER_TEMP/restore-target" || true

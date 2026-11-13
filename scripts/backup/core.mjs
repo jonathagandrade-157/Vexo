@@ -78,12 +78,22 @@ export function assertEmptyRestoreTarget(source, target, counts, env) {
 }
 
 export function silentProcess(command, args, options = {}) {
-  const child = spawn(command, args, { env: toolEnvironment(), timeout: 600_000, ...options, stdio: ["pipe", "pipe", "pipe"] });
+  const { reportSqlState = false, ...spawnOptions } = options;
+  const child = spawn(command, args, { env: toolEnvironment(), timeout: 600_000, ...spawnOptions, stdio: ["pipe", "pipe", "pipe"] });
+  let stderr = "";
   const done = new Promise((resolve, reject) => {
     child.on("error", () => reject(new Error(`Could not start ${command}; no credential-bearing diagnostics were logged.`)));
     // Drain, but never print provider/CLI errors: they may contain secrets.
-    child.stderr.on("data", () => {});
-    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`${command} failed (exit ${code}); raw output withheld.`)));
+    child.stderr.on("data", (chunk) => {
+      if (reportSqlState && stderr.length < 64 * 1024) stderr += chunk.toString("utf8");
+    });
+    child.on("close", (code) => {
+      if (code === 0) return resolve();
+      if (!reportSqlState) return reject(new Error(`${command} failed (exit ${code}); raw output withheld.`));
+      const states = [...stderr.matchAll(/ERROR:\s+([0-9A-Z]{5})\b/g)].map((match) => match[1]);
+      const unique = [...new Set(states)];
+      reject(new Error(`${command} failed (exit ${code}; SQLSTATE ${unique.join(",") || "UNAVAILABLE"}); raw output withheld.`));
+    });
   });
   // Pipelines can reject before the caller awaits process completion.
   done.catch(() => {});
