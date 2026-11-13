@@ -62,6 +62,7 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
   const components = allComponents.filter((record) => {
     if (record.kind === "roles") return !targetHasManagedRoles;
     if (record.kind === "history-schema") return !targetHasMigrationHistory;
+    if (record.kind === "vault-data") return manifest.vaultSecrets > 0;
     return true;
   });
   const psql = silentProcess("psql", ["--no-psqlrc", "--quiet", "--set", "ON_ERROR_STOP=1", "--set", "VERBOSITY=sqlstate", "--single-transaction", "--file", "-"], {
