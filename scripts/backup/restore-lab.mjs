@@ -95,7 +95,7 @@ async function main() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
-    const safe = /^Synthetic restore failed in [a-z-]+: psql failed \\(exit \\d+; SQLSTATE [0-9A-Z,]+\\); raw output withheld\\.$/.test(error.message);
+    const safe = /^Synthetic restore failed in [a-z-]+: psql failed \(exit \d+; SQLSTATE [0-9A-Z,]+\); raw output withheld\.$/.test(error.message);
     console.error(safe ? error.message : "Isolated restore failed; sensitive output withheld. Do not promote a release on this result.");
     process.exitCode = 1;
   });
