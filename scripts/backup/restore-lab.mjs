@@ -36,6 +36,8 @@ export async function restoreSyntheticDatabase({ directory, identity, expectedMa
       counts[table] = exists ? (await database.query(`select count(*) as count from ${table}`)).rows[0].count : 0;
       if (table === "supabase_migrations.schema_migrations") targetHasMigrationHistory = Boolean(exists);
     }
+    const occupied = Object.entries(counts).filter(([, count]) => Number(count) !== 0);
+    if (occupied.length) throw new Error(`Synthetic restore target preflight not empty: ${occupied.map(([name, count]) => `${name}=${count}`).join(",")}`);
     assertEmptyRestoreTarget(sourceDatabaseUrl, targetDatabaseUrl, counts, env);
   } finally { await database.end(); }
 
@@ -95,7 +97,8 @@ async function main() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
-    const safe = /^Synthetic restore failed in [a-z-]+: psql failed \(exit \d+; SQLSTATE [0-9A-Z,]+\); raw output withheld\.$/.test(error.message);
+    const safe = /^Synthetic restore failed in [a-z-]+: psql failed \(exit \d+; SQLSTATE [0-9A-Z,]+\); raw output withheld\.$/.test(error.message) ||
+      /^Synthetic restore target preflight not empty: (?:[a-z._]+=[0-9]+,?)+$/.test(error.message);
     console.error(safe ? error.message : "Isolated restore failed; sensitive output withheld. Do not promote a release on this result.");
     process.exitCode = 1;
   });
