@@ -223,7 +223,7 @@ function secureCheckout(payload: Record<string, unknown>, actor: HttpActor = "se
   return http("/rest/v1/rpc/checkout_cart_secure", { actor, method: "POST", body: payload });
 }
 
-describe.skipIf(!process.env.RUN_SUPABASE_HTTP_TESTS).sequential("Etapa 2A.2 — real Supabase Auth and PostgREST HTTP", () => {
+describe.skipIf(!process.env.RUN_SUPABASE_HTTP_TESTS)("Etapa 2A.2 — real Supabase Auth and PostgREST HTTP", () => {
   beforeAll(async () => {
     if (!apiUrl || !anonKey || !serviceRoleKey || !jwtSecret) {
       throw new Error("Local Supabase HTTP environment is incomplete");
