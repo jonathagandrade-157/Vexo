@@ -7,8 +7,9 @@ import { scrubSentryEvent, scrubSentryTransaction } from "@/lib/sentry/scrub-eve
  * Next.js 15.3+/16, docs/file-conventions/instrumentation-client). Roda
  * antes da hidratação, sem exportar nenhuma função obrigatória.
  *
- * `sendDefaultPii` fica OFF (padrão do SDK) — nunca cookies/IP completo
- * do visitante por padrão (arquitetura §21: "PII minimizada").
+ * `dataCollection` preserva explicitamente o baseline restritivo do SDK v10
+ * — nunca cookies/IP completo do visitante por padrão (arquitetura §21:
+ * "PII minimizada").
  * `NEXT_PUBLIC_SENTRY_DSN` ausente (ambiente local sem Sentry
  * configurado) faz `Sentry.init` virar no-op, sem quebrar a build nem o
  * app — mesmo princípio de toda integração opcional deste projeto
@@ -17,7 +18,20 @@ import { scrubSentryEvent, scrubSentryTransaction } from "@/lib/sentry/scrub-eve
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1,
-  sendDefaultPii: false,
+  dataCollection: {
+    userInfo: false,
+    cookies: false,
+    httpHeaders: {
+      request: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+      response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+    },
+    httpBodies: [],
+    urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+    genAI: { inputs: false, outputs: false },
+    databaseQueryData: false,
+    queues: false,
+    graphQL: { document: false, variables: false },
+  },
   beforeSend: scrubSentryEvent,
   beforeSendTransaction: scrubSentryTransaction,
   debug: false,
