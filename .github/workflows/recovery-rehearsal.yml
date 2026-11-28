@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - uses: supabase/setup-cli@9f97a8880aff8507123eac41a95501b846a3976f
+      - uses: supabase/setup-cli@5c491c68f9cf818207310aba8222c24ee07ee67e
         with:
           version: 2.115.0
 
